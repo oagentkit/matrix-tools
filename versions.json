@@ -1,0 +1,398 @@
+{
+  "$comment": "oagentkit 版本矩阵（机器可读）。由 matrix-tools/scripts/gen_versions.py 生成，勿手改。",
+  "org": "oagentkit",
+  "orgUrl": "https://github.com/oagentkit",
+  "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
+  "tierCount": 4,
+  "moduleCount": 13,
+  "packageCount": 46,
+  "modules": [
+    {
+      "repo": "textx",
+      "url": "https://github.com/oagentkit/textx",
+      "tier": 0,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "textutil",
+          "importPath": "github.com/oagentkit/textx/textutil"
+        },
+        {
+          "pkg": "diffx",
+          "importPath": "github.com/oagentkit/textx/diffx"
+        },
+        {
+          "pkg": "codeintel",
+          "importPath": "github.com/oagentkit/textx/codeintel"
+        },
+        {
+          "pkg": "compact",
+          "importPath": "github.com/oagentkit/textx/compact"
+        },
+        {
+          "pkg": "conversation",
+          "importPath": "github.com/oagentkit/textx/conversation"
+        },
+        {
+          "pkg": "reportutil",
+          "importPath": "github.com/oagentkit/textx/reportutil"
+        }
+      ],
+      "matrixDeps": [],
+      "breakingIndex": []
+    },
+    {
+      "repo": "runtime",
+      "url": "https://github.com/oagentkit/runtime",
+      "tier": 0,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "breaker",
+          "importPath": "github.com/oagentkit/runtime/breaker"
+        },
+        {
+          "pkg": "pacer",
+          "importPath": "github.com/oagentkit/runtime/pacer"
+        },
+        {
+          "pkg": "progress",
+          "importPath": "github.com/oagentkit/runtime/progress"
+        },
+        {
+          "pkg": "procx",
+          "importPath": "github.com/oagentkit/runtime/procx"
+        },
+        {
+          "pkg": "hotplug",
+          "importPath": "github.com/oagentkit/runtime/hotplug"
+        },
+        {
+          "pkg": "hookx",
+          "importPath": "github.com/oagentkit/runtime/hookx"
+        }
+      ],
+      "matrixDeps": [],
+      "breakingIndex": []
+    },
+    {
+      "repo": "guardx",
+      "url": "https://github.com/oagentkit/guardx",
+      "tier": 0,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "fence",
+          "importPath": "github.com/oagentkit/guardx/fence"
+        },
+        {
+          "pkg": "logredact",
+          "importPath": "github.com/oagentkit/guardx/logredact"
+        },
+        {
+          "pkg": "egress",
+          "importPath": "github.com/oagentkit/guardx/egress"
+        },
+        {
+          "pkg": "permgate",
+          "importPath": "github.com/oagentkit/guardx/permgate"
+        },
+        {
+          "pkg": "bashguard",
+          "importPath": "github.com/oagentkit/guardx/bashguard"
+        },
+        {
+          "pkg": "audit",
+          "importPath": "github.com/oagentkit/guardx/audit"
+        }
+      ],
+      "matrixDeps": [],
+      "breakingIndex": []
+    },
+    {
+      "repo": "queue",
+      "url": "https://github.com/oagentkit/queue",
+      "tier": 0,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "worker",
+          "importPath": "github.com/oagentkit/queue/worker"
+        },
+        {
+          "pkg": "worker/pglease",
+          "importPath": "github.com/oagentkit/queue/pglease"
+        }
+      ],
+      "matrixDeps": [],
+      "breakingIndex": []
+    },
+    {
+      "repo": "promptx",
+      "url": "https://github.com/oagentkit/promptx",
+      "tier": 1,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "sysprompt",
+          "importPath": "github.com/oagentkit/promptx/sysprompt"
+        },
+        {
+          "pkg": "steering",
+          "importPath": "github.com/oagentkit/promptx/steering"
+        },
+        {
+          "pkg": "filestate",
+          "importPath": "github.com/oagentkit/promptx/filestate"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "runtime",
+          "url": "https://github.com/oagentkit/runtime"
+        },
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "obs",
+      "url": "https://github.com/oagentkit/obs",
+      "tier": 1,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "obsx",
+          "importPath": "github.com/oagentkit/obs/obsx"
+        },
+        {
+          "pkg": "langfuse",
+          "importPath": "github.com/oagentkit/obs/langfuse"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "skillkit",
+      "url": "https://github.com/oagentkit/skillkit",
+      "tier": 1,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "skill",
+          "importPath": "github.com/oagentkit/skillkit/skill"
+        },
+        {
+          "pkg": "pack",
+          "importPath": "github.com/oagentkit/skillkit/pack"
+        },
+        {
+          "pkg": "lineage",
+          "importPath": "github.com/oagentkit/skillkit/lineage"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "guardx",
+          "url": "https://github.com/oagentkit/guardx"
+        },
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "mcpkit",
+      "url": "https://github.com/oagentkit/mcpkit",
+      "tier": 1,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "mcp",
+          "importPath": "github.com/oagentkit/mcpkit/mcp"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "runtime",
+          "url": "https://github.com/oagentkit/runtime"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "rag",
+      "url": "https://github.com/oagentkit/rag",
+      "tier": 1,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "knowledge/rag",
+          "importPath": "github.com/oagentkit/rag/rag"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "llm",
+      "url": "https://github.com/oagentkit/llm",
+      "tier": 2,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "llm",
+          "importPath": "github.com/oagentkit/llm/llm"
+        },
+        {
+          "pkg": "llm/wrap",
+          "importPath": "github.com/oagentkit/llm/wrap"
+        },
+        {
+          "pkg": "llm/llmtest",
+          "importPath": "github.com/oagentkit/llm/llmtest"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "obs",
+          "url": "https://github.com/oagentkit/obs"
+        },
+        {
+          "repo": "runtime",
+          "url": "https://github.com/oagentkit/runtime"
+        },
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "toolgate",
+      "url": "https://github.com/oagentkit/toolgate",
+      "tier": 2,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "toolprior",
+          "importPath": "github.com/oagentkit/toolgate/toolprior"
+        },
+        {
+          "pkg": "toolsched",
+          "importPath": "github.com/oagentkit/toolgate/toolsched"
+        },
+        {
+          "pkg": "policy",
+          "importPath": "github.com/oagentkit/toolgate/policy"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "mcpkit",
+          "url": "https://github.com/oagentkit/mcpkit"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "tools",
+      "url": "https://github.com/oagentkit/tools",
+      "tier": 2,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "acpx",
+          "importPath": "github.com/oagentkit/tools/acpx"
+        },
+        {
+          "pkg": "websearch",
+          "importPath": "github.com/oagentkit/tools/websearch"
+        },
+        {
+          "pkg": "workcopy",
+          "importPath": "github.com/oagentkit/tools/workcopy"
+        },
+        {
+          "pkg": "sast",
+          "importPath": "github.com/oagentkit/tools/sast"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "guardx",
+          "url": "https://github.com/oagentkit/guardx"
+        },
+        {
+          "repo": "runtime",
+          "url": "https://github.com/oagentkit/runtime"
+        },
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    },
+    {
+      "repo": "agent",
+      "url": "https://github.com/oagentkit/agent",
+      "tier": 3,
+      "latest": "v0.1.0",
+      "packages": [
+        {
+          "pkg": "agentrun",
+          "importPath": "github.com/oagentkit/agent/agentrun"
+        },
+        {
+          "pkg": "reflection",
+          "importPath": "github.com/oagentkit/agent/reflection"
+        },
+        {
+          "pkg": "router",
+          "importPath": "github.com/oagentkit/agent/router"
+        },
+        {
+          "pkg": "blackboard",
+          "importPath": "github.com/oagentkit/agent/blackboard"
+        },
+        {
+          "pkg": "dispatch",
+          "importPath": "github.com/oagentkit/agent/dispatch"
+        },
+        {
+          "pkg": "clarify",
+          "importPath": "github.com/oagentkit/agent/clarify"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "llm",
+          "url": "https://github.com/oagentkit/llm"
+        },
+        {
+          "repo": "textx",
+          "url": "https://github.com/oagentkit/textx"
+        }
+      ],
+      "breakingIndex": []
+    }
+  ]
+}
