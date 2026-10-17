@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""从 GitHub tag 生成机器可读的版本矩阵 versions.json。
+
+结构对齐 oekit 的 versions.json 惯例：每模块给 latest / packages / matrixDeps /
+tier / breakingIndex。结构变更后重跑即可刷新，无需手工维护。
+
+用法:
+    gen_versions.py                      # 读 modules.json，写 versions.json（不联网）
+    gen_versions.py --org oagentkit      # 联网读各仓 tag，标注 latest
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+DEFAULT_MATRIX = HERE.parent / "modules.json"
+DEFAULT_OUT = HERE.parent / "versions.json"
+
+
+def latest_tag(org: str, repo: str) -> str | None:
+    r = subprocess.run(
+        ["gh", "api", f"repos/{org}/{repo}/tags", "--jq", "[.[].name] | .[0] // empty"],
+        capture_output=True, text=True,
+    )
+    t = r.stdout.strip()
+    return t or None
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--matrix", default=str(DEFAULT_MATRIX))
+    ap.add_argument("--out", default=str(DEFAULT_OUT))
+    ap.add_argument("--org", help="给了就联网读各仓最新 tag")
+    args = ap.parse_args()
+
+    data = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
+    org = args.org or data.get("defaultOrg")
+
+    out = {
+        "$comment": "oagentkit 版本矩阵（机器可读）。由 matrix-tools/scripts/gen_versions.py 生成，勿手改。",
+        "org": org,
+        "orgUrl": f"https://github.com/{org}" if org else None,
+        "sourceMatrix": data.get("sourceModule"),
+        "tierCount": len({m["tier"] for m in data["modules"]}),
+        "moduleCount": len(data["modules"]),
+        "packageCount": sum(len(m["packages"]) for m in data["modules"]),
+        "modules": [],
+    }
+
+    for m in data["modules"]:
+        repo = m["repo"]
+        out["modules"].append({
+            "repo": repo,
+            "url": f"https://github.com/{org}/{repo}" if org else None,
+            "tier": m["tier"],
+            "latest": latest_tag(org, repo) if (args.org and org) else None,
+            "packages": [
+                {"pkg": p, "importPath": f"github.com/{org}/{repo}/{p.rsplit('/', 1)[-1]}"
+                 if org else None}
+                for p in m["packages"]
+            ],
+            "matrixDeps": [
+                {"repo": d, "url": f"https://github.com/{org}/{d}" if org else None}
+                for d in sorted(m.get("dependsOn", []))
+            ],
+            "breakingIndex": [],
+        })
+
+    Path(args.out).write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n",
+                              encoding="utf-8")
+    print(f"# 生成 {args.out}：{out['moduleCount']} 模块 / {out['packageCount']} 包 / tier0-{out['tierCount']-1}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
