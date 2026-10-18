@@ -275,8 +275,14 @@ python3 scripts/split/verify_split.py --root . --layout split --org <org>   # �
    `oekit/concurrency/async`，是**消费方**而非候选替代方。改为一条接线约束，见下方。
 4. **原单仓归宿：留薄门面仓**，`github.com/oagentkit/agentkit` 只做 46 包 re-export 零逻辑，
    发 v1.0.0 说明迁移，README 写死退役时间表（v1.x 后转 archive）。
-5. **GitCode 侧去留：archive**，同时处理 `github.com/yi-nology/agentkit`，两者 README
-   顶部均加迁移指引指向 `github.com/oagentkit/*`。
+5. **GitCode 侧去留：archive** —— 已定并**部分执行**（2026-10-18）：
+   - `github.com/yi-nology/agentkit` —— ✅ **已归档**（`archived=true`），description 已改为迁移指引
+   - `git.enjoye.top/enjoydream/agentkit`（GitCode，module path 的实际所在）—— ❌ **未能执行**：
+     该域名在当前执行环境不可达 —— curl HTTP 000，Electron 浏览器导航同样失败，
+     GitCode API（`api.gitcode.com/api/v5`）返回 401 且本机无 GitCode token。
+     **需手动在 GitCode Web 界面归档。**
+   - 归档前先确认：GitCode 对 archived 仓是否仍提供只读 git 服务。若下游还有人用旧路径
+     `go get git.enjoye.top/enjoydream/agentkit`，归档可能直接打断他们的构建。
 
 ### `obs` 仓的接线约束（替代原问题）
 
