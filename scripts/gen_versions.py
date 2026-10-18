@@ -14,9 +14,17 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from matrix_paths import (  # noqa: E402  import 路径构造规则与 rewrite_imports.py 同源
+    OLD_ROOT,
+    new_import_path,
+    short_legacy,
+)
+
 DEFAULT_MATRIX = HERE.parent / "modules.json"
 DEFAULT_OUT = HERE.parent / "versions.json"
 
@@ -42,6 +50,10 @@ def main() -> int:
 
     out = {
         "$comment": "oagentkit 版本矩阵（机器可读）。由 matrix-tools/scripts/gen_versions.py 生成，勿手改。",
+        "$pathRule": f"import 路径 = github.com/{org or '{{org}}'}/<仓名>/<包名末段>；"
+                     f"旧路径 {OLD_ROOT}/<包> 的中间层目录会被丢弃。"
+                     f"每个包的 fromLegacy 给出该包在旧单仓里的路径。"
+                     f"权威输出：rewrite_imports.py --print-rules",
         "org": org,
         "orgUrl": f"https://github.com/{org}" if org else None,
         "sourceMatrix": data.get("sourceModule"),
@@ -59,8 +71,12 @@ def main() -> int:
             "tier": m["tier"],
             "latest": latest_tag(org, repo) if (args.org and org) else None,
             "packages": [
-                {"pkg": p, "importPath": f"github.com/{org}/{repo}/{p.rsplit('/', 1)[-1]}"
-                 if org else None}
+                {
+                    "pkg": p,
+                    "importPath": new_import_path(org, repo, p) if org else None,
+                    # 旧单仓里的包路径，供工具做机器可读的旧→新替换，不必解析脚本源码
+                    "fromLegacy": short_legacy(p),
+                }
                 for p in m["packages"]
             ],
             "matrixDeps": [
