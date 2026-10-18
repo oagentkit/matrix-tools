@@ -32,8 +32,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-OLD_ROOT = "git.enjoye.top/enjoydream/agentkit"
-DEFAULT_ORG = "oagentkit"  # Open Agent Kit —— agent/LLM 编排工具链矩阵
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from matrix_paths import (  # noqa: E402  路径构造规则由 matrix_paths 唯一持有
+    DEFAULT_ORG,
+    OLD_ROOT,
+    build_mapping,
+)
+
+# 路径怎么拼（仓名 + 包名末段）由 matrix_paths.py 定义，本脚本不再自己推导。
+# 这条规则曾经在本文件和迁移期临时脚本里各写一遍，任一方漏掉就是整仓构建断裂。
 IMPORT_LINE_RE = re.compile(r'^(\s*(?:[\w.]+\s+)?"[^"]+")\s*(//.*)?$')
 BLOCK_START_RE = re.compile(r"^\s*import\s*\(\s*(//.*)?$")
 SINGLE_IMPORT_RE = re.compile(r'^(\s*import\s+(?:[\w.]+\s+)?"[^"]+")\s*(//.*)?$')
@@ -45,18 +52,26 @@ TEXT_EXT = {".md", ".yaml", ".yml", ".toml", ".json", ".sh", ".py", ".txt", ".mk
 SKIP_DIRS = {".git", ".worktrees", ".v2c", ".mimosa", "node_modules"}
 
 
+def default_matrix() -> Path:
+    """定位 modules.json。
+
+    脚本从 agentkit 单仓搬到 matrix-tools 后，--modules 曾硬编码成旧布局的
+    `docs/split-matrix/modules.json`，导致在本仓直接 FileNotFoundError。
+    两个布局都认，避免再被搬一次就断。
+    """
+    here = Path(__file__).resolve().parent
+    for cand in (here.parent / "modules.json",
+                 here.parent.parent / "docs/split-matrix/modules.json"):
+        if cand.is_file():
+            return cand
+    return here.parent / "modules.json"
+
+
 def load_matrix(path: Path) -> tuple[dict[str, str], list[str]]:
     """读 modules.json，返回 (旧包路径 -> 新导入路径, 所属仓列表)。"""
     data = json.loads(path.read_text(encoding="utf-8"))
-    mapping: dict[str, str] = {}
-    repos: list[str] = []
-    for mod in data["modules"]:
-        repo = mod["repo"]
-        repos.append(repo)
-        for pkg in mod["packages"]:
-            # 新路径取包的末段：knowledge/rag -> rag/rag, worker/pglease -> queue/pglease
-            leaf = pkg.rsplit("/", 1)[-1]
-            mapping[f"{OLD_ROOT}/{pkg}"] = f"github.com/{{org}}/{repo}/{leaf}"
+    mapping = build_mapping(data["modules"], "{org}")
+    repos = [mod["repo"] for mod in data["modules"]]
     return mapping, repos
 
 
@@ -142,7 +157,8 @@ def main() -> int:
     ap.add_argument("--org", default=DEFAULT_ORG,
                     help=f"目标 GitHub 组织名（默认 {DEFAULT_ORG}）")
     ap.add_argument("--root", default=".", help="仓库根目录（默认当前目录）")
-    ap.add_argument("--modules", default="docs/split-matrix/modules.json")
+    ap.add_argument("--modules", default=str(default_matrix()),
+                    help="modules.json 路径（默认自动定位 matrix-tools 根，其次 agentkit 旧布局）")
     ap.add_argument("--single", help="单仓整体改名目标路径，如 github.com/o/agentkit")
     ap.add_argument("--print-rules", action="store_true", help="打印映射表后退出")
     ap.add_argument("--check", action="store_true", help="只报告，不写文件；有改动 exit 1")
@@ -169,13 +185,12 @@ def main() -> int:
         mapping = {k: f"{args.single}/{k[len(OLD_ROOT) + 1:]}" for k in mapping}
 
     if args.print_rules:
-        print(f"# {len(mapping)} 条规则  org={args.org}  single={args.single or '-'}\n")
-        width = max(len(k) for k in mapping)
-        for src in sorted(mapping):
-            dst = mapping[src].replace("{org}", args.org)
-            print(f"{src:<{width}}  ->  {dst}")
-        print(f"\n# {len(repos)} 个仓: {', '.join(sorted(repos))}")
-        return 0
+        # 映射表由 matrix_paths.py 生成（本脚本与 llms.txt / versions.json 共用同一来源），
+        # 这样「文档里的规则」与「脚本实际执行的规则」不可能各说各话。
+        return subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / "matrix_paths.py"),
+             "--matrix", str(mpath), "--org", args.org],
+        ).returncode
 
     if args.manual:
         print(f"# 非 Go 文件中出现 {OLD_ROOT} 的位置（脚本不碰，需人工确认）\n")
