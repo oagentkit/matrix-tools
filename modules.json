@@ -88,7 +88,8 @@
         "egress",
         "permgate",
         "bashguard",
-        "audit"
+        "audit",
+        "injectband"
       ],
       "heavyDeps": [
         "mvdan.cc/sh/v3"
@@ -109,7 +110,8 @@
         "egress": "出口围栏：LLM 可控 URL 的字面量层 SSRF 防护",
         "permgate": "工具调用许可判定链：谁在什么模式下对什么输入得到什么许可",
         "bashguard": "bash 命令静态风险解析：不执行命令，经真 shell AST 判定",
-        "audit": "审计日志：对敏感操作留结构化审计痕迹，与业务日志分离"
+        "audit": "审计日志：对敏感操作留结构化审计痕迹，与业务日志分离",
+        "injectband": "系统带外注入的防伪包裹通道：给系统提示打来源标记，并转义 body 内伪造的同形标签（含大小写/空白变体），防身份伪造。与 fence 互补——fence 封数据侧越权，injectband 封系统侧伪造"
       }
     },
     {
