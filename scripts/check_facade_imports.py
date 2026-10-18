@@ -27,14 +27,21 @@ FORBIDDEN = [
     ("github.com/oagentkit/agentkit", "门面仓（v1.x 后退役，新代码不要引）"),
 ]
 
-# 豁免目录：路径中包含这些片段就跳过
+# 豁免目录：路径中包含这些片段就跳过。
+#
+# ⚠️ 这里刻意**不豁免整个 oagentkit 矩阵**。曾经有一条 "/oagentkit/" 把 13 个仓
+# 全部排除了，注释写的是「各仓自身的 go.sum / 文档」——但本脚本只扫 *.go，
+# 而 go.sum 和 .md 根本不会被扫到，所以那条豁免**排除了该查的、没挡住它声称要挡的**：
+# 哪天有人在矩阵仓里写下 import "github.com/oagentkit/agentkit/x"，守卫会静默放过，
+# 而这正是它存在的唯一理由。
 EXEMPT = [
     "/.git/", "/node_modules/", "/vendor/", "/_tmp/", "/.worktrees/",
     "/.gomodcache", "/.superpowers/", "/.cache/", "/dist/", "/site/",
     # agentkit 本体就是要退役的那一坨，它当然引自己
     "/lacus/agentkit/", "/agentkit-bisect/",
-    # oagentkit 各仓自身的 go.sum / 文档
-    "/oagentkit/",
+    # oagentkit 下面只有「门面仓自己」需要豁免：它 45 个包全是 re-export，
+    # 必须 import 各能力仓。精确到仓目录，不要退回到整个矩阵目录。
+    "/oagentkit/agentkit/", "/oagentkit/.github/",
 ]
 
 SKIP_DIRS = {".git", "node_modules", "vendor", "_tmp", ".worktrees",
@@ -58,11 +65,81 @@ def scan_file(p: Path, rel: str) -> list[tuple[str, int, str]]:
     return hits
 
 
+def selftest() -> int:
+    """证明守卫没瞎——否则「静默放过」和「检查通过」在 CI 里长得一模一样。
+
+    为什么必须自测：豁免名单写错一个字符，脚本就会**静默放过所有违规**，
+    仍然 exit 0、CI 仍然全绿。这类守卫最危险的失效模式就是「一直绿，但从没生效过」。
+    用真实逻辑跑真实样本，不 mock。
+    """
+    import tempfile
+
+    cases: list[tuple[str, str, int]] = [
+        # (说明, 文件内容, 期望命中数)
+        ("门面仓 import（该抓）",
+         'package x\n\nimport "github.com/oagentkit/agentkit/agentrun"\n', 1),
+        ("门面仓带子路径（该抓）",
+         'package x\n\nimport (\n\t"git.enjoye.top/enjoydream/agentkit/knowledge/rag"\n)\n', 1),
+        ("旧单仓 import（该抓）",
+         'package x\n\nimport "git.enjoye.top/enjoydream/agentkit/textutil"\n', 1),
+        ("注释里的旧路径（不该抓）",
+         'package x\n\n// 旧路径 git.enjoye.top/enjoydream/agentkit/textutil 已迁走\n', 0),
+        ("测试断言里的旧路径（不该抓）",
+         'package x\n\nconst want = "git.enjoye.top/enjoydream/agentkit/textutil"\n', 1),
+        ("正常的新路径（不该抓）",
+         'package x\n\nimport "github.com/oagentkit/rag/rag"\n', 0),
+    ]
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        for i, (desc, body, want) in enumerate(cases):
+            f = root / f"case{i}.go"
+            f.write_text(body, encoding="utf-8")
+            got = len(scan_file(f, f.name))
+            status = "ok" if got == want else "FAIL"
+            if got != want:
+                failures.append(f"{desc}：期望 {want}，实际 {got}")
+            print(f"  {status:<4} {desc}（期望 {want} / 实际 {got}）")
+
+    # 豁免回归：矩阵里的仓【不能】再被整目录豁免
+    probes = [
+        ("/home/u/oagentkit/rag/rag/rag.go", False, "矩阵仓必须被扫"),
+        ("/home/u/oagentkit/agentkit/agentrun/alias.go", True, "门面仓自身需豁免"),
+        ("/home/u/oagentkit/.github/scripts/sync-callers.sh", True, ".github 需豁免"),
+        ("/home/u/lacus/agentkit/textutil/x.go", True, "退役中的单仓需豁免"),
+    ]
+    for path, want_exempt, desc in probes:
+        got = any(x in path for x in EXEMPT)
+        status = "ok" if got == want_exempt else "FAIL"
+        if got != want_exempt:
+            failures.append(f"{desc}：{path} 豁免={got}，期望 {want_exempt}")
+        print(f"  {status:<4} {desc}")
+
+    print()
+    if failures:
+        print(f"❌ 自测失败 {len(failures)} 项：")
+        for f in failures:
+            print(f"   - {f}")
+        return 1
+    print(f"✅ 自测通过（{len(cases)} 个样本 + {len(probes)} 个豁免探针）")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--roots", nargs="+", required=True)
+    ap.add_argument("--roots", nargs="+")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--selftest", action="store_true",
+                    help="跑内置样本，证明守卫本身有效（CI 里应该常跑）")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
+
+    if not args.roots:
+        ap.print_help()
+        return 2
 
     total_files = 0
     violations: list[tuple[str, int, str]] = []
