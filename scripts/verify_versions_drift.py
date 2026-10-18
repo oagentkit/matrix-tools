@@ -10,6 +10,10 @@ modules.json 是单一数据源，versions.json 是它的生成物。两者漂�
 用法:
     verify_versions_drift.py
     verify_versions_drift.py --matrix modules.json --versions versions.json
+    verify_versions_drift.py --compare ../site/docs/public/versions.json
+
+--compare 额外比对另一份 versions.json（站点 docs/public/versions.json 是本文件的副本）。
+    这一步**不比 latest 以外的东西也要全等**：站点是逐字节副本，任何差异都是漂移。
 
 退出码: 0 = 一致；1 = 漂移。
 """
@@ -27,17 +31,32 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def normalized(path: Path) -> str:
+def normalized(path: Path, drop_latest: bool = True) -> str:
     d = json.loads(path.read_text(encoding="utf-8"))
-    for m in d.get("modules", []):
-        m.pop("latest", None)   # 按设计联网读，离线必为 null
+    if drop_latest:
+        for m in d.get("modules", []):
+            m.pop("latest", None)   # 按设计联网读，离线必为 null
     return json.dumps(d, ensure_ascii=False, sort_keys=True, indent=2)
+
+
+def report(title: str, a: str, b: str, fix: str) -> int:
+    print(f"❌ {title}\n")
+    diff = list(difflib.unified_diff(
+        a.splitlines(), b.splitlines(),
+        fromfile="committed", tofile="expected", lineterm=""))
+    for line in diff[:80]:
+        print(line)
+    if len(diff) > 80:
+        print(f"...（另有 {len(diff) - 80} 行）")
+    print(f"\n修法：{fix}")
+    return 1
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--matrix", default=str(HERE.parent / "modules.json"))
     ap.add_argument("--versions", default=str(HERE.parent / "versions.json"))
+    ap.add_argument("--compare", help="另一份 versions.json（站点副本），要求逐字节一致")
     args = ap.parse_args()
 
     matrix, versions = Path(args.matrix), Path(args.versions)
@@ -58,21 +77,30 @@ def main() -> int:
             return 1
         a, b = normalized(versions), normalized(regen)
 
+    rc = 0
     if a == b:
         print(f"✅ {versions.name} 与 {matrix.name} 一致（latest 字段除外）")
-        return 0
+    else:
+        rc = report(f"{versions.name} 与 {matrix.name} 漂移", a, b,
+                    "python3 scripts/gen_versions.py --org oagentkit\n"
+                    "     然后把 matrix-tools/versions.json 与站点 docs/public/versions.json 一起提交。")
 
-    print(f"❌ {versions.name} 与 {matrix.name} 漂移：\n")
-    diff = list(difflib.unified_diff(
-        a.splitlines(), b.splitlines(),
-        fromfile=f"{versions.name} (committed)", tofile="regenerated", lineterm=""))
-    for line in diff[:80]:
-        print(line)
-    if len(diff) > 80:
-        print(f"...（另有 {len(diff) - 80} 行）")
-    print("\n修法：python3 scripts/gen_versions.py --org oagentkit")
-    print("     然后把 matrix-tools/versions.json 与站点 docs/public/versions.json 一起提交。")
-    return 1
+    # 站点副本必须与 matrix-tools 的完全一致（含 latest）——它是逐字节副本，
+    # 任何差异都是「改了这边忘了那边」。llms.txt 有 verify_docs.py 守着，
+    # versions.json 此前没有任何检查，这是同一个漂移缺口。
+    if args.compare:
+        other = Path(args.compare)
+        if not other.is_file():
+            print(f"❌ 找不到待比对文件: {other}")
+            return 1
+        x, y = normalized(versions, drop_latest=False), normalized(other, drop_latest=False)
+        if x == y:
+            print(f"✅ 站点副本一致: {other}")
+        else:
+            rc = report(f"站点副本 {other} 与 {versions.name} 不一致", x, y,
+                        "cp matrix-tools/versions.json <站点>/docs/public/versions.json 后一起提交")
+
+    return rc
 
 
 if __name__ == "__main__":
