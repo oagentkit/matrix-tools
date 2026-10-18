@@ -1,6 +1,26 @@
 #!/bin/bash
-# 单仓发版流水线：改写 import -> tidy -> build -> vet -> test -race -> commit -> push -> tag
-# 用法: publish_repo.sh <repo> "<commit 标题>" "<commit 正文>"
+# ═══════════════════════════════════════════════════════════════════════
+# ⚠️ 已消费的一次性引导脚本 —— **不要用于日常发版**
+#
+# 它的路径、tag、git 操作全部是为「单仓拆分那一刻」写死的：
+#   * ROOT 指向退役中的 agentkit 单仓，DIR 指向其 .worktrees/oagentkit-matrix/
+#   * tag **硬编码 v0.1.0**（文案写的是"首个发版"）
+#   * 会 git init + git add -A + push + tag
+#
+# 拆分早已完成（13 个仓现处 v0.1.0 ~ v0.2.1），本脚本的历史使命已结束。
+# **今天照抄路径修好它反而危险**：跑一次就会重复打 v0.1.0 标签并强推。
+#
+# 日常发版需要另写脚本，至少要满足：
+#   1. 版本号来自入参或现有 tag 的下一个 patch/minor，不硬编码
+#   2. 不做 git init —— 对已有仓发版是 no-op 且危险
+#   3. 步骤：改写 import(可选) → go mod tidy → build → vet → test → tag → push
+#   4. 提交前跑 gate：`verify_split.py` + `verify_docs.py` + `check_facade_imports.py`
+#
+# 保留本脚本仅为记录拆分当时的门禁顺序与踩坑注释（SIGPIPE / pipefail / heredoc 等），
+# 这些注释仍然有效，值得读。
+# ═══════════════════════════════════════════════════════════════════════
+# 单仓发版流水线（拆分期一次性）：改写 import -> tidy -> build -> vet -> test -race -> commit -> push -> tag
+# 用法: publish_repo.sh <repo> "<commit 标题>" "<commit 正文>"   ← 仅拆分期有效
 set -euo pipefail
 
 REPO="$1"; TITLE="$2"; BODY="$3"
