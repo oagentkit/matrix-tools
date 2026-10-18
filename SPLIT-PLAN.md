@@ -387,7 +387,7 @@ agent 场景部分不适用。抄基建，不抄章程。
 ### 三个 bug（都是这套工具自己引入又修掉的）
 
 1. **gofmt 被改写破坏** —— 改 import 路径会改变组内字母序（`git.enjoye.top/...`
-   原本排在 `github.com/...` 之前，改成 `github.com/oagentkit/...` 后要排到
+   原本排在 `github.com/...` 之前，改成 `github.com/oagentkit/` 开头的路径后要排到
    `github.com/cloudwego/...` 之后）。原仓 gofmt 是干净的，改写后 2 个文件脏了，
    会直接挂 CI 门禁。修法：`--apply` 后自动 `gofmt -w`，**不要自己实现 import 排序**。
 2. **`verify_split` 的依赖闭包校验一直空转** —— `go list -f` 模板用 `\n` 分隔 imports，
