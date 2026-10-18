@@ -333,12 +333,13 @@
     {
       "repo": "toolgate",
       "tier": 2,
-      "desc": "工具优先级/并发调度/操作审计门",
+      "desc": "工具优先级/并发调度/操作审计门/不可绕过的调用链",
       "oekitAnalog": "middleware",
       "packages": [
         "toolprior",
         "toolsched",
-        "policy"
+        "policy",
+        "invoke"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
@@ -347,7 +348,7 @@
       "dependsOn": [
         "mcpkit"
       ],
-      "ghDescription": "工具治理——优先级三层约束/注解驱动并发调度/操作审计门",
+      "ghDescription": "工具治理——优先级三层约束/注解驱动并发调度/操作审计门/构造期不可绕过的工具调用链",
       "topics": [
         "go",
         "tools",
@@ -360,7 +361,8 @@
       "pkgDesc": {
         "toolprior": "工具优先级三层约束（收紧语义，下层已设的限制不得放宽）",
         "toolsched": "注解驱动的工具并发调度与去重",
-        "policy": "操作审计门：敏感工具调用的策略判定"
+        "policy": "操作审计门：敏感工具调用的策略判定",
+        "invoke": "不可绕过的工具调用链：门禁由**构造**保证而非调用点自觉——Handler 按值收进私有字段，绕过链的代码在类型层面就写不出来"
       }
     },
     {
