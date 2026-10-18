@@ -6,7 +6,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 46,
+  "packageCount": 47,
   "modules": [
     {
       "repo": "textx",
@@ -323,7 +323,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.5.0",
+      "latest": "v0.6.1",
       "packages": [
         {
           "pkg": "toolprior",
@@ -339,6 +339,11 @@
           "pkg": "policy",
           "importPath": "github.com/oagentkit/toolgate/policy",
           "fromLegacy": "agentkit/policy"
+        },
+        {
+          "pkg": "invoke",
+          "importPath": "github.com/oagentkit/toolgate/invoke",
+          "fromLegacy": "agentkit/invoke"
         }
       ],
       "matrixDeps": [
