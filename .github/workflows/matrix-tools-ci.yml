@@ -1,0 +1,131 @@
+name: Matrix Tools CI
+
+# 本仓是全矩阵的单一数据源：modules.json 决定 versions.json / llms.txt / 文档 /
+# 全部门禁的判定。改错一个包名，下游是「静默失效」而不是「报错」。
+#
+# 为什么这里必须有 CI：oagentkit/.github 的 matrix-docs job 拉的是本仓的 **main**，
+# 不是 PR 分支。所以本仓的 PR 此前**从不被任何东西验证**——
+# 新加的守卫脚本要在合并之后才第一次被执行，且失败时已经晚了。
+# （实测：verify_facade_release.py 的 PR 就出现过这种顺序依赖，
+#   .github 侧先红，报的是「文件不存在」而不是「守卫坏了」。）
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mt-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scripts:
+    name: Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Python syntax
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            echo "::group::py_compile ${f}"
+            python3 -m py_compile "$f" || fail=1
+            echo "::endgroup::"
+          done < <(find scripts -name '*.py' -not -path '*/__pycache__/*' | sort)
+          exit "$fail"
+
+      - name: --help 冒烟
+        # argparse 的脚本必须能被解析出参数；无 argparse 的脚本只要求能跑起来
+        # 并以 0/1/2 退出（--help 返回 2 也算通过）。
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            echo "::group::${f} --help"
+            set +e
+            python3 "$f" --help >/dev/null 2>&1
+            rc=$?
+            set -e
+            if [ "$rc" -gt 2 ]; then
+              echo "  ✗ exit ${rc}"
+              fail=1
+            else
+              echo "  ✓ exit ${rc}"
+            fi
+            echo "::endgroup::"
+          done < <(find scripts -name '*.py' -not -path '*/__pycache__/*' | sort)
+          exit "$fail"
+
+      - name: 路径规则自洽
+        # matrix_paths 是「旧→新 import 路径」的规则本体，
+        # rewrite_imports / gen_versions / gen_llms_txt 全都 import 它。
+        # 规则写错时三处会**一致地错**，普通检查抓不到，所以要有独立断言。
+        run: python3 scripts/test_matrix_paths.py
+
+  guards:
+    name: Guards self-test
+    # 守卫最危险的失效模式是「一直绿，但从没生效过」：
+    # 豁免名单写错一个字符、判据写反，它就会静默放过所有违规。
+    # 所以每条守卫都必须能证明自己还活着。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 门面仓退役守卫自测
+        run: python3 scripts/check_facade_imports.py --selftest
+
+      - name: 门面仓发布地板守卫自测
+        # 判据里含「门面接 v0.1.0」这个样本 —— 那是线上真实发生过的形态
+        # （agentkit@v1.2.0 的 go.mod 把 13 个内部依赖全钉在 v0.1.0）。
+        run: python3 scripts/verify_facade_release.py --selftest
+
+  drift:
+    name: versions.json drift
+    # modules.json 是单一数据源，versions.json 是它的生成物。
+    # 两者漂移时，消费方读到的包清单 / import 路径 / 分层全是错的，
+    # 而 matrix-docs 的 verify_docs 只比 llms.txt 与 modules.json，不覆盖这里。
+    #
+    # 比对时忽略 latest —— 它按设计要联网读 tag，离线 CI 里必然是 null。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: versions.json 与 modules.json 一致（忽略 latest）
+        # 比对时忽略 latest —— 它按设计要联网读 tag（gen_versions.py --org），
+        # 离线 CI 里必然是 null，拿它比会天天假红。
+        run: python3 scripts/verify_versions_drift.py
+
+      - name: llms.txt 可确定性重生成
+        # llms.txt 本身在站点仓，本仓只验「生成是确定的」：
+        # 连跑两次结果不同就说明生成器里有随机性/时间戳，那是漂移的根源。
+        run: |
+          set -euo pipefail
+          python3 scripts/gen_llms_txt.py --matrix modules.json --out /tmp/llms.a.txt
+          python3 scripts/gen_llms_txt.py --matrix modules.json --out /tmp/llms.b.txt
+          if diff -q /tmp/llms.a.txt /tmp/llms.b.txt; then
+            echo "✅ 生成确定"
+          else
+            echo "❌ 两次生成结果不同"; exit 1
+          fi
