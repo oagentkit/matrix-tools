@@ -108,10 +108,12 @@ def main() -> int:
     L.append("- **`progress` 撞名但语义相反**：`oekit/concurrency/progress` 是长任务**阶段进度追踪器**，"
              "而 `oagentkit/runtime/progress` 是泛型**事件总线**。按包名对齐会做错。")
     L.append("- **`pacer` ≠ `ratelimit`**：前者是聚合缓冲（攒够窗口再发），后者是准入控制。")
-    L.append("- **`runtime/breaker` 待退役**：与 `oekit/concurrency/breaker` 重叠但非同族"
-             "（后者是自适应概率丢弃，前者是三态熔断器）。上游需求见 "
-             "[oekit/concurrency#17](https://github.com/oekit/concurrency/issues/17)，"
-             "落地前不要删除。")
+    L.append("- **`runtime/breaker` 暂不可删**：与 `oekit/concurrency/breaker` 语义未对齐。"
+             "上游 [#17](https://github.com/oekit/concurrency/issues/17) 已落地（三态状态机 + "
+             "代绑定 + 探测时限），但仍缺两项："
+             "[#19 冷却期与探测时限共用 probeTimeout](https://github.com/oekit/concurrency/issues/19)、"
+             "[#20 缺「连续失败 N 次」trip 触发](https://github.com/oekit/concurrency/issues/20)。"
+             "这两项落地前删除会破坏 `llm` 的降级链语义。")
     L.append("")
 
     Path(args.out).write_text("\n".join(L), encoding="utf-8")

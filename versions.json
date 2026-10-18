@@ -45,7 +45,7 @@
       "repo": "runtime",
       "url": "https://github.com/oagentkit/runtime",
       "tier": 0,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "breaker",
@@ -113,7 +113,7 @@
       "repo": "queue",
       "url": "https://github.com/oagentkit/queue",
       "tier": 0,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "worker",
@@ -131,7 +131,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -162,7 +162,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 1,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "obsx",
@@ -216,7 +216,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 1,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "mcp",
@@ -235,7 +235,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 1,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -254,7 +254,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "llm",
@@ -289,7 +289,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "toolprior",
@@ -316,7 +316,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "acpx",
@@ -355,7 +355,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.1.0",
+      "latest": "v0.2.0",
       "packages": [
         {
           "pkg": "agentrun",
