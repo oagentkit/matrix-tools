@@ -6,7 +6,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 45,
+  "packageCount": 46,
   "modules": [
     {
       "repo": "textx",
@@ -118,6 +118,11 @@
           "pkg": "audit",
           "importPath": "github.com/oagentkit/guardx/audit",
           "fromLegacy": "agentkit/audit"
+        },
+        {
+          "pkg": "injectband",
+          "importPath": "github.com/oagentkit/guardx/injectband",
+          "fromLegacy": "agentkit/injectband"
         }
       ],
       "matrixDeps": [],
