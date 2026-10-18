@@ -59,19 +59,6 @@
         "hookx"
       ],
       "heavyDeps": [],
-      "retiredToOekit": {
-        "breaker": "github.com/oekit/concurrency/breaker",
-        "issue17": {
-          "url": "https://github.com/oekit/concurrency/issues/17",
-          "status": "已关闭（2026-10-18 00:45 UTC）；上游 v0.9.0 已落地显式三态状态机（stateClosed/stateOpen/stateHalfOpen）+ 代绑定 AllowGen/SuccessGen/FailureGen/AbandonGen + WithProbeTimeout + 开放期失败不延长冷却"
-        },
-        "followupIssues": {
-          "19": "https://github.com/oekit/concurrency/issues/19 — 冷却期与探测失联时限共用 probeTimeout，无法独立配置。业务冷却 5min 与单次 LLM 调用在途上界 60s 差一个量级，绑死后只能取大值：取大则恢复慢，取小则探测过稀",
-          "20": "https://github.com/oekit/concurrency/issues/20 — 缺「连续失败 N 次即熔断」(trip) 触发。上游只有速率型 dropRatio>0，llm.TestResilientBreakerTrips 钉的正是 trip 语义，现在换会失败"
-        },
-        "status": "阻塞中：#17 已落地，但 #19/#20 未落地，暂不可移出",
-        "action": "#19 与 #20 落地后执行：llm 改用上游 GenBreaker（AllowGen 取 gen 并串到 SuccessGen/FailureGen/AbandonGen 回报点）→ 删 runtime/breaker → llm.ResilientConfig 的 BreakerTrip/BreakerCooldown 标记 Deprecated → 仓数不变，只减代码量"
-      },
       "hardConstraint": "procx 不能并入 tools —— 它同时被 tier1 的 mcpkit/promptx 使用，并入会造成 tier1→tier2 分层倒挂",
       "ghDescription": "Agent 进程运行时——LLM token 流式节控/泛型事件总线/子进程最小环境/运行时热插拔/生命周期钩子",
       "topics": [
@@ -493,7 +480,20 @@
       ]
     }
   ],
-  "retiringPackages": [],
+  "retiringPackages": [
+    {
+      "pkg": "breaker",
+      "replacement": "github.com/oekit/concurrency/breaker",
+      "consumedBy": "llm/breaker.go —— 只做按模型名分桶 + 转发，不再有任何本地语义兜底",
+      "issueChain": {
+        "17": "三态 + 代绑定 + 探测时限 —— 已落地 v0.9.0",
+        "19": "冷却期与探测时限解耦（WithCooldown）—— 已落地 v0.12.0",
+        "20": "计数型触发（WithConsecutiveFailures）—— 已落地 v0.12.0",
+        "25": "计数型只切状态、切不了放行决策 —— 已落地 v0.13.0，llm 侧兜底已删除"
+      },
+      "status": "已完成：llm v0.4.0 起全量使用上游 GenBreaker"
+    }
+  ],
   "droppedPackages": [
     {
       "pkg": "<root>",
