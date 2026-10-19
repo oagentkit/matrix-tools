@@ -35,14 +35,16 @@ import 路径真的变了，但版本段里没有 `BREAKING`、标题也没有 `
 
 ## 验收 oracle 有效性（反证）
 
-`--selftest` 里带了一组**旧解析器会漏收**的样本：
+`--selftest` 里带了一组**生成器至今收不到**的样本：
 
 - 顶格独立成行的 `**BREAKING**: …`（粗体标记）
 - 项目符号里的 `BREAKING CHANGE: …`
 - 小写 `breaking change: …`
-- 散文描述的 import 路径搬家（无任何显式标记）
+- 散文描述的 import 路径搬家（无任何显式标记；生成器已在本轮补上这条，
+  但 oracle 必须**独立**收得到，不依赖生成器的修复）
 
-oracle 必须全部收得到；旧解析器收不到 → oracle 确实站在旧盲区之外。
+自测会拿生成器跑同一份样本，确认它对前三种形态仍然漏收 → oracle 收得到、
+生成器收不到 = 两者不在同一处盲区，oracle 不是假通过。
 
 ## 判定语义
 
@@ -317,7 +319,11 @@ breaking change: 小写的 breaking change 标记。
 只是普通修复。
 """
 
-_OLD_PARSER_BLINDS = ["v0.12.0", "v0.11.0", "v0.10.0"]
+# 生成器（breaking_index.py）**至今仍收不到**的形态——反证就拿这些当样本：
+#   v0.11.0 粗体 **BREAKING**: / 项目符号里的 BREAKING CHANGE / 小写 breaking change
+#   v0.12.0 散文形态的 import 路径搬家 —— 这条生成器已在本轮补上（不再是盲区），
+#            但仍留在样本里：oracle 必须独立收得到它，不依赖生成器的修复。
+_OLD_PARSER_BLINDS = ["v0.11.0", "v0.12.0"]
 
 
 def selftest() -> int:
@@ -333,14 +339,19 @@ def selftest() -> int:
     check("粗体/项目符号/小写 BREAKING 被收", "v0.11.0" in got, True)
     check("普通小节不误判", "v0.10.0" in got, False)
 
-    # 旧解析器（breaking_index.py）在同一份样本上会漏收多少
+    # 反证：拿**生成器**（breaking_index.py）跑同一份样本，确认它对某些形态
+    # 仍然漏收 —— oracle 收得到、生成器收不到，才证明两者不在同一处盲区。
+    # （只用于自测展示对比，判据本身不依赖它。）
     try:
-        import breaking_index  # 只用于自测里展示「旧解析器的盲区」
-        old = {e["version"] for e in breaking_index.extract(_BLINDSPOT_FIXTURE)}
+        import breaking_index
+        gen = {e["version"] for e in breaking_index.extract(_BLINDSPOT_FIXTURE)}
     except Exception:  # pragma: no cover
-        old = set()
-    missing_for_old = sorted(set(_OLD_PARSER_BLINDS) - old, key=version_key)
-    check("旧解析器确实漏收（反证成立）", "v0.12.0" in missing_for_old, True)
+        gen = set()
+    missed_by_gen = sorted(set(_OLD_PARSER_BLINDS) - gen, key=version_key)
+    check("生成器仍漏收粗体/项目符号/小写标记形态（反证成立）",
+          "v0.11.0" in missed_by_gen, True)
+    check("oracle 对生成器收不到的形态也收得到",
+          {"v0.11.0", "v0.12.0"} <= set(got), True)
 
     # ---- 对账语义 ----
     empty = check_one("x", [], "# c\n", "ok")
