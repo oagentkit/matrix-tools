@@ -168,6 +168,12 @@ jobs:
         # 离线 drift job 忽略 depFloor 之后，它就是这个字段唯一的守门人。
         run: python3 scripts/verify_dep_floor.py --selftest
 
+      - name: Go 地板门禁自测
+        # tier0 的 go 指令必须 1.24.x，且 CI go-version 与 go.mod 成对。
+        # 自测带负向样本：tier0 地板抬高 / toolchain 超标 / CI 不成对 / 判不了即红，
+        # 同时带**不误报**样本——tier1/tier2/tier3 用 1.26 是合法的，不能报成漂移。
+        run: python3 scripts/verify_go_floor.py --selftest
+
   matrix-truth:
     name: Matrix truth (breakingIndex / import paths)
     # 这三条是**矩阵作为机器可读权威源**的底线：
@@ -218,6 +224,17 @@ jobs:
         # ② 对账——矩阵 versions.json 登记的 depFloor 必须等于各仓真实
         # go.mod 算出的地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。
         run: python3 scripts/verify_dep_floor.py --org oagentkit
+
+      - name: Go 地板（tier0 必须 1.24.x）+ CI go-version 与 go.mod 成对
+        # ① tier0 的 go 指令必须 1.24.x——tier0 是「需要依赖低版本 Go」的那一类，
+        #    抬高地板会把 Go 1.24 用户挡在门外（issue matrix-tools#22）；
+        # ② CI go-version 必须与 go.mod 的 go 指令成对——CI 用高版本构建、
+        #    go.mod 承诺低版本时，CI 全绿但用户按最低版本编译失败。
+        #
+        # 判据独立：直接解析各仓 go.mod 与 ci.yml 原文，
+        # 不复用任何生成器的推导（共享判断逻辑 = 共同盲区）。
+        # tier1 及以上**不设 1.24 约束**——业务层 1.24/1.25/1.26 都合法。
+        run: python3 scripts/verify_go_floor.py --org oagentkit
 
   facade-symbols:
     name: Facade symbols
