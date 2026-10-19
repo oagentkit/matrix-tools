@@ -96,7 +96,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.6.0",
+      "latest": "v0.7.0",
       "packages": [
         {
           "pkg": "fence",
@@ -119,18 +119,6 @@
           "fromLegacy": "agentkit/permgate"
         },
         {
-          "pkg": "bashguard",
-          "importPath": "github.com/oagentkit/guardx/bashguard",
-          "fromLegacy": "agentkit/bashguard",
-          "module": "github.com/oagentkit/guardx/bashguard"
-        },
-        {
-          "pkg": "audit",
-          "importPath": "github.com/oagentkit/guardx/audit",
-          "fromLegacy": "agentkit/audit",
-          "module": "github.com/oagentkit/guardx/audit"
-        },
-        {
           "pkg": "injectband",
           "importPath": "github.com/oagentkit/guardx/injectband",
           "fromLegacy": "agentkit/injectband"
@@ -144,30 +132,6 @@
           "title": "新增(logredact)!：规则表可组合 + 保定位线索掩码档；audit/bashguard 拆嵌套模块",
           "summary": "新增(logredact)!：规则表可组合 + 保定位线索掩码档；audit/bashguard 拆嵌套模块",
           "detail": "修 #3。\n一、规则表公开且可组合\n- Rule 公开（Name/Re/Repl/Style/Keep/Group），Rules() 给内置表副本\n- RedactWith(s, extra) / NewRedactor(extra)：下游可追加自己的凭据形态\n- 应用顺序明确：**先内置、后扩展**（内置更精确，先跑它扩展才拿不到原始凭据）\n- 扩展表里 Re=nil 的规则跳过而不是 panic\n二、补「保定位线索的不可逆掩码」档\n- MaskHint / MaskHintWith：保留首尾各 Keep 字符，中间恒为固定长度星号\n- 保留位**封顶**、输出长度**固定** → 不随原值长度泄露信息\n- 长度不足 keep*4 时全量打码（留 8 藏 1 等于没藏）\n- Rule.Style=MaskStyleHint + Group 圈出凭据本体，保留额度才花在凭据上\n- 与全量打码是**不同档**：前者认不出是哪一条，后者认得出但还原不了\n三、依赖面收干净（主模块零外部依赖）\n- audit → 嵌套模块 github.com/oagentkit/guardx/audit（依赖 oekit/logx）\n- bashguard → 嵌套模块 github.com/oagentkit/guardx/bashguard（依赖 mvdan.cc/sh）\n- import 路径**不变**（github.com/oagentkit/guardx/audit 等），下游代码不用改\n- 主模块 go list -m all 只剩自己一行：import logredact 不再把 logx / sh 拖进\n  下游的模块图（下游的「核心零依赖」纪律不必再靠豁免名单放行）\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
-        }
-      ],
-      "nestedModules": [
-        {
-          "module": "github.com/oagentkit/guardx/audit",
-          "url": "https://github.com/oagentkit/guardx",
-          "latest": "audit/v0.1.0",
-          "packages": [
-            {
-              "pkg": "audit",
-              "importPath": "github.com/oagentkit/guardx/audit"
-            }
-          ]
-        },
-        {
-          "module": "github.com/oagentkit/guardx/bashguard",
-          "url": "https://github.com/oagentkit/guardx",
-          "latest": "bashguard/v0.1.0",
-          "packages": [
-            {
-              "pkg": "bashguard",
-              "importPath": "github.com/oagentkit/guardx/bashguard"
-            }
-          ]
         }
       ]
     },
@@ -229,7 +193,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 1,
-      "latest": "v0.7.0",
+      "latest": "v0.8.0",
       "packages": [
         {
           "pkg": "obsx",
@@ -240,9 +204,18 @@
           "pkg": "langfuse",
           "importPath": "github.com/oagentkit/obs/langfuse",
           "fromLegacy": "agentkit/langfuse"
+        },
+        {
+          "pkg": "audit",
+          "importPath": "github.com/oagentkit/obs/audit",
+          "fromLegacy": "agentkit/audit"
         }
       ],
       "matrixDeps": [
+        {
+          "repo": "guardx",
+          "url": "https://github.com/oagentkit/guardx"
+        },
         {
           "repo": "textx",
           "url": "https://github.com/oagentkit/textx"
@@ -417,7 +390,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.9.0",
+      "latest": "v0.10.0",
       "packages": [
         {
           "pkg": "acpx",
@@ -438,6 +411,11 @@
           "pkg": "sast",
           "importPath": "github.com/oagentkit/tools/sast",
           "fromLegacy": "agentkit/sast"
+        },
+        {
+          "pkg": "bashguard",
+          "importPath": "github.com/oagentkit/tools/bashguard",
+          "fromLegacy": "agentkit/bashguard"
         }
       ],
       "matrixDeps": [
@@ -518,7 +496,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.6",
+      "latest": "v1.8.7",
       "retiring": true,
       "breakingIndex": [
         {
