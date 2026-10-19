@@ -261,5 +261,7 @@ def selftest() -> int:
 
 if __name__ == "__main__":
     _ap = argparse.ArgumentParser(description="从 CHANGELOG 抽取破坏性变更条目")
+    # --selftest 是「默认就跑自测」的显式写法（与其他守卫脚本的参数习惯一致）
+    _ap.add_argument("--selftest", action="store_true", help="离线自测（默认行为）")
     _ap.parse_args()
     raise SystemExit(selftest())
