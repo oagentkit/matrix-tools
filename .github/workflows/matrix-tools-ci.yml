@@ -153,6 +153,14 @@ jobs:
         # 双向一一对应 / 待发版段豁免 / 存量欠账基线 / 快照里没有 CHANGELOG 豁免。
         run: python3 scripts/verify_changelog_at_tag.py --selftest
 
+      - name: CHANGELOG 生成器自测（预写→提交→打 tag 端到端自洽）
+        # 生成器最危险的失效形态是「看起来生成了正确的文件，但与事后重生成
+        # 的结果不一致」——不跑完整流程发现不了，而后果是 .github 的
+        # 「各仓 CHANGELOG 未过期」门禁永远红、且越修越红。
+        # 自测跑完整流程（临时 git 仓），要求事后重生成与提交版逐字节一致，
+        # 且覆盖「直推打 tag」与「走 PR 打 tag」两种发版打法。
+        run: python3 scripts/gen_changelogs.py --selftest
+
       - name: 依赖地板门禁自测
         # tier0/tier1 的地板必须为空——零依赖核心靠这条保证。
         # 这条守卫最危险的失效形态是「豁免名单写太宽」，所以自测里带了负向样本。
