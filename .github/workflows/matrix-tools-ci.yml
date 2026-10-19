@@ -127,6 +127,11 @@ jobs:
       - name: import 路径对账门禁自测
         run: python3 scripts/verify_import_paths.py --selftest
 
+      - name: 依赖地板门禁自测
+        # tier0/tier1 的地板必须为空——零依赖核心靠这条保证。
+        # 这条守卫最危险的失效形态是「豁免名单写太宽」，所以自测里带了负向样本。
+        run: python3 scripts/verify_dep_floor.py --selftest
+
   matrix-truth:
     name: Matrix truth (breakingIndex / import paths)
     # 这两条是**矩阵作为机器可读权威源**的底线：
@@ -155,6 +160,9 @@ jobs:
 
       - name: import 路径 ↔ 各仓真实 go.mod / 包目录
         run: python3 scripts/verify_import_paths.py --org oagentkit
+
+      - name: 依赖地板（tier0/tier1 必须无重量级第三方）
+        run: python3 scripts/verify_dep_floor.py --org oagentkit
 
   dep-floors:
     name: Dep floors (report)

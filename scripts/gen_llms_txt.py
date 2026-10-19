@@ -19,8 +19,8 @@ from matrix_paths import OLD_ROOT, misleading  # noqa: E402  路径规则与 rew
 OLD_ROOT_SHORT = OLD_ROOT.rsplit("/", 1)[-1]  # agentkit，用于文档里写短路径
 
 TIER_TITLE = {
-    0: "基础层 · 零仓内依赖或仅依赖同仓包",
-    1: "能力层 · 依赖 tier0",
+    0: "基础层 · 零重量级第三方地板（纯 stdlib / 第一方基座）",
+    1: "能力层 · 依赖 tier0，仍不引重量级第三方 SDK",
     2: "集成层 · 依赖 tier0/tier1 + 重第三方地板",
     3: "编排层 · 依赖 llm 等 tier2 门面",
 }
@@ -106,6 +106,30 @@ def main() -> int:
     else:
         L.append("（本次生成未读到 versions.json 的 breakingIndex —— "
                  "生成时给 `--versions` 指向矩阵仓的 versions.json）")
+    L.append("")
+    # 依赖地板段：机器可读同源（versions.json 的 depFloor）
+    L.append("## 依赖地板")
+    L.append("")
+    L.append("**Go 的依赖面按 module 结算**：import 某仓的**任意一个包**，该仓的整条 "
+             "`require` 就进你的模块图。所以「这个仓的地板」= 「用它的包要吃的依赖」。")
+    L.append("")
+    clean = [m for m in mods if m["tier"] <= 1]
+    L.append(f"**tier0/tier1 共 {len(clean)} 个仓，地板为空** —— "
+             f"只用这些仓的包，你的模块图里不会出现重量级第三方 SDK"
+             f"（门禁：`matrix-tools/scripts/verify_dep_floor.py`）：")
+    L.append("")
+    for m in sorted(clean, key=lambda x: (x["tier"], x["repo"])):
+        L.append(f"- `{m['repo']}`（tier{m['tier']}）")
+    L.append("")
+    L.append("带地板的集成层（tier2+）——用它们的包要接受这些依赖：")
+    L.append("")
+    floors = []
+    for m in sorted(mods, key=lambda x: (x["tier"], x["repo"])):
+        for f in versions.get("modules", []):
+            if f["repo"] == m["repo"] and f.get("depFloor"):
+                floors.append((m["repo"], m["tier"], f["depFloor"]))
+    for repo, tier, floor in floors:
+        L.append(f"- `{repo}`（tier{tier}）：{'、'.join(f'`{x}`' for x in floor)}")
     L.append("")
     L.append("## 模块")
     L.append("")
