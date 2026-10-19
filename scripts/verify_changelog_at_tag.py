@@ -57,6 +57,7 @@ import json
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -114,17 +115,25 @@ def root_tags_api(org: str, repo: str) -> list[str]:
                   key=version_key, reverse=True)
 
 
-def changelog_local(root: str, repo: str, ref: str) -> str | None:
-    """ref 处的 CHANGELOG.md 原文；该 ref 的树里没有这个文件 → None。"""
-    p = subprocess.run(["git", "-C", str(Path(root) / repo), "show", f"{ref}:CHANGELOG.md"],
-                       text=True, capture_output=True)
-    if p.returncode != 0:
-        return None
-    return p.stdout
+def changelog_local(root: str, repo: str, ref: str) -> tuple[str | None, str]:
+    """ref 处的 CHANGELOG.md 原文；→ (正文, 状态)，状态 ∈ {ok, not_found, error}。
+
+    not_found = 该 ref 的树里确实没有 CHANGELOG.md；error = 判不了（ref 不存在 / git 失败）。
+    """
+    repo_dir = str(Path(root) / repo)
+    p = subprocess.run(["git", "-C", repo_dir, "show", f"{ref}:CHANGELOG.md"],
+                       text=True, capture_output=True, timeout=60)
+    if p.returncode == 0:
+        return p.stdout, "ok"
+    if "does not exist" in (p.stderr or "") or "exists on disk" in (p.stderr or ""):
+        # ref 在，但那个路径下没有文件 —— 当时就没有 CHANGELOG.md
+        return None, "not_found"
+    return None, "error"
 
 
-def changelog_api(org: str, repo: str, ref: str) -> str | None:
-    return repo_meta.fetch_file(org, repo, "CHANGELOG.md", ref=ref)
+def changelog_api(org: str, repo: str, ref: str) -> tuple[str | None, str]:
+    """→ (正文, 状态)，状态 ∈ {ok, not_found, error}。"""
+    return repo_meta.fetch_file_status(org, repo, "CHANGELOG.md", ref=ref)
 
 
 def has_unreleased_local(root: str, repo: str, highest_tag: str) -> bool:
@@ -191,23 +200,38 @@ def check_current(tags: list[str], current: str | None, unreleased: bool) -> tup
 
 
 def check_tag_snapshot(repo: str, tags: list[str], debt: set[str],
-                       fetch) -> tuple[list[str], list[str], list[str]]:
+                       fetch) -> tuple[list[str], list[str], list[str], list[str]]:
     """T2：每个 tag 的快照里是否含自己那段。
 
-    → (新增 stale, 已在基线里的 stale, 无 CHANGELOG 可豁免的 tag)
+    → (新增 stale, 已在基线里的 stale, 无 CHANGELOG 可豁免的 tag, 判不了的 tag)
+
+    ⚠️ 「取不到」与「当时确实没有」必须分开：
+    - not_found = 该 ref 的树里确实没有 CHANGELOG.md（当时就没有，非缺陷）→ 豁免
+    - error     = **判不了**（网络失败、解析失败、ref 不存在）→ 必须报出来
+
+    把两者都当成「豁免」的话，一次网络抖动就会让这条门禁**静默少查若干个 tag**
+    ——而门禁照样是绿的。这正是「一直绿、但从没生效过」的形态。
+
+    为什么这里的 not_found 可以信任：contents API 对「文件不存在」和「仓不存在」
+    都返回 404，但本函数只对**已经从 tag 列表里拿到的 ref** 调用——而 tag 列表
+    非空本身就证明了仓存在（拿不到 tag 的仓在 main() 里已被单独报成问题）。
     """
     new_stale: list[str] = []
     known_stale: list[str] = []
     exempt: list[str] = []
+    unknown: list[str] = []
     for t in tags:
-        cl = fetch(t)
+        cl, status = fetch(t)
         if cl is None:
-            exempt.append(t)  # 该 tag 的树里还没有 CHANGELOG.md —— 当时就没有，非缺陷
+            if status == "not_found":
+                exempt.append(t)   # 当时确实还没有 CHANGELOG.md —— 非缺陷
+            else:
+                unknown.append(t)   # 判不了：不能当成「没有」
             continue
         if t not in sections(cl):
             key = f"{repo}@{t}"
             (known_stale if key in debt else new_stale).append(key)
-    return new_stale, known_stale, exempt
+    return new_stale, known_stale, exempt, unknown
 
 
 # --------------------------------------------------------------------------
@@ -242,18 +266,40 @@ def main() -> int:
     warnings: list[str] = []
     all_new_stale: list[str] = []
     all_known_stale: list[str] = []
+    all_unknown: list[str] = []
     checked = 0
+
+    # 联网模式：先把要取的 CHANGELOG **并发**取回来。
+    # 串行实测 6m51s（14 仓 × 约 10 个 tag ≈ 140 次调用），而 matrix-truth job
+    # 的预算是 10 分钟——只剩 2 分钟余量，一次网络抖动就整 job 超时。
+    cache: dict[tuple[str, str], tuple[str | None, str]] = {}
+    if not args.root:
+        work: list[tuple[str, str]] = []
+        tag_map: dict[str, list[str]] = {}
+        for repo in repos:
+            tags = root_tags_api(org, repo)
+            tag_map[repo] = tags
+            work.append((repo, "main"))
+            work.extend((repo, t) for t in tags)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {pool.submit(changelog_api, org, r, t): (r, t) for r, t in work}
+            for fut in as_completed(futures):
+                r, t = futures[fut]
+                try:
+                    cache[(r, t)] = fut.result()
+                except Exception:      # noqa: BLE001 —— 取数异常一律当「判不了」
+                    cache[(r, t)] = (None, "error")
 
     for repo in repos:
         if args.root:
             tags = root_tags_local(args.root, repo)
-            current = changelog_local(args.root, repo, "HEAD")
+            current, _ = changelog_local(args.root, repo, "HEAD")
             fetch = lambda t, r=repo: changelog_local(args.root, r, t)  # noqa: E731
             unreleased = has_unreleased_local(args.root, repo, tags[0] if tags else "")
         else:
-            tags = root_tags_api(org, repo)
-            current = changelog_api(org, repo, "main")
-            fetch = lambda t, r=repo: changelog_api(org, r, t)  # noqa: E731
+            tags = tag_map.get(repo, [])
+            current, _ = cache.get((repo, "main"), (None, "error"))
+            fetch = lambda t, r=repo: cache.get((r, t), (None, "error"))  # noqa: E731
             unreleased = has_unreleased_api(org, repo, tags[0] if tags else "")
         if not tags:
             problems.append(f"{repo}: 读不到任何 tag（判不了，不能当成「没有发布」）")
@@ -270,9 +316,10 @@ def main() -> int:
         if pending:
             warnings.append(f"{repo}: 待发版段 {pending}（尚无 tag，属正常）")
 
-        new_stale, known_stale, _exempt = check_tag_snapshot(repo, tags, debt, fetch)
+        new_stale, known_stale, _exempt, unknown = check_tag_snapshot(repo, tags, debt, fetch)
         all_new_stale.extend(new_stale)
         all_known_stale.extend(known_stale)
+        all_unknown.extend(f"{repo}@{t}" for t in unknown)
 
     if checked == 0:
         print("❌ 一个仓都没检查到（拒绝判定：避免「全绿但什么都没查」）")
@@ -281,6 +328,9 @@ def main() -> int:
     for k in all_new_stale:
         problems.append(f"{k}: 该 tag 的 CHANGELOG 快照里没有它自己的版本段"
                         f"（下游 go get 拿到的发布说明是残缺的）")
+    for k in all_unknown:
+        problems.append(f"{k}: 该 tag 的 CHANGELOG 取不到（判不了 ≠ 没有）"
+                        f"——不能当成「当时没有 CHANGELOG.md」而豁免")
     fixed = sorted(debt - set(all_known_stale) - set(all_new_stale))
     for k in fixed:
         warnings.append(f"{k}: 欠账基线里已不再 stale —— 请更新 {Path(args.debt).name}")
@@ -350,21 +400,31 @@ def selftest() -> int:
     check("非最高段仍是孤儿", orphan, ["v1.1.0"])
 
     # T2：快照里有没有自己那段
-    def fetch(t: str) -> str | None:
+    def fetch(t: str) -> tuple[str | None, str]:
         return {
-            "v1.0.0": "## [v1.0.0] — 2026-01-01\n",
-            "v0.9.0": "## [v0.8.0] — 2025-12-01\n",   # 快照里有 CHANGELOG 但缺自己那段
-            "v0.8.0": None,                            # 快照里没有 CHANGELOG
-        }.get(t)
+            "v1.0.0": ("## [v1.0.0] — 2026-01-01\n", "ok"),
+            "v0.9.0": ("## [v0.8.0] — 2025-12-01\n", "ok"),   # 有 CHANGELOG 但缺自己那段
+            "v0.8.0": (None, "not_found"),                       # 当时确实没有 CHANGELOG
+            "v0.7.0": (None, "error"),                            # 判不了（网络失败等）
+        }.get(t, (None, "error"))
 
-    new_stale, known, exempt = check_tag_snapshot("x", ["v1.0.0", "v0.9.0", "v0.8.0"],
-                                                  {"x@v0.9.0"}, fetch)
+    new_stale, known, exempt, unknown = check_tag_snapshot(
+        "x", ["v1.0.0", "v0.9.0", "v0.8.0"], {"x@v0.9.0"}, fetch)
     check("基线内的 stale 记为欠账", known, ["x@v0.9.0"])
     check("基线外的 stale 报新增", new_stale, [])
     check("快照无 CHANGELOG 豁免", exempt, ["v0.8.0"])
+    check("取不到不算豁免（判不了）", unknown, [])
 
-    new_stale, known, exempt = check_tag_snapshot("x", ["v1.0.0", "v0.9.0", "v0.8.0"],
-                                                  set(), fetch)
+    # 取数失败必须落到 unknown，不能落到 exempt——否则一次网络抖动就会让门禁
+    # 静默少查若干 tag，而它照样是绿的。
+    new_stale, known, exempt, unknown = check_tag_snapshot(
+        "x", ["v1.0.0", "v0.7.0"], set(), fetch)
+    check("取数失败不豁免", exempt, [])
+    check("取数失败记为判不了", unknown, ["v0.7.0"])
+    check("取数失败不当成 stale", new_stale, [])
+
+    new_stale, known, exempt, unknown = check_tag_snapshot(
+        "x", ["v1.0.0", "v0.9.0", "v0.8.0"], set(), fetch)
     check("基线外的 stale 报新增", new_stale, ["x@v0.9.0"])
     check("基线外的不记欠账", known, [])
 
@@ -374,7 +434,7 @@ def selftest() -> int:
             print(f"   - {f}")
         return 1
     print("✅ verify_changelog_at_tag 自测通过"
-          "（双向对账 / 待发版段豁免 / 欠账基线 / 快照无 CHANGELOG 豁免）")
+          "（双向对账 / 待发版段豁免 / 欠账基线 / 快照无 CHANGELOG 豁免 / 取数失败不豁免）")
     return 0
 
 

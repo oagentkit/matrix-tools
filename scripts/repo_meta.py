@@ -25,6 +25,7 @@ gen_versions…），于是**同一类 bug 要修三次**，而且已经修漏�
 from __future__ import annotations
 
 import argparse
+import os
 
 import base64
 import json
@@ -40,32 +41,73 @@ MAIN_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
 NESTED_TAG_RE = re.compile(r"^(?P<prefix>[^/]+/[\w.\-/]*?)v\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
 
 
-def gh_api(path: str, retries: int = 3) -> str | None:
-    """调 `gh api <path>` 取 JSON 文本；取不到返回 None（**判不了 ≠ 没有**）。"""
-    last = None
+# 单次 gh api 调用的超时（秒）。**必须有**：没有超时的话，一次网络挂起就会让
+# 整个门禁进程无限期挂着——实测 2026-10-20 有一次 `gh api` 挂死后本地跑了 7 小时
+# 才被发现（CI 里则是被 job 的 timeout-minutes 杀掉，表现为「这个 job 莫名其妙地
+# 超时」，报错完全指不到真正原因）。
+GH_API_TIMEOUT = float(os.environ.get("OAGENTKIT_GH_API_TIMEOUT", "60"))
+
+
+def gh_api_status(path: str, retries: int = 3) -> tuple[str | None, str]:
+    """调 `gh api <path>`；→ (正文, 状态)，状态 ∈ {ok, not_found, error}。
+
+    为什么要区分 not_found 与 error：**「这个文件在该 ref 下不存在」和「这次调用
+    失败了」是两件事**。前者是事实（当时仓里确实没有这个文件），后者是「判不了」。
+    把两者都折叠成 None，守卫就会把网络失败当成「当时没有」而静默放过——
+    这正是「一直绿、但从没生效过」的典型形态。
+    """
     for attempt in range(retries):
         try:
-            p = subprocess.run(["gh", "api", path], capture_output=True, text=True)
-        except OSError as e:      # gh 不在 PATH 上
-            return None
+            p = subprocess.run(
+                ["gh", "api", path], capture_output=True, text=True,
+                timeout=GH_API_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            if attempt < retries - 1:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            return None, "error"
+        except OSError:           # gh 不在 PATH 上
+            return None, "error"
         if p.returncode == 0 and p.stdout.strip():
-            return p.stdout
-        last = p.returncode
+            return p.stdout, "ok"
+        if "404" in (p.stderr or "") or "Not Found" in (p.stderr or ""):
+            return None, "not_found"
         if attempt < retries - 1:
             time.sleep(1.5 * (attempt + 1))
-    return None
+    return None, "error"
+
+
+def gh_api(path: str, retries: int = 3) -> str | None:
+    """调 `gh api <path>` 取 JSON 文本；取不到返回 None（**判不了 ≠ 没有**）。"""
+    text, _status = gh_api_status(path, retries=retries)
+    return text
+
+
+def fetch_file_status(org: str, repo: str, path: str, ref: str = "main") -> tuple[str | None, str]:
+    """取仓里某文件的原文；→ (正文, 状态)，状态 ∈ {ok, not_found, error}。
+
+    not_found = 该 ref 下确实没有这个文件；error = 判不了（取不到、解析失败）。
+    """
+    raw, status = gh_api_status(f"repos/{org}/{repo}/contents/{path}?ref={ref}")
+    if raw is None:
+        return None, status
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return None, "error"
+    if "content" not in payload:
+        # 超大文件走 download_url、或返回了别的结构 → 判不了
+        return None, "error"
+    try:
+        return base64.b64decode(payload["content"]).decode("utf-8"), "ok"
+    except (ValueError, KeyError):
+        return None, "error"
 
 
 def fetch_file(org: str, repo: str, path: str, ref: str = "main") -> str | None:
     """取仓里某文件的原文（base64 解码后）。取不到返回 None。"""
-    raw = gh_api(f"repos/{org}/{repo}/contents/{path}?ref={ref}")
-    if not raw:
-        return None
-    try:
-        payload = json.loads(raw)
-        return base64.b64decode(payload["content"]).decode("utf-8")
-    except (ValueError, KeyError):
-        return None
+    text, _status = fetch_file_status(org, repo, path, ref=ref)
+    return text
 
 
 def fetch_tree_paths(org: str, repo: str, ref: str = "main") -> list[str] | None:
@@ -102,8 +144,9 @@ def fetch_repo_snapshot(org: str, repo: str, dest: "Path", ref: str = "main") ->
         proc = subprocess.run(
             ["gh", "api", f"repos/{org}/{repo}/tarball/{ref}"],
             capture_output=True,
+            timeout=GH_API_TIMEOUT,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     if proc.returncode != 0 or not proc.stdout:
         return None
