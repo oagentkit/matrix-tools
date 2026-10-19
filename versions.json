@@ -99,7 +99,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.8.0",
+      "latest": "v0.8.1",
       "packages": [
         {
           "pkg": "fence",
@@ -155,7 +155,7 @@
       "repo": "queue",
       "url": "https://github.com/oagentkit/queue",
       "tier": 2,
-      "latest": "v0.6.0",
+      "latest": "v0.6.1",
       "packages": [
         {
           "pkg": "worker",
@@ -214,7 +214,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.0",
+      "latest": "v0.9.1",
       "packages": [
         {
           "pkg": "langfuse",
@@ -293,7 +293,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.8.0",
+      "latest": "v0.8.1",
       "packages": [
         {
           "pkg": "mcp",
@@ -318,7 +318,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.8.0",
+      "latest": "v0.8.1",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -351,7 +351,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.12.0",
+      "latest": "v0.12.1",
       "packages": [
         {
           "pkg": "llm",
@@ -571,7 +571,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.10",
+      "latest": "v1.8.11",
       "retiring": true,
       "breakingIndex": [
         {
