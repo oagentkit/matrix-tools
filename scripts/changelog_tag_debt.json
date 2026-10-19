@@ -1,0 +1,37 @@
+{
+  "note": "已发布 tag 的 CHANGELOG 快照里缺该 tag 自己的版本段——存量欠账基线",
+  "why": [
+    "issue matrix-tools#17：发版时 CHANGELOG 生成跑在特性提交之前，tag 快照比 main 落后一个提交。",
+    "这些 tag 已在 GitHub 发布，且 org 有 protect-tags ruleset 限制 tag 的更新与删除——不能重打：",
+    "重打会让同名 tag 对应新内容，下游 go.sum 的 h1 对不上，直接硬失败 checksum mismatch",
+    "（agent 仓 2026-10-19 已踩过一次，见其 CHANGELOG v0.6.1 段）。",
+    "根治办法：补发补丁 tag，按 gen_changelogs.py --next-version → 提交 → 打 tag 的顺序，",
+    "让新 tag 的快照里就带着自己那段。verify_changelog_at_tag.py 对基线外的 stale tag 硬失败。"
+  ],
+  "checkedAt": "2026-10-20",
+  "tags": [
+    "agentkit@v1.8.5",
+    "agentkit@v1.8.6",
+    "agentkit@v1.8.7",
+    "agentkit@v1.8.8",
+    "agentkit@v1.8.9",
+    "agentkit@v1.8.10",
+    "agentkit@v1.8.11",
+    "agentkit@v1.8.12",
+    "guardx@v0.6.0",
+    "guardx@v0.7.0",
+    "guardx@v0.8.0",
+    "guardx@v0.8.1",
+    "llm@v0.12.0",
+    "llm@v0.12.1",
+    "mcpkit@v0.8.1",
+    "obs@v0.8.0",
+    "obs@v0.9.0",
+    "obs@v0.9.1",
+    "queue@v0.6.1",
+    "rag@v0.8.1",
+    "textx@v0.6.0",
+    "toolgate@v0.12.0",
+    "tools@v0.10.0"
+  ]
+}

@@ -26,6 +26,7 @@ CONTRIBUTING 的「矩阵卫生」要求各仓 `CHANGELOG.md` 在场且不过期
 
 用法:
     gen_changelogs.py --repo agent --root /path/to/oagentkit
+    gen_changelogs.py --repo agent --root ... --next-version v0.6.1   # 预写待发版段
     gen_changelogs.py --repo agent --root ... --out /tmp/CHANGELOG.md
     gen_changelogs.py --repo agent --root ... --check   # 报告是否过期，不写
 
@@ -96,6 +97,11 @@ def tag_date(repo_dir: Path, tag: str) -> str:
     return out or "未知日期"
 
 
+def head_date(repo_dir: Path) -> str:
+    out = run(["git", "log", "-1", "--format=%cs", "HEAD"], repo_dir).strip()
+    return out or "未知日期"
+
+
 def commits_between(repo_dir: Path, prev: str | None, cur: str) -> list[dict]:
     rng = f"{prev}..{cur}" if prev else cur
     out = run(["git", "log", "--format=%H%x1f%s%x1f%b%x1e", rng], repo_dir)
@@ -147,7 +153,7 @@ def render_entry(c: dict) -> tuple[str, str, list[str]]:
     return ctype, head, body
 
 
-def render(repo_dir: Path, repo: str) -> str:
+def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
     # 区间必须**升序**计算：tag 区间的定义是「上一个更旧的 tag .. 这个 tag」。
     # 若从最新 tag 倒着算，prev=None 会退化成「该 tag 的全部可达历史」，
     # 于是最新版本段里塞进整个仓的初始提交，而次新版本段反而是空的。
@@ -160,11 +166,23 @@ def render(repo_dir: Path, repo: str) -> str:
     # 输出按版本倒序（CHANGELOG 惯例：最新在上）
     segments.reverse()
 
+    # 待发版段：把「上一个 tag 之后的提交」预写成下一个版本的版本段。
+    # 没有它，「先提交 CHANGELOG 再打 tag」的打法下 tag 快照里永远没有自己那段
+    # （生成器只认已存在的 tag → 鸡生蛋）。带上它，发版顺序就能改成
+    #   gen_changelogs.py --next-version vX.Y.Z → 提交 → 打 tag vX.Y.Z
+    # tag 快照里就有自己那段了（issue matrix-tools#17 的根治点）。
+    if next_version:
+        newest = asc[-1] if asc else None
+        if newest is None or semver_key(next_version) > semver_key(newest):
+            segments.insert(0, (next_version, newest,
+                                commits_between(repo_dir, newest, "HEAD")))
+
     lines = [f"# {repo} CHANGELOG", "",
              "> 本文件由 `matrix-tools/scripts/gen_changelogs.py` 从 git 历史生成，"
              "按 tag 切段、取每段内的 conventional commit 渲染。", ""]
     for tag, prev, commits in segments:
-        date = tag_date(repo_dir, tag)
+        date = (head_date(repo_dir) if tag == next_version
+                else tag_date(repo_dir, tag))
         lines.append(f"## [{tag}] — {date}")
         lines.append("")
         if not commits:
@@ -202,6 +220,8 @@ def main() -> int:
     ap.add_argument("--root", default="/Users/zhangyi/oagentkit")
     ap.add_argument("--out", help="输出路径；默认写 <root>/<repo>/CHANGELOG.md")
     ap.add_argument("--check", action="store_true", help="只比对不写；不一致则 exit 1")
+    ap.add_argument("--next-version", metavar="vX.Y.Z",
+                    help="把「上一个 tag 之后的提交」预写成该版本的待发版段（打 tag 前用）")
     args = ap.parse_args()
 
     repo_dir = Path(args.root) / args.repo
@@ -219,7 +239,7 @@ def main() -> int:
               "若是浅克隆（--depth 1）请改用完整克隆；若是全新仓则应先发版。")
         return 1
 
-    content = render(repo_dir, args.repo)
+    content = render(repo_dir, args.repo, args.next_version)
     out = Path(args.out) if args.out else repo_dir / "CHANGELOG.md"
 
     if args.check:
