@@ -215,6 +215,60 @@ jobs:
         # 「取不到」一律判红——守卫最危险的失效形态是「一直绿，但从没生效过」。
         run: python3 scripts/verify_facade_symbols.py --org oagentkit
 
+  facade-symbols:
+    name: Facade symbols
+    # 门面仓 agentkit 的**符号级**转发完整性：上游每个导出符号，门面都要有对应别名。
+    #
+    # 为什么值得单独一个 job：已有的三条门面守卫查的都不是符号级——
+    #   verify_facade_packages.py 只比包名（47/47 通过）
+    #   check_facade_imports.py 只查禁用的 import 前缀
+    #   verify_facade_release.py 只查版本地板
+    # 实测 2026-10-20：门面的 47 个 alias.go 自 2026-10-17 起就没跟上上游，
+    # 漏转发 23 个符号、131 处 const 被降级成 var，下游按门面 import 直接编译失败。
+    # 而仓里**根本不存在**那个自称在生成 alias.go 的 gen 生成器——
+    # 所以这不是「生成器坏了」，是「生成器从来没有过」。
+    #
+    # 判据是**独立 oracle**：直接读上游源码与门面 alias.go，用 go/parser
+    # （scripts/symdump）解析语法树求差集，不比对任何生成物。
+    #
+    # 为什么必须联网跑：模块仓发版**不会**触发本仓的 CI（矩阵没改就没有 PR），
+    # 所以这里的 schedule 是唯一能在「别人改了模块仓」时把门面漂移照出来的机制
+    #（与 matrix-truth job 同一理由）。
+    #
+    # ⚠️ 顺序依赖（本 job 读的是各仓的 main，不是本仓 PR 的内容）：
+    # 「先修门面、再装门禁」是刻意的——门禁验证的正是「门面已修好」这个事实。
+    # 若门面还没修好就加这条门禁，本仓 PR 会红，且红的原因与 PR 本身无关。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Go
+        # 符号提取器是 go/parser 程序（scripts/symdump/main.go），只用标准库，
+        # 但要有 go 工具链。版本与全矩阵一致（CI go-version 1.26）。
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: 门禁自测（oracle 有效性）
+        # 守卫最危险的失效形态是「一直绿，但从没生效过」：
+        # oracle 自己有盲区时，它会对着坏门面说「没问题」，那是假通过。
+        # 自测拿一个**故意造坏**的被检对象跑一遍，要求它把每类缺陷都报出来。
+        run: python3 scripts/verify_facade_symbols.py --selftest
+
+      - name: 门面符号级转发完整性
+        # 取不到即红：守卫最危险的形态是「一直绿，但从没生效过」。
+        run: python3 scripts/verify_facade_symbols.py --org oagentkit
+
   dep-floors:
     name: Dep floors (report)
     # ⚠️ 这是**报告器**，不是门禁，恒不失败。
