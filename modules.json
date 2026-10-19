@@ -170,10 +170,9 @@
     {
       "repo": "obs",
       "tier": 2,
-      "desc": "用量观测 + Langfuse 追踪 + 审计留痕",
+      "desc": "观测客户端 + 审计留痕",
       "oekitAnalog": "metrics",
       "packages": [
-        "obsx",
         "langfuse",
         "audit"
       ],
@@ -184,7 +183,7 @@
         "guardx",
         "textx"
       ],
-      "ghDescription": "LLM 可观测与审计——eino callbacks 埋点/token 用量采集/分阶段打标/Langfuse 追踪客户端/敏感操作结构化审计",
+      "ghDescription": "观测与审计——Langfuse 追踪客户端/敏感操作结构化审计（不引 eino 框架）",
       "topics": [
         "go",
         "observability",
@@ -192,10 +191,9 @@
         "tracing",
         "langfuse"
       ],
-      "agentNotes": "### trace 复用约束（不可自建）\n\n**必须复用 `oekit/tracing` 的 Provider 和 `oekit/logx` 的 trace 提取器\n（`logx.ExtractTrace`/`SetTraceExtractor`），不自建一套 trace。**\n否则 agentkit 日志里的 trace_id 会与 OTel 的对不上，跨服务链路断裂。\n\n### 与 oekit 的边界\n\n本仓是**矩阵里唯一直接做 eino callbacks 适配**的仓 —— oekit 作为微服务工具链不会做 LLM 场景。\n`oekit/tracing`（3 个导出）提供 Provider，本仓提供「把 LLM 调用挂上去」的适配层。两者互补，不重叠。\n- **`audit` 自 `guardx/audit` 迁入**（v0.8.0）：它依赖 `oekit/logx`，而 guardx 是 tier 0 零依赖底层，依赖面按 module 结算。包名与职责不变，只是 import 路径变了。\n- **层位 t1 → t2**：带 `eino` 地板（obsx 是 eino callbacks 适配层）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
+      "agentNotes": "### trace 复用约束（不可自建）\n\n**必须复用 `oekit/tracing` 的 Provider 和 `oekit/logx` 的 trace 提取器\n（`logx.ExtractTrace`/`SetTraceExtractor`），不自建一套 trace。**\n否则 agentkit 日志里的 trace_id 会与 OTel 的对不上，跨服务链路断裂。\n\n### 与 oekit 的边界\n\n本仓是**矩阵里唯一直接做 eino callbacks 适配**的仓 —— oekit 作为微服务工具链不会做 LLM 场景。\n`oekit/tracing`（3 个导出）提供 Provider，本仓提供「把 LLM 调用挂上去」的适配层。两者互补，不重叠。\n- **`audit` 自 `guardx/audit` 迁入**（v0.8.0）：它依赖 `oekit/logx`，而 guardx 是 tier 0 零依赖底层，依赖面按 module 结算。包名与职责不变，只是 import 路径变了。\n- **层位 t1 → t2**：带 `eino` 地板（obsx 是 eino callbacks 适配层）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。\n- **`obsx` 已迁至 `github.com/oagentkit/llm/obsx`**（v0.9.0）：它是 eino callbacks 适配层，在本仓时把 langfuse / audit 这两个轻包拖进 27 个第三方模块。迁走后本仓的 eino 依赖消失。",
       "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-obs\")`。\n- **观测数据不得携带凭据原文**，落盘前过 `guardx/logredact`。\n- `audit` 包的 logger 为 nil 时回退 `logx.NewAuditLogger`（级别锁 `Info`、不受 `LOG_LEVEL` 降级、SetLevel 到 WARN/ERROR 被拒）—— 这是刻意设计，别改回普通 logger。",
       "pkgDesc": {
-        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标",
         "langfuse": "Langfuse Public API 只读客户端（v3 self-hosted 契约面）",
         "audit": "敏感操作的结构化审计留痕（自 guardx/audit 迁入）：字段值统一经 logredact 打码"
       }
@@ -294,12 +292,13 @@
     {
       "repo": "llm",
       "tier": 2,
-      "desc": "模型客户端/降级链/预算/成本/阶段路由",
+      "desc": "模型客户端/降级链/预算/成本/阶段路由/调用观测",
       "oekitAnalog": "httpx",
       "packages": [
         "llm",
         "llm/wrap",
-        "llm/llmtest"
+        "llm/llmtest",
+        "obsx"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
@@ -313,7 +312,7 @@
         "runtime"
       ],
       "externalNote": "breaker 退役后改依赖 github.com/oekit/concurrency/breaker",
-      "ghDescription": "模型客户端——多模型降级链/任务级预算/成本记账/分阶段模型路由/主备切换",
+      "ghDescription": "模型客户端——多模型降级链/任务级预算/成本记账/分阶段路由/LLM 调用观测",
       "topics": [
         "go",
         "llm",
@@ -321,12 +320,13 @@
         "cost-control",
         "fallback"
       ],
-      "agentNotes": "- **降级链的每一跳都必须记录原因**（成本/限流/超时/内容策略），不得静默换模型。\n- **预算判定必须在调用前**，不能事后扣减 —— 事后扣减等于没有预算。\n- **panic 不能只转成 error。** `RunSafe*` 系列会把 panic 收进全局 `PanicHandler`\n  （库不接 `SetPanicHandler`，默认 `log.Printf`）且返回的 `panic: X` 无哨兵类型，\n  无法挂回领域上下文。用 `RunSafeErr` 前先确认丢掉的结构化上下文可接受。",
+      "agentNotes": "- **降级链的每一跳都必须记录原因**（成本/限流/超时/内容策略），不得静默换模型。\n- **预算判定必须在调用前**，不能事后扣减 —— 事后扣减等于没有预算。\n- **panic 不能只转成 error。** `RunSafe*` 系列会把 panic 收进全局 `PanicHandler`\n  （库不接 `SetPanicHandler`，默认 `log.Printf`）且返回的 `panic: X` 无哨兵类型，\n  无法挂回领域上下文。用 `RunSafeErr` 前先确认丢掉的结构化上下文可接受。\n- **`obsx` 自 `obs/obsx` 迁入**（v0.12.0）：它绑 eino 框架（callbacks 适配层），而本仓早已 import 它做成本记账与阶段打标——同一关注点，两个包住一起更顺。",
       "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-llm\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- 模型请求/响应落日志前必须脱敏（凭据与用户数据都可能出现在 prompt 里）。",
       "pkgDesc": {
         "llm": "模型客户端：多模型降级链、任务级预算、成本记账、分阶段路由、主备切换",
         "llm/wrap": "调用包装与限流适配",
-        "llm/llmtest": "模型层契约测试套件"
+        "llm/llmtest": "模型层契约测试套件",
+        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）"
       }
     },
     {

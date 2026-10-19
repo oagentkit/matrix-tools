@@ -214,13 +214,8 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.8.0",
+      "latest": "v0.9.0",
       "packages": [
-        {
-          "pkg": "obsx",
-          "importPath": "github.com/oagentkit/obs/obsx",
-          "fromLegacy": "agentkit/obsx"
-        },
         {
           "pkg": "langfuse",
           "importPath": "github.com/oagentkit/obs/langfuse",
@@ -242,9 +237,16 @@
           "url": "https://github.com/oagentkit/textx"
         }
       ],
-      "breakingIndex": [],
+      "breakingIndex": [
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-20",
+          "title": "重构：obsx 迁出本仓 —— eino 耦合的观测适配层该待在重仓",
+          "summary": "github.com/oagentkit/obs/obsx → github.com/oagentkit/llm/obsx\nobsx 是 eino callbacks 适配层（intrinsically 绑 eino 框架）。它在本仓时，\n**langfuse 与 audit 这两个轻包被白拖 27 个第三方模块**（eino + sonic 全家）——\nGo 的依赖面按 module 结算。\n迁到 llm（本仓早已 import obsx 做成本记账与阶段打标，同一关注点）后：",
+          "detail": "BREAKING CHANGE: github.com/oagentkit/obs/obsx → github.com/oagentkit/llm/obsx\nobsx 是 eino callbacks 适配层（intrinsically 绑 eino 框架）。它在本仓时，\n**langfuse 与 audit 这两个轻包被白拖 27 个第三方模块**（eino + sonic 全家）——\nGo 的依赖面按 module 结算。\n迁到 llm（本仓早已 import obsx 做成本记账与阶段打标，同一关注点）后：\n- obs 的 eino 依赖从 go.mod 消失 → langfuse / audit 只剩 logx 级别的地板\n- llm 仓的「模型调用观测」与「模型客户端」住在一起\n本仓剩两包：langfuse（Langfuse 追踪客户端）、audit（审计留痕）。\n关联 oagentkit/guardx#3\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
+        }
+      ],
       "depFloor": [
-        "github.com/cloudwego/eino",
         "github.com/oekit/logx"
       ]
     },
@@ -349,7 +351,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.11.0",
+      "latest": "v0.12.0",
       "packages": [
         {
           "pkg": "llm",
@@ -365,6 +367,11 @@
           "pkg": "llm/llmtest",
           "importPath": "github.com/oagentkit/llm/llmtest",
           "fromLegacy": "agentkit/llm/llmtest"
+        },
+        {
+          "pkg": "obsx",
+          "importPath": "github.com/oagentkit/llm/obsx",
+          "fromLegacy": "agentkit/obsx"
         }
       ],
       "matrixDeps": [
@@ -394,6 +401,7 @@
         "github.com/cloudwego/eino",
         "github.com/cloudwego/eino-ext/components/model/openai",
         "github.com/meguminnnnnnnnn/go-openai",
+        "github.com/oekit/logx",
         "golang.org/x/time"
       ]
     },
@@ -563,9 +571,16 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.8",
+      "latest": "v1.8.9",
       "retiring": true,
       "breakingIndex": [
+        {
+          "version": "v1.8.9",
+          "date": "2026-10-20",
+          "title": "重构：obsx 的转发改指 llm（obsx 已迁仓）",
+          "summary": "github.com/oagentkit/obs/obsx → github.com/oagentkit/llm/obsx\n门面的公共路径不变。地板跟到 obs v0.9.0 / llm v0.12.0。",
+          "detail": "BREAKING CHANGE: github.com/oagentkit/obs/obsx → github.com/oagentkit/llm/obsx\n门面的公共路径不变。地板跟到 obs v0.9.0 / llm v0.12.0。\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
+        },
         {
           "version": "v1.8.8",
           "date": "2026-10-20",
