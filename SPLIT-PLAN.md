@@ -84,8 +84,9 @@ github.com/{org}/{repo}/{pkg}
 
 所以 import 改写是**纯前缀映射**，可机械执行、可机械校验，不需要逐包人工判断。
 
-双层目录（`llm/llm`、`rag/rag`、`mcpkit/mcp`）不是失误，是 oekit 自身的既定写法 ——
-`oekit/hertz/hertz`、`oekit/middleware/middleware` 都是这个形态。
+包名末段与仓名相同时（`llm`、`rag`）收口到 module 根：`oagentkit/llm`、`oagentkit/rag`，
+路径**不重复末段**。`mcpkit/mcp` 仍是三层（包名 `mcp` ≠ 仓名 `mcpkit`），
+与 oekit 的 `oekit/hertz/hertz` 同形态。
 
 ### org 名：`oagentkit`（已创建）
 
@@ -96,7 +97,7 @@ github.com/{org}/{repo}/{pkg}
 
 ```
 github.com/oagentkit/textx/textutil
-github.com/oagentkit/llm/llm
+github.com/oagentkit/llm
 github.com/oagentkit/mcpkit/mcp
 go get github.com/oagentkit/llm@latest
 ```
@@ -382,7 +383,7 @@ agent 场景部分不适用。抄基建，不抄章程。
 两处结构提升（三层路径方案）：
 - `worker/pglease` → `queue/pglease`
 - `llm/wrap` / `llm/llmtest` → `llm/wrap` / `llm/llmtest`
-- `knowledge/rag` → `rag/rag`
+- `knowledge/rag` → `rag`
 
 ### 三个 bug（都是这套工具自己引入又修掉的）
 

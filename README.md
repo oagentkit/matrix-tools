@@ -85,10 +85,11 @@ python3 scripts/create_repos.py --apply
   Go 微服务工具链）是**两套独立矩阵**；oagentkit **依赖** oekit 的 `pkg`/`concurrency`/`logx`。
 - module 路径固定三层：`github.com/oagentkit/{repo}/{pkg 末段}`。**注意这不是纯前缀映射**——
   旧单仓 `agentkit/<包>` 的中间层目录会被丢掉（那层组织职责由仓承担）：
-  `agentkit/knowledge/rag` → `oagentkit/rag/rag`，
-  `agentkit/worker/pglease` → `oagentkit/queue/pglease`，
-  `agentkit/llm` → `oagentkit/llm/llm`（**不能省掉末尾一段**）。
-  `llm/llm`、`rag/rag` 这类双层目录是刻意的，对标 oekit 的 `oekit/hertz/hertz`。
+  `agentkit/knowledge/rag` → `oagentkit/rag`，
+  `agentkit/worker/pglease` → `oagentkit/queue/pglease`。
+  **唯一的例外**：包名末段与仓名相同时（`llm`、`rag`）收口到 module 根，
+  `agentkit/llm` → `oagentkit/llm`，**不重复成 `llm/llm`**——
+  Go 的惯例本就是包名不重复 import 路径末段。
   规则实现见 `scripts/matrix_paths.py`，完整对照跑 `rewrite_imports.py --print-rules`。
 - 改 module 路径必须同步：全部 import、go.mod、README 安装行、llms.txt。
 

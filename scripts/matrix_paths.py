@@ -11,11 +11,18 @@
 `rewrite_imports.py` / `gen_versions.py` / `gen_llms_txt.py` 全部 import 它，
 文档与机器输出都从同一个函数生成——**改规则只改这一处**。
 
-反直觉的三点（真实数据，来自 modules.json）：
+⚠️ 唯一的例外：包名末段 **等于** 仓名时，包落在 **module 根**，路径不再重复末段。
+Go 惯例要求包名不重复 import 路径末段（`llm/llm` 是 stutter），
+而 `llm` / `rag` 这两个仓恰好仓名=包名，所以规则必须在这里收口，
+否则产出 `github.com/oagentkit/llm/llm` 这种永远打嗝的公开路径。
+这是**唯一**的例外，写在这里是为了让所有推导者只能从这里读到它。
 
-    agentkit/knowledge/rag  ->  oagentkit/rag/rag       中间层 knowledge 丢掉，且仓名=末段
+反直觉的四点（真实数据，来自 modules.json）：
+
+    agentkit/knowledge/rag  ->  oagentkit/rag           中间层 knowledge 丢掉，且末段=仓名 → 落 module 根
     agentkit/worker/pglease ->  oagentkit/queue/pglease  中间层 worker 丢掉，且换仓
-    agentkit/llm            ->  oagentkit/llm/llm       看着能省一段，其实不能省
+    agentkit/llm            ->  oagentkit/llm           末段=仓名 → 落 module 根，不重复
+    agentkit/llm/wrap       ->  oagentkit/llm/wrap      末段≠仓名 → 照常挂在仓下
 
 用法:
     python3 scripts/matrix_paths.py --matrix modules.json --org oagentkit --print-rules
@@ -38,12 +45,20 @@ def leaf(pkg: str) -> str:
 
 
 def new_import_path(org: str, repo: str, pkg: str) -> str:
-    """**核心规则**：github.com/{org}/{repo}/{pkg 末段}。
+    """**核心规则**：github.com/{org}/{repo}/{pkg 末段}，末段==仓名时收口到 module 根。
 
     仓名一律用 modules.json 的 repo，包名一律取末段——中间层目录（knowledge/、worker/、llm/）
     在旧单仓里是为了组织目录，在新矩阵里由**仓**承担，因此必须丢弃。
+
+    唯一的例外是 `leaf(pkg) == repo`：此时包直接住在 module 根，
+    import 路径就是 module 路径本身，不再拼末段。
+    Go 的惯例是包名不重复 import 路径末段，而 llm / rag 两个仓的包名恰好等于仓名，
+    不收口就会产出 `oagentkit/llm/llm` 这种 stutter 路径作为长期公开 API。
     """
-    return f"github.com/{org}/{repo}/{leaf(pkg)}"
+    l = leaf(pkg)
+    if l == repo:
+        return f"github.com/{org}/{repo}"
+    return f"github.com/{org}/{repo}/{l}"
 
 
 def legacy_import_path(pkg: str) -> str:
@@ -70,8 +85,12 @@ def misleading(modules: list[dict], org: str) -> list[tuple[str, str]]:
     """挑出「直觉会写错」的条目，用于在 llms.txt 里展示真实对照。
 
     两类坑：
-      1. 中间层被丢弃（knowledge/rag -> rag/rag）—— 直觉会保留 knowledge
-      2. 仓名与末段同名（llm -> llm/llm）—— 直觉会以为可以省掉一段
+      1. 中间层被丢弃（knowledge/rag -> oagentkit/rag）—— 直觉会保留 knowledge
+      2. 末段与仓名相同（llm -> oagentkit/llm）—— 直觉会以为要重复成 llm/llm，
+         实际是收口到 module 根
+
+    保留第 2 类不是为了讲历史，是因为它现在是规则的唯一例外，
+    下一个人重新怀疑时，这里就是答案。
     """
     out: list[tuple[str, str]] = []
     for mod in modules:

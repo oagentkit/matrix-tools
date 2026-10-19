@@ -7,6 +7,7 @@
 
 背景：import 路径不是前缀映射，而是
     github.com/{org}/{repo}/{包名末段}
+    ——且末段==仓名时收口到 module 根（github.com/{org}/{repo}）。
 旧单仓路径 agentkit/knowledge/rag 的中间层 knowledge 会被丢弃。
 这条规则错了不会编译失败，只会 module not found，而且是在消费方那边。
 
@@ -28,18 +29,18 @@ from matrix_paths import OLD_ROOT, misleading, new_import_path, short_legacy  # 
 # 包路径用的是 modules.json 里的真实形态（不带 agentkit/ 前缀）。
 CASES = [
     # 最易错的一条：agentkit/llm → 不是 .../agentkit/llm/agentkit/llm，
-    # 也不是保留中间层，而是直接落到仓名上（llm/llm，重复是**对的**）。
-    ("oagentkit", "llm", "llm", "github.com/oagentkit/llm/llm"),
+    # 也不是重复成 llm/llm，而是收口到 module 根（oagentkit/llm）。
+    ("oagentkit", "llm", "llm", "github.com/oagentkit/llm"),
     # 同形但不同仓：两个仓都叫得出 llm，容易混
-    ("oagentkit", "agent", "agent", "github.com/oagentkit/agent/agent"),
-    # 带中间层目录：中间层必须被丢弃，只留末段
-    ("oagentkit", "rag", "knowledge/rag", "github.com/oagentkit/rag/rag"),
+    ("oagentkit", "agent", "agent", "github.com/oagentkit/agent"),
+    # 带中间层目录：中间层必须被丢弃，只留末段；末段又等于仓名 → 落 module 根
+    ("oagentkit", "rag", "knowledge/rag", "github.com/oagentkit/rag"),
     ("oagentkit", "textx", "textutil", "github.com/oagentkit/textx/textutil"),
     ("oagentkit", "runtime", "breaker", "github.com/oagentkit/runtime/breaker"),
-    # 单段包名
-    ("oagentkit", "queue", "queue", "github.com/oagentkit/queue/queue"),
+    # 单段包名，且等于仓名 → 落 module 根
+    ("oagentkit", "queue", "queue", "github.com/oagentkit/queue"),
     # 另一个 org：规则对姊妹矩阵同样成立
-    ("oekit", "concurrency", "concurrency", "github.com/oekit/concurrency/concurrency"),
+    ("oekit", "concurrency", "concurrency", "github.com/oekit/concurrency"),
 ]
 
 
@@ -80,9 +81,9 @@ def main() -> int:
             {"repo": "textx", "packages": ["textutil"]},
             {"repo": "queue", "packages": ["queue"]}]
     got_pairs = set(misleading(fake, "oagentkit"))
-    want_pairs = {("agentkit/knowledge/rag", "github.com/oagentkit/rag/rag"),
-                  ("agentkit/llm", "github.com/oagentkit/llm/llm"),
-                  ("agentkit/queue", "github.com/oagentkit/queue/queue")}
+    want_pairs = {("agentkit/knowledge/rag", "github.com/oagentkit/rag"),
+                  ("agentkit/llm", "github.com/oagentkit/llm"),
+                  ("agentkit/queue", "github.com/oagentkit/queue")}
     ok = got_pairs == want_pairs
     print(f"  {'✅' if ok else '❌'} misleading() 挑出 {len(got_pairs)} 条，"
           f"期望 {len(want_pairs)} 条（textutil 应被排除）")

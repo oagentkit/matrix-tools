@@ -87,7 +87,7 @@ def selftest() -> int:
         ("测试断言里的旧路径（不该抓）",
          'package x\n\nconst want = "git.enjoye.top/enjoydream/agentkit/textutil"\n', 1),
         ("正常的新路径（不该抓）",
-         'package x\n\nimport "github.com/oagentkit/rag/rag"\n', 0),
+         'package x\n\nimport "github.com/oagentkit/rag"\n', 0),
     ]
 
     failures: list[str] = []
@@ -104,7 +104,7 @@ def selftest() -> int:
 
     # 豁免回归：矩阵里的仓【不能】再被整目录豁免
     probes = [
-        ("/home/u/oagentkit/rag/rag/rag.go", False, "矩阵仓必须被扫"),
+        ("/home/u/oagentkit/rag/rag.go", False, "矩阵仓必须被扫"),
         ("/home/u/oagentkit/agentkit/agentrun/alias.go", True, "门面仓自身需豁免"),
         ("/home/u/oagentkit/.github/scripts/sync-callers.sh", True, ".github 需豁免"),
         ("/home/u/lacus/agentkit/textutil/x.go", True, "退役中的单仓需豁免"),

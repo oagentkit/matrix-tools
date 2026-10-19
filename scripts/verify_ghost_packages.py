@@ -48,6 +48,10 @@ def has_go(dirpath: Path) -> bool:
 
 def actual_packages(repo_dir: Path) -> set[str]:
     out: set[str] = set()
+    # module 根自己就可能是包 —— 路径规则在「包名末段==仓名」时要求包落 module 根
+    # （llm / rag 两个仓）。只扫子目录会把它们误报成「登记了但仓里没有」。
+    if has_go(repo_dir):
+        out.add(repo_dir.name)
     for p in repo_dir.iterdir():
         if not p.is_dir() or p.name in SKIP or p.name.startswith((".", "_")):
             continue

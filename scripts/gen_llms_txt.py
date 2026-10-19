@@ -109,15 +109,19 @@ def main() -> int:
     # import 路径构造规则 —— 消费方从旧单仓迁过来时最先踩的坑。
     # 例子全部从 modules.json 实时生成，不是手写的，所以矩阵变了这里自动跟着变。
     traps = misleading(d["modules"], org)
-    L.append(f"- **import 路径 = `github.com/{org}/{{仓名}}/{{包名末段}}`**。"
+    L.append(f"- **import 路径 = `github.com/{org}/{{仓名}}/{{包名末段}}`**；"
+             f"**末段与仓名相同**时收口成 `github.com/{org}/{{仓名}}`（不重复末段）。"
              "旧单仓 `git.enjoye.top/enjoydream/agentkit/<包>` 的**中间层目录会被丢掉**，"
              "因为新矩阵里那层组织职责由**仓**承担。例如：")
     for old, new in traps:
         L.append(f"    - `{old}` → `{new}`")
-    # 「仓名==末段」的条目单独点名：它是最容易被「优化」掉的错误。
-    same = [(o, n) for o, n in traps if n.rsplit("/", 2)[-2] == n.rsplit("/", 1)[-1]]
+    # 「末段==仓名」的条目单独点名：它收口到 module 根，
+    # 直觉反而会以为要重复成 llm/llm —— 规则唯一的例外，必须显式讲清。
+    # 判定看斜杠数：收口后是 github.com/{org}/{repo}，只有 2 个斜杠。
+    same = [(o, n) for o, n in traps if n.count("/") == 2]
     tail = (f"其中 `{same[0][0]}` → `{same[0][1]}` 尤其坑："
-            "仓名与包名末段相同时**不能省掉一段**，直觉会以为可以合并。"
+            "包名末段与仓名相同时**收口到 module 根**（不重复末段），"
+            "直觉会以为要写成 `llm/llm`。"
             if same else "")
     L.append(f"  {tail}完整 {len(traps)} 条易踩对照、及全部 {npkg} 条映射见 "
              f"[matrix-tools/scripts/rewrite_imports.py --print-rules]"
