@@ -84,6 +84,19 @@ def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str
         parts = md.parts
         if ".git" in parts or "__pycache__" in parts:
             continue
+        # CHANGELOG.md 是**历史记录**，不是当前指引。
+        # 它按定义会记录已经退役的包路径——那正是 changelog 该干的事。
+        # 用「当前归属是否正确」的标准去扫它，是分类错误：
+        # 实测 runtime/CHANGELOG.md 里的
+        #   "BREAKING：github.com/oagentkit/runtime/breaker 不再存在。迁移方
+        #    import github.com/oagentkit/runtime/breaker"
+        # 恰恰是**正确且必要**的迁移说明，却会被报成陈旧引用。
+        # （那个标题写的是「迁到」，也不含豁免关键词「迁移对照」——
+        #   靠加关键词兜是脆的：changelog 的标题措辞不受控。）
+        # 本守卫的靶子是「AI Agent 读得最多的文件」——AGENTS.md / README.md，
+        # 那是给 Agent 照着 import 的**当前**指引。
+        if md.name == "CHANGELOG.md":
+            continue
         lines = md.read_text(encoding="utf-8", errors="ignore").splitlines()
         for i, line in enumerate(lines):
             # 文档链接 URL 是网页地址，不是 import 路径
