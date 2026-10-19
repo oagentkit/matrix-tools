@@ -228,6 +228,34 @@ jobs:
         # go.mod 算出的地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。
         run: python3 scripts/verify_dep_floor.py --org oagentkit
 
+  release-floor:
+    name: Release floor (发版时刻的地板时效)
+    # 单独一个 job，不塞进 matrix-truth：那里「tag ↔ CHANGELOG」要拉 100+ 个
+    # tag 快照，已经吃掉 job 的大部分时间预算，两个慢步骤叠在一起会双双超时
+    # ——超时是「判不了」，不是「判过」，必须让它们各自有独立的预算与结论。
+    #
+    # 判的是「这个 tag 打出来时地板就已经落后」：llm v0.12.0/v0.12.1 就是这类
+    # （textx v0.6.0、oekit/pkg v0.16.0 在发版前 75 分钟就已发布，地板没跟）。
+    # 时间口径保证不会误伤「依赖在发版之后才发布」的情况。
+    # 只判各仓**最新** tag：2026-10-19 那次全量 tag 重写把一批历史 tag 的日期
+    # 改成同一时刻，用它们回看「当时最新」已不可信（实测会多出 100+ 条历史噪声）。
+    # 已知的 4 个欠账记在 scripts/tag_floor_debt.json，基线外的新增 = 硬失败。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 发版时刻的依赖地板时效（各仓最新 tag）
+        run: python3 scripts/verify_tag_floor.py --org oagentkit --latest-only
+
   facade-symbols:
     name: Facade symbols
     # 门面仓 agentkit 的**符号级**转发完整性：上游每个导出符号，门面都要有对应别名。
