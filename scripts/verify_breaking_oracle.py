@@ -90,8 +90,14 @@ EXPLICIT: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)?\s*[:：]", re.I),
      "BREAKING: / BREAKING CHANGE: / BREAKING-CHANGE:"),
     (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)\b", re.I), "BREAKING CHANGE 短语"),
-    (re.compile(r"⚠"), "⚠️ 警告标记"),
 ]
+
+# ⚠️ 单独出现**不算**破坏性标记：本 org 的 CHANGELOG 里 ⚠️ 是说明性强调
+# （实测 agentkit v1.8.14：「⚠️ 这条改动是被矩阵的符号级转发完整性门禁逼出来的」
+# —— 那是「为什么改」的注解，那一节本身是新增转发，不是破坏性变更）。
+# 误报一次就会逼人绕过门禁，所以 ⚠️ 只有与破坏性语义词**同行**出现才算信号。
+WARN_BREAKING_WORD = re.compile(r"破坏性|breaking|不兼容|不再兼容|已移除|已删除|不再是", re.I)
+WARN_MARK = re.compile(r"⚠")
 
 # 信号 B：同一个包出现在 ≥2 个不同模块下 → 包在模块间搬家
 OAGENT_PATH = re.compile(r"github\.com/oagentkit/([A-Za-z0-9_.\-/]+)")
@@ -146,6 +152,9 @@ def signals_for(sec: dict) -> list[dict]:
                 sig.append({"kind": "explicit", "detail": label,
                             "lineno": i, "line": line.strip()[:160]})
                 break
+        if WARN_MARK.search(line) and WARN_BREAKING_WORD.search(line):
+            sig.append({"kind": "explicit", "detail": "⚠️ + 破坏性语义词同行",
+                        "lineno": i, "line": line.strip()[:160]})
         if SUB_LINE.match(line):
             h = line.strip()
             if re.match(r"^###\s*breaking\b", h, re.I):
@@ -367,6 +376,15 @@ def selftest() -> int:
     nosuch = check_one("x", [{"version": "v1.0.0", "title": "t", "summary": "", "detail": ""}],
                        None, "missing")
     check("无 CHANGELOG 但矩阵有条目 → 红", len(nosuch), 1)
+
+    # ---- ⚠️ 单独出现是说明性强调，不是破坏性标记（实测 agentkit v1.8.14）----
+    warn_only = ("## [v2.0.0] — 2026-10-20\n\n### 新增(facade)：转发 16 个新符号\n\n"
+                 "⚠️ 这条改动是被**矩阵的符号级转发完整性门禁**逼出来的。\n"
+                 "转发 16 个符号：\n- type: PriceTable\n")
+    check("⚠️ 强调不误判", "v2.0.0" in flagged_versions(warn_only), False)
+    warn_breaking = ("## [v2.0.1] — 2026-10-20\n\n### 修复：改个说法\n\n"
+                     "⚠️ 破坏性变更：下游需同步改用法。\n")
+    check("⚠️ + 破坏性词仍收得到", "v2.0.1" in flagged_versions(warn_breaking), True)
 
     # ---- 搬家规则的负向样本：同仓内两个包不算搬家 ----
     same = "## [v1.0.0] — 2026-01-01\n\n### 新增：queue 仓建立\n\n收编 2 个包：\n" \
