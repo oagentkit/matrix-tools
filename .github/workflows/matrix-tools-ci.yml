@@ -96,6 +96,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - uses: actions/setup-go@v5
+        with:
+          # 门面符号级门禁的符号提取器是 scripts/symdump/main.go（go/parser
+          # 程序，只用标准库），但仍需 Go 工具链。显式装一个定版——
+          # 不靠 runner 镜像预装的 Go 版本，那是不确定因素。
+          go-version: '1.26'
+
       - name: 门面仓退役守卫自测
         run: python3 scripts/check_facade_imports.py --selftest
 
