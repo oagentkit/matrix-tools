@@ -15,6 +15,7 @@ oagentkit 模块矩阵的自动化仓 —— 生成、审计、改写、发布�
 | `scripts/repo_meta.py` | **远端取数层**：最新 tag / 文件内容 / 目录树 / module 路径的统一取法与判定（含 tag 过滤自测） |
 | `scripts/verify_breaking_index.py` | **对账门禁**：矩阵 `breakingIndex` ↔ 各仓 CHANGELOG（漏收 / 过期 / 内容漂移 / 取不到即红） |
 | `scripts/verify_import_paths.py` | **对账门禁**：矩阵 `importPath` ↔ 各仓**真实** go.mod 与包目录（旧路径 / 幽灵包 / 模块改名 / 取不到即红） |
+| `scripts/verify_dep_floor.py` | **依赖地板门禁 + 地板对账**：① tier0/tier1 不得有重量级第三方直接依赖（零依赖核心不许白吃它）；② 矩阵 `depFloor` ↔ 各仓**真实** go.mod 的实际地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。`--org` 联网读远端 go.mod，`--root` 读本地，`--selftest` 离线自测 |
 | `scripts/verify_split.py` | 矩阵三项硬校验：覆盖度 / 分层方向 / 依赖闭包 |
 | `scripts/matrix_paths.py` | **旧→新 import 路径构造规则的唯一事实源**。`rewrite_imports.py` / `gen_versions.py` / `gen_llms_txt.py` 全部 import 它，规则改一处即可 |
 | `scripts/rewrite_imports.py` | **唯一的 import 改写引擎**：旧 module 路径 → 新矩阵路径。只改 import 块内引号字符串，未登记的包直接报错退出（`--check` / `--apply` / `--print-rules` / `--manual`） |
@@ -60,12 +61,14 @@ python3 scripts/gen_versions.py --org oagentkit --root /path/to/oagentkit
 # 校验矩阵（拆分前/拆分后都要跑，任一失败 exit 1）
 python3 scripts/verify_split.py --root <agentkit 单仓路径>
 
-# 矩阵作为「机器可读权威源」的两条对账门禁
+# 矩阵作为「机器可读权威源」的三条对账门禁
 python3 scripts/verify_breaking_index.py --org oagentkit   # breakingIndex ↔ CHANGELOG
 python3 scripts/verify_import_paths.py  --org oagentkit   # importPath ↔ 真实 go.mod / 包目录
-# 两条的离线自测（守卫必须能证明自己还活着）
+python3 scripts/verify_dep_floor.py     --org oagentkit   # depFloor ↔ 真实 go.mod 地板 + tier0/1 地板为空
+# 三条的离线自测（守卫必须能证明自己还活着）
 python3 scripts/verify_breaking_index.py --selftest
 python3 scripts/verify_import_paths.py  --selftest
+python3 scripts/verify_dep_floor.py     --selftest
 
 # 改写 import
 python3 scripts/rewrite_imports.py --org oagentkit --print-rules   # 看映射

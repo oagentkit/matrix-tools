@@ -130,17 +130,21 @@ jobs:
       - name: 依赖地板门禁自测
         # tier0/tier1 的地板必须为空——零依赖核心靠这条保证。
         # 这条守卫最危险的失效形态是「豁免名单写太宽」，所以自测里带了负向样本。
+        # 自测同时覆盖 depFloor 对账（漏登记 / 多登记 / 内容漂移三个负向样本）——
+        # 离线 drift job 忽略 depFloor 之后，它就是这个字段唯一的守门人。
         run: python3 scripts/verify_dep_floor.py --selftest
 
   matrix-truth:
     name: Matrix truth (breakingIndex / import paths)
-    # 这两条是**矩阵作为机器可读权威源**的底线：
+    # 这三条是**矩阵作为机器可读权威源**的底线：
     #   1. breakingIndex 与各仓 CHANGELOG 一致——否则矩阵说「无破坏性变更」，
     #      而 CHANGELOG 说「import 路径已变」，下游只能先构建断裂才发现；
     #   2. importPath 与各仓真实的 go.mod / 包目录一致——否则机器照着矩阵写
-    #      import 直接编译不过。
+    #      import 直接编译不过；
+    #   3. depFloor 与各仓真实 go.mod 的实际地板一致——否则消费者按矩阵判断
+    #      「import 这个仓会拖进哪些重依赖」时拿到的是过期信息。
     #
-    # 两条都要联网（读各仓的 CHANGELOG / go.mod / 目录树），所以单独一个 job。
+    # 三条都要联网（读各仓的 CHANGELOG / go.mod / 目录树），所以单独一个 job。
     # 「取不到」一律判红：守卫最危险的失效形态是「一直绿，但从没生效过」。
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -161,7 +165,10 @@ jobs:
       - name: import 路径 ↔ 各仓真实 go.mod / 包目录
         run: python3 scripts/verify_import_paths.py --org oagentkit
 
-      - name: 依赖地板（tier0/tier1 必须无重量级第三方）
+      - name: 依赖地板（tier0/tier1 必须无重量级第三方）+ depFloor 对账
+        # 一条脚本两件事：① 层位判定（tier0/tier1 地板必须为空）；
+        # ② 对账——矩阵 versions.json 登记的 depFloor 必须等于各仓真实
+        # go.mod 算出的地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。
         run: python3 scripts/verify_dep_floor.py --org oagentkit
 
   dep-floors:
@@ -216,7 +223,13 @@ jobs:
     # 两者漂移时，消费方读到的包清单 / import 路径 / 分层全是错的，
     # 而 matrix-docs 的 verify_docs 只比 llms.txt 与 modules.json，不覆盖这里。
     #
-    # 比对时忽略 latest —— 它按设计要联网读 tag，离线 CI 里必然是 null。
+    # 比对时忽略三个「环境相关」字段：latest（联网读 tag）、breakingIndex
+    # （读各仓 CHANGELOG）、depFloor（读各仓 go.mod）——离线 CI 只 checkout
+    # 了本仓，这些字段重生成必然是空的，拿来比就是天天假红。
+    #
+    # ⚠️ 忽略必须与门禁成对：这三个字段各自有**联网对账门禁**守着
+    # （verify_breaking_index.py / verify_dep_floor.py，在 matrix-truth job 里跑）。
+    # 只忽略不补门禁，字段就成了没人守的声明。
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -226,9 +239,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: versions.json 与 modules.json 一致（忽略 latest）
-        # 比对时忽略 latest —— 它按设计要联网读 tag（gen_versions.py --org），
-        # 离线 CI 里必然是 null，拿它比会天天假红。
+      - name: versions.json 与 modules.json 一致（忽略环境相关字段）
+        # 比对时忽略 latest / breakingIndex / depFloor —— 它们按设计要读
+        # 矩阵外的仓（tag / CHANGELOG / go.mod），离线 CI 里必然取不到值。
+        # 它们的真实性由 matrix-truth job 的联网对账门禁负责。
         run: python3 scripts/verify_versions_drift.py
 
       - name: llms.txt 可确定性重生成

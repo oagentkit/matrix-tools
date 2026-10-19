@@ -72,18 +72,13 @@ def gomod_text(root: str | None, org: str | None, repo: str) -> str | None:
 def dep_floor(root: str | None, org: str | None, repo: str) -> list[str]:
     """某仓的重量级第三方直接依赖（消费者 import 它任一包就会被拖进来的那些）。
 
-    口径与门禁 verify_dep_floor.py 同源（同一份白名单），不在这里另立一套。
+    口径与门禁 verify_dep_floor.py **同源**（走它的 floor_of 唯一实现），
+    不在这里另立一套——两份实现各写一遍，迟早各漂各的。
     """
     text = gomod_text(root, org, repo)
     if not text:
         return []
-    floor: list[str] = []
-    for dep, indirect in verify_dep_floor.requires(text):
-        if dep.startswith(verify_dep_floor.FIRST_PARTY_PREFIX) or dep in verify_dep_floor.ALLOWED:
-            continue
-        if not indirect:
-            floor.append(dep)
-    return floor
+    return verify_dep_floor.floor_of(verify_dep_floor.requires(text))
 
 
 def build_breaking_index(root: str | None, org: str | None, repo: str) -> list[dict]:

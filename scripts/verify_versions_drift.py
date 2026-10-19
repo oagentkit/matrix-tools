@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""versions.json 与 modules.json 的漂移检测（忽略 latest）。
+"""versions.json 与 modules.json 的漂移检测（忽略 latest / breakingIndex / depFloor）。
 
 modules.json 是单一数据源，versions.json 是它的生成物。两者漂移时消费方读到的
 包清单 / import 路径 / 分层全是错的，而且**不会编译失败**——只是读到错的元数据。
 
-比对时忽略 latest：它按设计要联网读 tag（gen_versions.py --org），
-离线 CI 里必然是 null，拿它比会天天假红。
+比对时忽略三个「**环境相关**字段」：它们按设计要读矩阵外的仓，离线 CI 里必然取不到值：
+
+- `latest`：联网读 tag（gen_versions.py --org）
+- `breakingIndex`：读各仓 CHANGELOG
+- `depFloor`：读各仓 go.mod
+
+这三个字段各自有**联网对账门禁**守着（verify_breaking_index.py / verify_dep_floor.py），
+离线这条只管「versions.json 是不是 modules.json 的确定性产物」。
+
+⚠️ 「忽略」与「有门禁守」必须成对：只忽略不补门禁，字段就成了没人守的声明。
 
 用法:
     verify_versions_drift.py
@@ -13,7 +21,7 @@ modules.json 是单一数据源，versions.json 是它的生成物。两者漂�
     verify_versions_drift.py --compare ../site/docs/public/versions.json
 
 --compare 额外比对另一份 versions.json（站点 docs/public/versions.json 是本文件的副本）。
-    这一步**不比 latest 以外的东西也要全等**：站点是逐字节副本，任何差异都是漂移。
+    这一步**逐字节全等**（含 latest/breakingIndex/depFloor）：站点是副本，任何差异都是漂移。
 
 退出码: 0 = 一致；1 = 漂移。
 """
@@ -31,7 +39,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def normalized(path: Path, drop_latest: bool = True, drop_breaking: bool = True) -> str:
+def normalized(path: Path, drop_latest: bool = True, drop_breaking: bool = True,
+               drop_dep_floor: bool = True) -> str:
     d = json.loads(path.read_text(encoding="utf-8"))
     if drop_latest:
         for m in d.get("modules", []):
@@ -48,6 +57,18 @@ def normalized(path: Path, drop_latest: bool = True, drop_breaking: bool = True)
             m.pop("breakingIndex", None)
         for f in d.get("facades", []):
             f.pop("breakingIndex", None)
+    if drop_dep_floor:
+        # depFloor 由**各仓 go.mod** 推出，离线重生成必然是空的（那要读
+        # 14 个仓的 go.mod，而离线 CI 只 checkout 了本仓）。它有自己的对账门禁
+        # （verify_dep_floor.py，联网读远端 go.mod 与矩阵登记逐仓比对），
+        # 这里不比——否则这条检查天天假红。
+        #
+        # ⚠️ 不能只 drop 不补门禁：那会让 depFloor 变成「没人守的字段」，
+        #    手改了也没人发现。drop 与对账门禁必须**成对**出现。
+        for m in d.get("modules", []):
+            m.pop("depFloor", None)
+        for f in d.get("facades", []):
+            f.pop("depFloor", None)
     return json.dumps(d, ensure_ascii=False, sort_keys=True, indent=2)
 
 
@@ -105,7 +126,8 @@ def main() -> int:
         if not other.is_file():
             print(f"❌ 找不到待比对文件: {other}")
             return 1
-        x, y = normalized(versions, drop_latest=False, drop_breaking=False), normalized(other, drop_latest=False, drop_breaking=False)
+        x, y = (normalized(versions, drop_latest=False, drop_breaking=False, drop_dep_floor=False),
+                normalized(other, drop_latest=False, drop_breaking=False, drop_dep_floor=False))
         if x == y:
             print(f"✅ 站点副本一致: {other}")
         else:
