@@ -102,14 +102,21 @@ def is_first_party(module_path: str) -> bool:
 # ---------------------------------------------------------------- 取数
 
 
+_LOCAL_CACHE: dict[tuple[str, str, str | None], list[tuple[str, str]]] = {}
+
+
 def local_tags_with_dates(root: str, owner: str, repo: str,
                           min_version: str | None = None) -> list[tuple[str, str]]:
     """→ [(tag, ISO 日期)]，日期取 tag 的 creatordate（annotated tag 的 tagger 时间）。
 
     只在本地克隆里才有这个精度；联网模式退回提交日期（见 docstring 的说明）。
     """
+    lkey = (root, repo, min_version)
+    if lkey in _LOCAL_CACHE:
+        return _LOCAL_CACHE[lkey]
     d = Path(root) / repo
     if not (d / ".git").exists():
+        _LOCAL_CACHE[lkey] = []
         return []
     out = subprocess.run(
         ["git", "-C", str(d), "for-each-ref", "--format=%(refname:short) %(creatordate:iso-strict)",
@@ -127,6 +134,7 @@ def local_tags_with_dates(root: str, owner: str, repo: str,
         if min_version and not (version_lt(min_version, tag) or min_version == tag):
             continue
         res.append((tag, date))
+    _LOCAL_CACHE[lkey] = res
     return res
 
 
@@ -144,6 +152,45 @@ def local_go_mod(root: str, repo: str, ref: str) -> str | None:
     return out.stdout if out.returncode == 0 else None
 
 
+def api_dates_batch(pairs: list[tuple[str, str, str]]) -> dict[tuple[str, str, str], str]:
+    """一次 GraphQL 取多个 (owner, repo, tag) 的日期。
+
+    为什么必须批量：逐个 REST 取日期，一次全矩阵扫描要打 100+ 次 API，
+    在 CI 里会撞上 GITHUB_TOKEN 的每小时限额——取不到日期的候选会被丢掉，
+    依赖的 tag 列表于是变成空，判据从「落后」退化成「判不了」，
+    而「判不了」又被当成「不落后」的话，门禁就成了假通过。
+    GraphQL 一次别名批量取完，调用数从 100+ 降到 1-2。
+    """
+    out: dict[tuple[str, str, str], str] = {}
+    for start in range(0, len(pairs), 40):
+        group = pairs[start:start + 40]
+        parts = [
+            f'  r{i}: repository(owner: "{o}", name: "{r}") '
+            f'{{ object(expression: "{t}") {{ ... on Commit {{ committedDate }} '
+            f'... on Tag {{ tagger {{ date }} }} }} }}'
+            for i, (o, r, t) in enumerate(group)
+        ]
+        query = "query {\n" + "\n".join(parts) + "\n}"
+        p = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}"],
+                           text=True, capture_output=True)
+        if p.returncode != 0:
+            continue
+        try:
+            data = json.loads(p.stdout)
+        except json.JSONDecodeError:
+            continue
+        payload = data.get("data") or {}
+        for i, key in enumerate(group):
+            obj = (payload.get(f"r{i}") or {}).get("object") or {}
+            date = obj.get("committedDate") or (obj.get("tagger") or {}).get("date") or ""
+            if date:
+                out[key] = date
+    return out
+
+
+_TAGS_CACHE: dict[tuple[str, str, str | None], list[tuple[str, str]]] = {}
+
+
 def api_tags_with_dates(org: str, repo: str,
                         min_version: str | None = None) -> list[tuple[str, str]]:
     """联网模式：tags 列表 + 每个候选 tag 的提交日期。
@@ -151,31 +198,31 @@ def api_tags_with_dates(org: str, repo: str,
     联网拿不到「tag 的创建时间」（annotated tag 的 tagger 时间不在 API 里），
     只能用 tag 指向的**提交日期**近似。口径差异记在这里，不藏。
     """
+    key = (org, repo, min_version)
+    if key in _TAGS_CACHE:
+        return _TAGS_CACHE[key]
     raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
     if not raw:
+        _TAGS_CACHE[key] = []
         return []
     try:
         tags = json.loads(raw)
     except json.JSONDecodeError:
+        _TAGS_CACHE[key] = []
         return []
-    res = []
+    names = []
     for t in tags:
         name = t.get("name", "")
         if not ROOT_TAG_RE.match(name):
             continue
         if min_version and not (version_lt(min_version, name) or min_version == name):
-            continue  # 低于或等于地板的版本不可能是「当时该接的」——省掉 API 调用
-        sha = (t.get("commit") or {}).get("sha", "")
-        date = ""
-        if sha:
-            c = repo_meta.gh_api(f"repos/{org}/{repo}/commits/{sha}")
-            if c:
-                try:
-                    date = (json.loads(c).get("commit") or {}).get("committer", {}).get("date", "")
-                except json.JSONDecodeError:
-                    date = ""
-        if date:
-            res.append((name, date))
+            continue  # 低于或等于地板的版本不可能是「当时该接的」
+        names.append(name)
+    if not names:
+        return []
+    dates = api_dates_batch([(org, repo, n) for n in names])
+    res = [(n, dates[(org, repo, n)]) for n in names if (org, repo, n) in dates]
+    _TAGS_CACHE[key] = res
     return res
 
 
@@ -397,6 +444,7 @@ def scan_latest(args, tags_of, commit_date, go_mod) -> int:
         except json.JSONDecodeError:
             debt = set()
     stale: list[dict] = []
+    unknown: list[dict] = []
     for repo in repos:
         tags = V_local_tags(args, repo)
         if not tags:
@@ -409,11 +457,18 @@ def scan_latest(args, tags_of, commit_date, go_mod) -> int:
         for p in check_ref(repo, latest, when, floors_from_go_mod(text), tags_of):
             p["repo"] = repo
             p["ref"] = latest
-            stale.append(p)
+            # 「判不了」（取不到依赖的 tag/日期）不是「落后」——两者混在一起
+            # 会把一次 API 限流变成「新增违规」，也会污染欠账基线。
+            (unknown if p.get("note") else stale).append(p)
 
     keys = {f"{p['repo']}@{p['ref']}" for p in stale}
     new = sorted(keys - debt)
     fixed = sorted(debt - keys)
+    for p in unknown:
+        print(f"  ⚠️ 判不了：{p['repo']}@{p['ref']} / {p['dep']} —— {p['note']}")
+    if unknown:
+        print("     （判不了 ≠ 判过：依赖的 tag 或日期取不到，本仓该依赖的时效没判出来）")
+        print("     若是 API 限流/网络抖动，重跑即可；若是仓库改名/删除，需要改脚本里的 org/repo 映射。")
     if stale:
         print(f"ℹ️  各仓最新 tag 的地板时效（{len(keys)} 个 tag 当时就落后）：")
         for p in stale:
@@ -427,6 +482,14 @@ def scan_latest(args, tags_of, commit_date, go_mod) -> int:
         for k in new:
             print(f"  - {k}")
         print("\n修法：抬 go.mod 地板 → go mod tidy → 重新发 tag（版本号从 git tag 推导）。")
+    if unknown:
+        # 「判不了」不能当成「没落后」——否则一次 API 抖动就让门禁变绿，
+        # 而它其实什么也没判出来。口径与 verify_changelog_at_tag.py 一致。
+        print(f"❌ 有 {len(unknown)} 处**判不了**（依赖的 tag 或日期取不到），"
+              f"不能当成「当时就落后」或「没落后」：")
+        for p in unknown:
+            print(f"  - {p['repo']}@{p['ref']} / {p['dep']}：{p['note']}")
+    if new or unknown:
         return 1
     print(f"✅ 各仓最新 tag 的依赖地板时效通过（基线内欠账 {len(keys & debt)} 个，"
           f"基线外新增 0 个）")
