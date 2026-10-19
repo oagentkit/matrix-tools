@@ -90,7 +90,21 @@ EXPLICIT: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)?\s*[:：]", re.I),
      "BREAKING: / BREAKING CHANGE: / BREAKING-CHANGE:"),
     (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)\b", re.I), "BREAKING CHANGE 短语"),
-    (re.compile(r"⚠"), "⚠️ 警告标记"),
+    # ⚠️ 必须**同一行内**还有英文 breaking 关键词才算——裸 ⚠ 不算。
+    #
+    # 为什么收窄（实测 2026-10-20）：本 org 的 CHANGELOG 里 ⚠️ 是通用的「注意」标记，
+    # 不是破坏性标记：
+    #   guardx v0.6.0 段：「⚠️ 嵌套 module 的两个 tag（audit/v0.1.0 / bashguard/v0.1.0）保留不动」
+    #   agentkit v1.8.14 段：「⚠️ 这条改动是被矩阵的符号级转发完整性门禁逼出来的」
+    # 两处都不是破坏性变更。按「任何 ⚠ = 破坏性」判，agentkit v1.8.14 会被误报成
+    # 破坏性变更并把 CI 卡住——门禁一旦开始报假警报，就会被人当成噪声忽略，
+    # 那比漏报更糟。
+    #
+    # 只认英文 breaking（不认中文「破坏/不兼容」）：本 oracle 的其它显式信号
+    # （BREAKING: / BREAKING CHANGE / 粗体 **BREAKING**）也全是英文口径，
+    # 混进中文关键词会让「不是破坏性变更」这类否定句被误判。
+    (re.compile(r"⚠[^\n]{0,120}\bbreaking\b|\bbreaking\b[^\n]{0,120}⚠", re.I),
+     "⚠ + BREAKING 同现"),
 ]
 
 # 信号 B：同一个包出现在 ≥2 个不同模块下 → 包在模块间搬家
@@ -317,6 +331,18 @@ breaking change: 小写的 breaking change 标记。
 ### 修复：无破坏性变更的普通小节
 
 只是普通修复。
+
+## [v0.9.0] — 2026-10-20
+
+### 修复：带⚠️注意标记但不是破坏性变更
+
+⚠️ 这条改动是被某个门禁逼出来的。
+
+## [v0.8.0] — 2026-10-20
+
+### 修复：⚠️ 与破坏性标记同现
+
+⚠️ BREAKING CHANGE: 这一行同时有警告标记和破坏性关键词。
 """
 
 # 生成器（breaking_index.py）**至今仍收不到**的形态——反证就拿这些当样本：
@@ -338,6 +364,8 @@ def selftest() -> int:
     check("散文路径搬家被收", "v0.12.0" in got, True)
     check("粗体/项目符号/小写 BREAKING 被收", "v0.11.0" in got, True)
     check("普通小节不误判", "v0.10.0" in got, False)
+    check("裸 ⚠️ 注意标记不误判", "v0.9.0" in got, False)
+    check("⚠️ + 破坏性关键词同现被收", "v0.8.0" in got, True)
 
     # 反证：拿**生成器**（breaking_index.py）跑同一份样本，确认它对某些形态
     # 仍然漏收 —— oracle 收得到、生成器收不到，才证明两者不在同一处盲区。

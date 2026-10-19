@@ -7,7 +7,8 @@
     "（agent 仓 2026-10-19 已踩过一次，见其 CHANGELOG v0.6.1 段）。",
     "根治办法：补发补丁 tag，按 gen_changelogs.py --next-version → 提交 → 打 tag 的顺序，",
     "让新 tag 的快照里就带着自己那段。verify_changelog_at_tag.py 对基线外的 stale tag 硬失败。",
-    "agentkit@v1.8.13 是 2026-10-20 18:06 打的 tag，而 CHANGELOG 的 v1.8.13 段在 18:09 才合入（PR #19）——tag 快照比 main 落后一个提交，形态与上面那些 tag 相同。该 tag 已发布且受 protect-tags ruleset 保护，不能重打。"
+    "agentkit@v1.8.13 是 2026-10-20 18:06 打的 tag，而 CHANGELOG 的 v1.8.13 段在 18:09 才合入（PR #19）——tag 快照比 main 落后一个提交，形态与上面那些 tag 相同。该 tag 已发布且受 protect-tags ruleset 保护，不能重打。",
+    "agentkit@v1.8.14 与 llm@v0.13.0 是 2026-10-20 23:19 前后的同一轮发版：先打 tag、再重生成 CHANGELOG，于是 tag 快照里缺自己那一段。形态与上面那些 tag 相同，tag 不可重打，记为存量欠账。"
   ],
   "checkedAt": "2026-10-20",
   "tags": [
@@ -15,6 +16,7 @@
     "agentkit@v1.8.11",
     "agentkit@v1.8.12",
     "agentkit@v1.8.13",
+    "agentkit@v1.8.14",
     "agentkit@v1.8.5",
     "agentkit@v1.8.6",
     "agentkit@v1.8.7",
@@ -26,6 +28,7 @@
     "guardx@v0.8.1",
     "llm@v0.12.0",
     "llm@v0.12.1",
+    "llm@v0.13.0",
     "mcpkit@v0.8.1",
     "obs@v0.8.0",
     "obs@v0.9.0",
