@@ -44,6 +44,9 @@ DEFAULT_MATRIX = HERE.parent / "modules.json"
 
 # 只认 require 块里的直接依赖行；注释行（// indirect）与空行忽略
 REQUIRE = re.compile(r"^\s*github\.com/oagentkit/([a-z][a-z0-9]*)\s+(v[\d.]+)")
+# 基座 org 的依赖（oekit/*）。oekit 与 oagentkit 同属一个团队的 org，
+# 是矩阵的公共底座——门面的 MVS 同样受它的地板压着，不查就是半个 MVS 没查。
+REQUIRE_BASE = re.compile(r"^\s*github\.com/oekit/([a-z][a-z0-9]*)\s+(v[\d.]+)")
 
 
 def parse_requires(gomod_text: str) -> dict[str, str]:
@@ -52,6 +55,22 @@ def parse_requires(gomod_text: str) -> dict[str, str]:
         if line.lstrip().startswith("//"):
             continue
         m = REQUIRE.match(line)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def parse_requires_base(gomod_text: str) -> dict[str, str]:
+    """解析 github.com/oekit/* 的 require（含 // indirect 间接依赖）。
+
+    基座依赖常以 // indirect 形式出现，但它们**同样参与 MVS**：
+    门面钉着 oekit/pkg v0.14.0，消费方就拿不到 v0.15.1。
+    """
+    out: dict[str, str] = {}
+    for line in gomod_text.splitlines():
+        if line.lstrip().startswith("//"):
+            continue
+        m = REQUIRE_BASE.match(line)
         if m:
             out[m.group(1)] = m.group(2)
     return out
@@ -110,7 +129,8 @@ _TAGS = {"agent": "v0.5.0", "llm": "v0.6.0", "textx": "v0.2.0", "queue": "v0.3.0
 
 
 def _audit(tag: str, gomod_text: str, tags: dict[str, str],
-           declared: list[str], verbose: bool) -> int:
+           declared: list[str], verbose: bool,
+           base_tags: dict[str, str] | None = None) -> int:
     req = parse_requires(gomod_text)
     print(f"门面仓最新 tag: {tag}")
     print(f"各模块仓最新 tag: {len(tags)} 个\n")
@@ -131,14 +151,34 @@ def _audit(tag: str, gomod_text: str, tags: dict[str, str],
     for repo in sorted(set(req) - set(declared)):
         bad.append((repo, "(矩阵里没有这个仓)", req[repo]))
 
+    # 基座 org（oekit/*）的地板同样参与 MVS。矩阵内 13 个仓全绿也不代表门面
+    # 是绿的：门面钉着 oekit/pkg v0.14.0，消费方就照样拿不到 v0.15.1。
+    base_bad = []
+    base_tags = base_tags or {}
+    base_req = parse_requires_base(gomod_text)
+    for repo, got in sorted(base_req.items()):
+        want = base_tags.get(repo, "")
+        if not want:
+            base_bad.append((repo, "?", got, "取不到远端 tag，判不了"))
+        elif want != got:
+            base_bad.append((repo, want, got, ""))
+
     if not declared:
         print("❌ modules.json 里一个仓都没有，拒绝判定。")
         return 1
 
-    if bad:
-        print(f"❌ 门面仓 tag {tag} 的依赖地板有 {len(bad)} 处落后：\n")
-        for repo, want, got in bad:
-            print(f"  {repo:<12} 应为 {want:<12} 实际 {got}")
+    if bad or base_bad:
+        if bad:
+            print(f"❌ 门面仓 tag {tag} 的依赖地板有 {len(bad)} 处落后：\n")
+            for repo, want, got in bad:
+                print(f"  {repo:<12} 应为 {want:<12} 实际 {got}")
+        if base_bad:
+            print(f"\n❌ 基座依赖（github.com/oekit/*）有 {len(base_bad)} 处落后：\n")
+            for repo, want, got, note in base_bad:
+                line = f"  {repo:<12} 应为 {want:<12} 实际 {got}"
+                if note:
+                    line += f"  {note}"
+                print(line)
         print("\n为什么这要当错误处理：")
         print("  门面仓是消费方的单一入口，而 MVS 只看被消费版本的 go.mod。")
         print("  门面 tag 钉着旧版本 ⇒ 消费方 go get 门面仓会静默拿到旧实现，")
@@ -148,6 +188,8 @@ def _audit(tag: str, gomod_text: str, tags: dict[str, str],
         return 1
 
     print(f"✅ 门面仓 tag {tag} 的依赖地板与 {len(declared)} 个模块仓的最新 tag 一致")
+    if base_req:
+        print(f"✅ 基座依赖 {len(base_req)} 个（oekit/*）地板也是最新")
     return 0
 
 
@@ -163,10 +205,10 @@ def selftest() -> int:
     import io
     import contextlib
 
-    def run(tag: str, gomod: str, tags: dict) -> int:
+    def run(tag: str, gomod: str, tags: dict, base: dict | None = None) -> int:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            return _audit(tag, gomod, tags, sorted(tags), verbose=False)
+            return _audit(tag, gomod, tags, sorted(tags), verbose=False, base_tags=base)
 
     print("自测：")
     check("门面接最新地板 → 绿", run("v1.3.0", _GOOD_GOMOD, _TAGS), 0)
@@ -177,12 +219,31 @@ def selftest() -> int:
     check("require 了矩阵外的仓 → 红",
           run("v1.3.0", _GOOD_GOMOD + "\tgithub.com/oagentkit/ghost v9.9.9\n", _TAGS), 1)
 
+    # 基座 org（oekit/*）地板落后 → 也要红。
+    # 矩阵 13 个仓全绿但基座落后，是「半个 MVS 没查」——消费方照样拿不到新实现。
+    _base_gomod = _GOOD_GOMOD + "\tgithub.com/oekit/pkg v0.14.0 // indirect\n"
+    check("基座依赖落后 → 红",
+          run("v1.3.0", _base_gomod, _TAGS, {"pkg": "v0.15.1"}), 1)
+    check("基座依赖最新 → 绿",
+          run("v1.3.0", _base_gomod, _TAGS, {"pkg": "v0.14.0"}), 0)
+    # 取不到基座 tag → 判不了。**按本脚本一贯的哲学处理：不确定即失败**，
+    # 绝不静默放过——「全绿但什么都没查」正是这条守卫要防的失效形态。
+    check("基座 tag 取不到 → 报错（不静默放过）",
+          run("v1.3.0", _base_gomod, _TAGS, {"pkg": ""}), 1)
+
     p = parse_requires(_GOOD_GOMOD)
     ok_parse = (p.get("queue") == "v0.3.0"          # // indirect 仍算 require
                 and "example.com" not in p)
     print(f"  {'✅' if ok_parse else '❌'} 解析忽略非 oagentkit 依赖")
     if not ok_parse:
         fails.append("parse")
+
+    # oekit 依赖不能混进 oagentkit 的 require 表（否则会被误报成「矩阵外的仓」）
+    pb = parse_requires_base(_base_gomod)
+    ok_base = (pb.get("pkg") == "v0.14.0" and "pkg" not in p)
+    print(f"  {'✅' if ok_base else '❌'} 基座依赖单独解析，且不混进矩阵表")
+    if not ok_base:
+        fails.append("parse-base")
 
     if fails:
         print(f"\n❌ 自测失败: {fails}")
@@ -197,6 +258,7 @@ def main() -> int:
     ap.add_argument("--facade", default="agentkit", help="门面仓名")
     ap.add_argument("--matrix", default=None)
     ap.add_argument("--tags-json", help="离线：{repo: latest_tag} 的 JSON")
+    ap.add_argument("--base-tags-json", help="离线：{repo: latest_tag}（oekit 基座）的 JSON")
     ap.add_argument("--facade-gomod", help="离线：门面仓最新 tag 处的 go.mod 文本")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--verbose", action="store_true")
@@ -220,6 +282,8 @@ def main() -> int:
             return 1
         gomod_text = Path(args.facade_gomod).read_text(encoding="utf-8")
         tag = "(离线 fixture)"
+        base_tags = json.loads(Path(args.base_tags_json).read_text(encoding="utf-8")) \
+            if args.base_tags_json else {}
     else:
         tag = fetch_latest_tag(org, args.facade)
         if not tag:
@@ -236,12 +300,20 @@ def main() -> int:
                 print(f"❌ 取不到 {org}/{r} 的 tag")
                 return 1
             tags[r] = t
+        # 基座 org 的 tag：取门面自己 require 到的那些，不必硬编码清单——
+        # 门面将来多依赖一个 oekit 仓，这里自动就跟着查了。
+        base_tags = {}
+        for r in parse_requires_base(gomod_text):
+            t = fetch_latest_tag("oekit", r)
+            base_tags[r] = t
+            if not t:
+                print(f"⚠️ 取不到 oekit/{r} 的 tag（该条判不了，按「不确定即失败」处理）")
 
     if not tags:
         print("❌ 一个模块仓的 tag 都没取到，拒绝判定（避免「全绿但什么都没查」）")
         return 1
 
-    return _audit(tag, gomod_text, tags, declared, args.verbose)
+    return _audit(tag, gomod_text, tags, declared, args.verbose, base_tags)
 
 
 if __name__ == "__main__":
