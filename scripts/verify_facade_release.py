@@ -37,6 +37,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -76,21 +77,35 @@ def parse_requires_base(gomod_text: str) -> dict[str, str]:
     return out
 
 
+def _gh_retry(*args: str):
+    """调 gh 并重试。
+
+    一次扫描要发十几到几十次 gh api，实测偶发瞬时失败。这里必须重试：
+    瞬时失败会被判成「取不到 tag」，而本脚本对「取不到」的哲学是**不确定即失败**
+    ——那会让门禁随机变红，且红灯信息完全指不到真正的原因。
+    """
+    last = (1, "", "")
+    for attempt in range(3):
+        r = subprocess.run(["gh", *args], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.returncode, r.stdout, r.stderr
+        last = (r.returncode, r.stdout, r.stderr)
+        if attempt < 2:
+            time.sleep(1.5 * (attempt + 1))
+    return last
+
+
 def fetch_latest_tag(org: str, repo: str) -> str:
-    r = subprocess.run(
-        ["gh", "api", f"repos/{org}/{repo}/tags", "--jq", "[.[].name] | .[0] // empty"],
-        capture_output=True, text=True)
-    return r.stdout.strip()
+    rc, out, _ = _gh_retry("api", f"repos/{org}/{repo}/tags", "--jq", "[.[].name] | .[0] // empty")
+    return out.strip()
 
 
 def fetch_file(org: str, repo: str, path: str, ref: str) -> str:
-    r = subprocess.run(
-        ["gh", "api", f"repos/{org}/{repo}/contents/{path}?ref={ref}", "--jq", ".content"],
-        capture_output=True, text=True)
-    if r.returncode != 0:
+    rc, out, _ = _gh_retry("api", f"repos/{org}/{repo}/contents/{path}?ref={ref}", "--jq", ".content")
+    if rc != 0:
         return ""
     import base64
-    return base64.b64decode("".join(r.stdout.split())).decode()
+    return base64.b64decode("".join(out.split())).decode()
 
 
 def semver_key(v: str) -> tuple:

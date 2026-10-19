@@ -45,6 +45,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -84,8 +85,24 @@ def version_lt(a: str, b: str) -> bool | None:
 # ---------------------------------------------------------------- 采集
 
 def gh(*args: str) -> tuple[int, str]:
-    p = subprocess.run(["gh", *args], capture_output=True, text=True)
-    return p.returncode, (p.stdout or "") + (p.stderr or "")
+    """调 gh 并**重试**。
+
+    必须重试：一次扫描要发 40+ 次 gh api，实测偶发瞬时失败（返回空 / 非 0）。
+    没有重试时，一次瞬时失败会被记成「取不到 tag / 取不到 go.mod」——
+    于是报告里凭空多出几条「判不了」，**而且整份报告的行数会变少**
+    （那个仓的 go.mod 没取到，它的依赖一条都不出现）。
+    「判不了」本该只出现在真的判不了时，混进瞬时失败就成了噪音。
+    """
+    last = (1, "")
+    for attempt in range(3):
+        p = subprocess.run(["gh", *args], capture_output=True, text=True)
+        out = (p.stdout or "") + (p.stderr or "")
+        if p.returncode == 0 and p.stdout.strip():
+            return p.returncode, out
+        last = (p.returncode, out)
+        if attempt < 2:
+            time.sleep(1.5 * (attempt + 1))
+    return last
 
 
 def owner_repo(module_path: str) -> tuple[str, str] | None:
