@@ -83,6 +83,56 @@ def fetch_tree_paths(org: str, repo: str, ref: str = "main") -> list[str] | None
     return [e.get("path", "") for e in payload.get("tree", []) if e.get("type") == "blob"]
 
 
+def fetch_repo_snapshot(org: str, repo: str, dest: "Path", ref: str = "main") -> "Path | None":
+    """把某仓的源码快照（tarball）下载并解到 dest 下，返回解出来的仓根目录。
+
+    取不到返回 None（**判不了 ≠ 没有**）。
+
+    为什么用 tarball 而不是逐文件取：contents API 的目录端点只返回文件元数据、
+    不带内容，逐文件取 47 个包要 131+ 次调用（实测 2m31s，CI 里每次 PR 都等）。
+    tarball 端点**一次调用给整个仓**（实测 1.5s/仓），14 个仓约 20s。
+
+    解包只落**普通文件**：符号链接、硬链接、绝对路径、`..` 路径一律跳过——
+    远端 tarball 是不可信输入，不能让它往 dest 外写文件。
+    """
+    import io
+    import tarfile
+
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{org}/{repo}/tarball/{ref}"],
+            capture_output=True,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0 or not proc.stdout:
+        return None
+
+    target = dest / repo
+    try:
+        with tarfile.open(fileobj=io.BytesIO(proc.stdout), mode="r:gz") as tf:
+            for m in tf.getmembers():
+                if "/" not in m.name:
+                    continue
+                rel = m.name.split("/", 1)[1]
+                if not rel or m.issym() or m.islnk():
+                    continue
+                parts = Path(rel).parts
+                if rel.startswith("/") or ".." in parts:
+                    continue
+                out = target / rel
+                if m.isdir():
+                    out.mkdir(parents=True, exist_ok=True)
+                elif m.isfile():
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    src = tf.extractfile(m)
+                    if src is not None:
+                        out.write_bytes(src.read())
+    except (tarfile.TarError, OSError, ValueError):
+        return None
+    return target if target.is_dir() else None
+
+
 def _all_tags(org: str, repo: str) -> list[str]:
     raw = gh_api(f"repos/{org}/{repo}/tags?per_page=100")
     if not raw:
