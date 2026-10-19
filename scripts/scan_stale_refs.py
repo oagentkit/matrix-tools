@@ -78,6 +78,60 @@ def in_retired_section(lines: list[str], idx: int) -> bool:
     return False
 
 
+# 「已退役」类标记：出现在引用块里说明该块在**宣布**路径退役，而不是推荐使用。
+RETIRED_MARKERS = ("已退役", "已迁出", "已冻结", "已迁移", "迁至", "不再有后续版本")
+# 迁移映射箭头：旧路径 → 新路径。
+MIGRATION_ARROWS = ("→", "->")
+
+
+def has_migration_arrow(line: str, valid: set[str]) -> bool:
+    """判断该行是否是「旧路径 → 新路径」的迁移映射。
+
+    实测（2026-10-20）：站点 docs/modules/guardx.md:47 写着
+        **`audit` / `bashguard` 已迁出**（v0.7.0）：`…/guardx/audit` → `…/obs/audit`
+    这一行**必须**保留旧路径——删掉它，下游就不知道该改成什么。把它报成陈旧引用，
+    等于逼人删掉最好的迁移说明。
+
+    豁免条件要求箭头的**右侧是合法包**：`→ ` 后面跟着一个当前存在的包，
+    证明这行是在做映射，而不是在推荐一个死包。裸写一个死包路径（无箭头）仍然照报。
+    """
+    for sep in MIGRATION_ARROWS:
+        if sep not in line:
+            continue
+        right = line.split(sep, 1)[1]
+        for m in PKG_RE.finditer(right):
+            if f"github.com/oagentkit/{m.group(1)}" in valid:
+                return True
+    return False
+
+
+def in_retired_blockquote(lines: list[str], idx: int) -> bool:
+    """判断该行是否落在「宣布路径已退役」的引用块里。
+
+    实测（2026-10-20）：guardx/AGENTS.md 与 guardx/README.md 各有一处
+        > ⚠️ `github.com/oagentkit/guardx/audit` 与 `…/guardx/bashguard` 这两条 import 路径
+        > 已**退役**（…）……新代码请用上面表里的新路径。
+    这是**正确的迁移警告**：点名死路径是为了让读者避开它。`in_retired_section`
+    只认「专门的退役章节」，抓不到这种行内引用块。
+
+    判据：命中行所在的**连续引用块**（连续的 `>` 行）里出现退役标记。
+    注意这不会放过真正的陈旧推荐——推荐用某个死包时不会写「已退役」。
+    """
+    def is_quote(s: str) -> bool:
+        return s.lstrip().startswith(">")
+
+    if idx >= len(lines) or not is_quote(lines[idx]):
+        return False
+    start = idx
+    while start > 0 and is_quote(lines[start - 1]):
+        start -= 1
+    end = idx
+    while end < len(lines) - 1 and is_quote(lines[end + 1]):
+        end += 1
+    block = "\n".join(lines[start:end + 1])
+    return any(k in block for k in RETIRED_MARKERS)
+
+
 def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str, str]]:
     hits: list[tuple[str, int, str, str]] = []
     for md in sorted(root.rglob("*.md")):
@@ -103,6 +157,12 @@ def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str
             if URL_RE.search(line) and "import" not in line:
                 continue
             if line.lstrip().startswith(("<!--", "|---")):
+                continue
+            # 行内迁移映射：「旧路径 → 新路径」——保留旧路径是迁移说明的正确写法
+            if has_migration_arrow(line, valid):
+                continue
+            # 引用块里的退役警告：点名死路径是为了让读者避开它
+            if in_retired_blockquote(lines, i):
                 continue
             for m in PKG_RE.finditer(line):
                 full = f"github.com/oagentkit/{m.group(1)}"
