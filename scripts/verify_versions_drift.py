@@ -31,11 +31,23 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def normalized(path: Path, drop_latest: bool = True) -> str:
+def normalized(path: Path, drop_latest: bool = True, drop_breaking: bool = True) -> str:
     d = json.loads(path.read_text(encoding="utf-8"))
     if drop_latest:
         for m in d.get("modules", []):
             m.pop("latest", None)   # 按设计联网读，离线必为 null
+            for n in m.get("nestedModules", []):
+                n.pop("latest", None)   # 嵌套模块的 tag 同理（audit/v0.1.0）
+        for f in d.get("facades", []):
+            f.pop("latest", None)
+    if drop_breaking:
+        # breakingIndex 由**各仓 CHANGELOG** 抽取，离线重生成必然是空的
+        # （那要读 14 个仓的文件）。它有自己的对账门禁
+        # （verify_breaking_index.py），这里不比——否则这条检查天天假红。
+        for m in d.get("modules", []):
+            m.pop("breakingIndex", None)
+        for f in d.get("facades", []):
+            f.pop("breakingIndex", None)
     return json.dumps(d, ensure_ascii=False, sort_keys=True, indent=2)
 
 
@@ -93,7 +105,7 @@ def main() -> int:
         if not other.is_file():
             print(f"❌ 找不到待比对文件: {other}")
             return 1
-        x, y = normalized(versions, drop_latest=False), normalized(other, drop_latest=False)
+        x, y = normalized(versions, drop_latest=False, drop_breaking=False), normalized(other, drop_latest=False, drop_breaking=False)
         if x == y:
             print(f"✅ 站点副本一致: {other}")
         else:

@@ -1,6 +1,7 @@
 {
   "$comment": "oagentkit 版本矩阵（机器可读）。由 matrix-tools/scripts/gen_versions.py 生成，勿手改。",
   "$pathRule": "import 路径 = github.com/oagentkit/<仓名>/<包名末段>；旧路径 git.enjoye.top/enjoydream/agentkit/<包> 的中间层目录会被丢弃。每个包的 fromLegacy 给出该包在旧单仓里的路径。权威输出：rewrite_imports.py --print-rules",
+  "$breakingIndexRule": "由各仓 CHANGELOG.md 自动抽取（判定规则见 scripts/breaking_index.py）。对账门禁：scripts/verify_breaking_index.py。",
   "org": "oagentkit",
   "orgUrl": "https://github.com/oagentkit",
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
@@ -12,7 +13,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.5.0",
+      "latest": "v0.6.0",
       "packages": [
         {
           "pkg": "textutil",
@@ -81,13 +82,21 @@
         }
       ],
       "matrixDeps": [],
-      "breakingIndex": []
+      "breakingIndex": [
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-18",
+          "title": "重构：移除本仓的 breaker 实现，迁到 oekit/concurrency/breaker",
+          "summary": "github.com/oagentkit/runtime/breaker 不再存在。迁移方\n  import github.com/oagentkit/runtime/breaker\n    -> github.com/oekit/concurrency/breaker\n注意语义差异：上游三态由「窗口丢弃概率>0 或连续失败达阈值」触发，\n而本仓原实现是纯计数型；且 Breakers 多实例注册表改为按 name 取 NewBreaker/GetBreaker。\n已知上游缺口：计数型触发只切状态、切不了放行决策\n（https://github.com/oekit/concurrency/issues/25），由 llm 仓的准入适配层兜底。\n门禁：go build / go vet / go test -race 5 包全绿，gofmt 干净。",
+          "detail": "三态状态机、代绑定、冷却期、探测时限、计数型触发全部改用上游\n（WithConsecutiveFailures / WithCooldown / WithProbeTimeout）。\n同时升级 oekit/concurrency v0.9.0 -> v0.12.0。\nBREAKING：github.com/oagentkit/runtime/breaker 不再存在。迁移方\n  import github.com/oagentkit/runtime/breaker\n    -> github.com/oekit/concurrency/breaker\n注意语义差异：上游三态由「窗口丢弃概率>0 或连续失败达阈值」触发，\n而本仓原实现是纯计数型；且 Breakers 多实例注册表改为按 name 取 NewBreaker/GetBreaker。\n已知上游缺口：计数型触发只切状态、切不了放行决策\n（https://github.com/oekit/concurrency/issues/25），由 llm 仓的准入适配层兜底。\n门禁：go build / go vet / go test -race 5 包全绿，gofmt 干净。\n\n- 杂务(deps)：oekit 依赖升级 (#1)\n- 杂务(deps)：oekit/concurrency v0.12.0 -> v0.13.1\n- 杂务(deps)：oekit/concurrency v0.6.0 -> v0.9.0\n\n- CI：接入 org 共享门禁（规则本体在 oagentkit/.github）"
+        }
+      ]
     },
     {
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.5.0",
+      "latest": "v0.6.0",
       "packages": [
         {
           "pkg": "fence",
@@ -112,12 +121,14 @@
         {
           "pkg": "bashguard",
           "importPath": "github.com/oagentkit/guardx/bashguard",
-          "fromLegacy": "agentkit/bashguard"
+          "fromLegacy": "agentkit/bashguard",
+          "module": "github.com/oagentkit/guardx/bashguard"
         },
         {
           "pkg": "audit",
           "importPath": "github.com/oagentkit/guardx/audit",
-          "fromLegacy": "agentkit/audit"
+          "fromLegacy": "agentkit/audit",
+          "module": "github.com/oagentkit/guardx/audit"
         },
         {
           "pkg": "injectband",
@@ -126,7 +137,39 @@
         }
       ],
       "matrixDeps": [],
-      "breakingIndex": []
+      "breakingIndex": [
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "title": "新增(logredact)!：规则表可组合 + 保定位线索掩码档；audit/bashguard 拆嵌套模块",
+          "summary": "新增(logredact)!：规则表可组合 + 保定位线索掩码档；audit/bashguard 拆嵌套模块",
+          "detail": "修 #3。\n一、规则表公开且可组合\n- Rule 公开（Name/Re/Repl/Style/Keep/Group），Rules() 给内置表副本\n- RedactWith(s, extra) / NewRedactor(extra)：下游可追加自己的凭据形态\n- 应用顺序明确：**先内置、后扩展**（内置更精确，先跑它扩展才拿不到原始凭据）\n- 扩展表里 Re=nil 的规则跳过而不是 panic\n二、补「保定位线索的不可逆掩码」档\n- MaskHint / MaskHintWith：保留首尾各 Keep 字符，中间恒为固定长度星号\n- 保留位**封顶**、输出长度**固定** → 不随原值长度泄露信息\n- 长度不足 keep*4 时全量打码（留 8 藏 1 等于没藏）\n- Rule.Style=MaskStyleHint + Group 圈出凭据本体，保留额度才花在凭据上\n- 与全量打码是**不同档**：前者认不出是哪一条，后者认得出但还原不了\n三、依赖面收干净（主模块零外部依赖）\n- audit → 嵌套模块 github.com/oagentkit/guardx/audit（依赖 oekit/logx）\n- bashguard → 嵌套模块 github.com/oagentkit/guardx/bashguard（依赖 mvdan.cc/sh）\n- import 路径**不变**（github.com/oagentkit/guardx/audit 等），下游代码不用改\n- 主模块 go list -m all 只剩自己一行：import logredact 不再把 logx / sh 拖进\n  下游的模块图（下游的「核心零依赖」纪律不必再靠豁免名单放行）\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
+        }
+      ],
+      "nestedModules": [
+        {
+          "module": "github.com/oagentkit/guardx/audit",
+          "url": "https://github.com/oagentkit/guardx",
+          "latest": "audit/v0.1.0",
+          "packages": [
+            {
+              "pkg": "audit",
+              "importPath": "github.com/oagentkit/guardx/audit"
+            }
+          ]
+        },
+        {
+          "module": "github.com/oagentkit/guardx/bashguard",
+          "url": "https://github.com/oagentkit/guardx",
+          "latest": "bashguard/v0.1.0",
+          "packages": [
+            {
+              "pkg": "bashguard",
+              "importPath": "github.com/oagentkit/guardx/bashguard"
+            }
+          ]
+        }
+      ]
     },
     {
       "repo": "queue",
@@ -279,7 +322,15 @@
           "url": "https://github.com/oagentkit/textx"
         }
       ],
-      "breakingIndex": []
+      "breakingIndex": [
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "title": "重构(rag)!：包上移至 module 根，import 路径不再重复末段",
+          "summary": "import 路径 github.com/oagentkit/rag/rag → github.com/oagentkit/rag。\n包名 rag 恰好等于仓名 rag，留在 rag/ 子目录会产出 stutter 的公开路径\n（Go 惯例：包名不重复 import 路径末段）。\n矩阵 import 规则随之收敛：matrix_paths.new_import_path 在「包名末段 == 仓名」时\n收口到 module 根，不再拼末段。这是该规则的**唯一例外**，写在唯一构造点里，\ngen_versions / gen_llms_txt / rewrite_imports / test_matrix_paths 全部随之生效。\n与 oagentkit/llm 同批：全矩阵 47 个包中只有这两处仓名=包名。",
+          "detail": "BREAKING CHANGE: import 路径 github.com/oagentkit/rag/rag → github.com/oagentkit/rag。\n包名 rag 恰好等于仓名 rag，留在 rag/ 子目录会产出 stutter 的公开路径\n（Go 惯例：包名不重复 import 路径末段）。\n矩阵 import 规则随之收敛：matrix_paths.new_import_path 在「包名末段 == 仓名」时\n收口到 module 根，不再拼末段。这是该规则的**唯一例外**，写在唯一构造点里，\ngen_versions / gen_llms_txt / rewrite_imports / test_matrix_paths 全部随之生效。\n与 oagentkit/llm 同批：全矩阵 47 个包中只有这两处仓名=包名。"
+        }
+      ]
     },
     {
       "repo": "llm",
@@ -317,7 +368,15 @@
           "url": "https://github.com/oagentkit/textx"
         }
       ],
-      "breakingIndex": []
+      "breakingIndex": [
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-19",
+          "title": "重构(llm)!：包上移至 module 根，import 路径不再重复末段",
+          "summary": "import 路径 github.com/oagentkit/llm/llm → github.com/oagentkit/llm。\n包名 llm 恰好等于仓名 llm，留在 llm/ 子目录会产出 stutter 的公开路径\n（Go 惯例：包名不重复 import 路径末段）。\n矩阵 import 规则随之收敛：matrix_paths.new_import_path 在「包名末段 == 仓名」时\n收口到 module 根，不再拼末段。这是该规则的**唯一例外**，写在唯一构造点里，\ngen_versions / gen_llms_txt / rewrite_imports / test_matrix_paths 全部随之生效。\nllmtest 与 wrap 的末段 ≠ 仓名，路径不变（oagentkit/llm/llmtest、oagentkit/llm/wrap）。",
+          "detail": "BREAKING CHANGE: import 路径 github.com/oagentkit/llm/llm → github.com/oagentkit/llm。\n包名 llm 恰好等于仓名 llm，留在 llm/ 子目录会产出 stutter 的公开路径\n（Go 惯例：包名不重复 import 路径末段）。\n矩阵 import 规则随之收敛：matrix_paths.new_import_path 在「包名末段 == 仓名」时\n收口到 module 根，不再拼末段。这是该规则的**唯一例外**，写在唯一构造点里，\ngen_versions / gen_llms_txt / rewrite_imports / test_matrix_paths 全部随之生效。\nllmtest 与 wrap 的末段 ≠ 仓名，路径不变（oagentkit/llm/llmtest、oagentkit/llm/wrap）。"
+        }
+      ]
     },
     {
       "repo": "toolgate",
@@ -444,7 +503,32 @@
           "url": "https://github.com/oagentkit/textx"
         }
       ],
-      "breakingIndex": []
+      "breakingIndex": [
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "title": "重构(agent)!：import 跟随 llm 包上移，依赖地板升到 v0.9.0",
+          "summary": "依赖 github.com/oagentkit/llm v0.9.0（该版起 import 路径为\ngithub.com/oagentkit/llm，原 oagentkit/llm/llm 已移除）。",
+          "detail": "BREAKING CHANGE: 依赖 github.com/oagentkit/llm v0.9.0（该版起 import 路径为\ngithub.com/oagentkit/llm，原 oagentkit/llm/llm 已移除）。\n- agentrun/ reflection/ router/ 三处 import 由 llm/llm 改为 llm\n- go.mod 地板 v0.7.2 → v0.9.0，go.sum 按直连 VCS 重算\nllmtest 与 wrap 路径不变。"
+        }
+      ]
+    }
+  ],
+  "facades": [
+    {
+      "repo": "agentkit",
+      "url": "https://github.com/oagentkit/agentkit",
+      "latest": "v1.8.6",
+      "retiring": true,
+      "breakingIndex": [
+        {
+          "version": "v1.8.0",
+          "date": "2026-10-19",
+          "title": "重构(agentkit)!：门面地板跟到 llm v0.9.0 / rag v0.6.0 / agent v0.8.0",
+          "summary": "上游三个仓本轮为破坏性发布（包上移至 module 根），门面的\nre-export 必须指向新版本，否则消费方从门面仓装走的是旧实现。",
+          "detail": "BREAKING CHANGE: 上游三个仓本轮为破坏性发布（包上移至 module 根），门面的\nre-export 必须指向新版本，否则消费方从门面仓装走的是旧实现。\n- llm/alias.go、rag/alias.go 的 upstream import 指向新路径\n- go.mod 地板：agent v0.7.0→v0.8.0、llm v0.8.0→v0.9.0、rag v0.5.0→v0.6.0\n- MIGRATION.md / README.md 的映射表同步\nverify_facade_release.py 守的是 tag 不是 main，本次随 tag 一并发布。"
+        }
+      ]
     }
   ]
 }

@@ -32,12 +32,34 @@ def main() -> int:
     ap.add_argument("--matrix", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--site", default="https://oagentkit.github.io")
+    ap.add_argument("--versions", default=str(HERE.parent / "versions.json"),
+                    help="机器可读版本矩阵（破坏性变更段的来源）")
     args = ap.parse_args()
 
     d = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
     org = d["defaultOrg"]
     mods = sorted(d["modules"], key=lambda m: (m["tier"], m["repo"]))
     npkg = sum(len(m["packages"]) for m in mods)
+
+    # 破坏性变更：**从 versions.json 取**，不自己抽 CHANGELOG。
+    #
+    # 为什么：llms.txt（人读版）与 versions.json（机器读版）曾各说各话——
+    # versions.json 的 breakingIndex 整段是空的，而 llms.txt 的「易踩的坑」里
+    # 写得比谁都细。两处分别维护，缺口就在两处分别出现。
+    #
+    # 改成同源（都从各仓 CHANGELOG 派生，中间经 versions.json 汇流）之后，
+    # 人读版与机读版的信息量就对等了：矩阵说「有破坏性变更」，llms.txt 一定列得出来。
+    versions = {}
+    vpath = Path(args.versions)
+    if vpath.is_file():
+        versions = json.loads(vpath.read_text(encoding="utf-8"))
+    breaking: list[tuple[str, dict]] = []
+    for m in versions.get("modules", []):
+        for e in m.get("breakingIndex", []):
+            breaking.append((m["repo"], e))
+    for f in versions.get("facades", []):
+        for e in f.get("breakingIndex", []):
+            breaking.append((f["repo"], e))
 
     L: list[str] = []
     L.append("# oagentkit")
@@ -66,6 +88,24 @@ def main() -> int:
     L.append(f"- {args.site}/versions.json（由 matrix-tools `scripts/gen_versions.py` 生成）")
     L.append(f"- 矩阵数据源：[matrix-tools/modules.json](https://github.com/{org}/matrix-tools)"
              f"（{len(mods)} 模块 / {npkg} 包）")
+    L.append("")
+
+    # 破坏性变更段（与 versions.json 同源）
+    L.append("## 破坏性变更")
+    L.append("")
+    if breaking:
+        L.append(f"登记在册的破坏性变更共 {len(breaking)} 条（由各仓 CHANGELOG 自动抽取，"
+                 f"机器可读同源见 versions.json 的 `breakingIndex` 字段）：")
+        L.append("")
+        for repo, e in breaking:
+            L.append(f"- **{repo} {e['version']}** — {e['title']}")
+            summary = " ".join((e.get("summary") or "").split())
+            # 摘要与标题相同（无 trailer、靠标题判定的那种）就不重复印一遍
+            if summary and summary != " ".join(e["title"].split()):
+                L.append(f"  {summary}")
+    else:
+        L.append("（本次生成未读到 versions.json 的 breakingIndex —— "
+                 "生成时给 `--versions` 指向矩阵仓的 versions.json）")
     L.append("")
     L.append("## 模块")
     L.append("")

@@ -41,6 +41,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import repo_meta  # noqa: E402  取数与 tag 判定的唯一实现
 DEFAULT_MATRIX = HERE.parent / "modules.json"
 
 # 只认 require 块里的直接依赖行；注释行（// indirect）与空行忽略
@@ -96,8 +98,13 @@ def _gh_retry(*args: str):
 
 
 def fetch_latest_tag(org: str, repo: str) -> str:
-    rc, out, _ = _gh_retry("api", f"repos/{org}/{repo}/tags", "--jq", "[.[].name] | .[0] // empty")
-    return out.strip()
+    """仓的最新 tag。
+
+    ⚠️ 只认 `^vX.Y.Z` 形态里最大的那个，**不是 tags 数组的第一个**——
+    嵌套模块的 tag（audit/v0.1.0）与主模块的 tag 在同一个仓里，
+    "第一个"取决于 API 返回顺序。判定与取数收敛到 repo_meta。
+    """
+    return repo_meta.latest_tag(org, repo) or ""
 
 
 def fetch_file(org: str, repo: str, path: str, ref: str) -> str:

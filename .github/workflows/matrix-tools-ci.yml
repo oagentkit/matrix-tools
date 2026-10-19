@@ -14,6 +14,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # 每日全矩阵对账。
+    #
+    # 为什么需要定时跑：这两条门禁守的是「矩阵 vs 各模块仓的真实状态」，
+    # 而**模块仓发版不会触发本仓的 CI**——矩阵没改就没有 PR，PR 触发的门禁
+    # 也就永远不会看到那次发版。定时跑是唯一能在「别人改了模块仓」时
+    # 把矩阵漂移照出来的机制。
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -102,6 +110,51 @@ jobs:
         # 全是「判不了」却照样 exit 0 —— 一直绿、从没生效过。
         # 所以它的判据纯函数部分必须离线可测，不能只靠联网跑一次。
         run: python3 scripts/verify_dep_floors.py --selftest
+
+      - name: 破坏性变更抽取器自测
+        # breakingIndex 的判定规则本体。判据错了整条门禁就是摆设：
+        # 漏判 → 矩阵继续说「无破坏性变更」；误判 → 矩阵里塞满假条目。
+        run: python3 scripts/breaking_index.py
+
+      - name: 仓库元信息取数层自测
+        # tag 过滤必须只认 ^vX.Y.Z：嵌套模块的 tag（audit/v0.1.0）与主模块的
+        # tag 在同一个仓里，取错「最新」会把矩阵写成 v0.1.0。
+        run: python3 scripts/repo_meta.py
+
+      - name: breakingIndex 对账门禁自测
+        run: python3 scripts/verify_breaking_index.py --selftest
+
+      - name: import 路径对账门禁自测
+        run: python3 scripts/verify_import_paths.py --selftest
+
+  matrix-truth:
+    name: Matrix truth (breakingIndex / import paths)
+    # 这两条是**矩阵作为机器可读权威源**的底线：
+    #   1. breakingIndex 与各仓 CHANGELOG 一致——否则矩阵说「无破坏性变更」，
+    #      而 CHANGELOG 说「import 路径已变」，下游只能先构建断裂才发现；
+    #   2. importPath 与各仓真实的 go.mod / 包目录一致——否则机器照着矩阵写
+    #      import 直接编译不过。
+    #
+    # 两条都要联网（读各仓的 CHANGELOG / go.mod / 目录树），所以单独一个 job。
+    # 「取不到」一律判红：守卫最危险的失效形态是「一直绿，但从没生效过」。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: breakingIndex ↔ 各仓 CHANGELOG
+        run: python3 scripts/verify_breaking_index.py --org oagentkit
+
+      - name: import 路径 ↔ 各仓真实 go.mod / 包目录
+        run: python3 scripts/verify_import_paths.py --org oagentkit
 
   dep-floors:
     name: Dep floors (report)

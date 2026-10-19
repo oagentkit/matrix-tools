@@ -49,6 +49,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import repo_meta  # noqa: E402  取数与 tag 判定的唯一实现
 
 # 判作「第一方」的 module path 前缀。oekit 与 oagentkit 同属一个团队的 org
 # （oagentkit 的模块大量以 oekit/pkg、oekit/concurrency 为基座），
@@ -126,18 +128,18 @@ def owner_repo(module_path: str) -> tuple[str, str] | None:
 def latest_tag(module_path: str) -> str | None:
     """module path → 远端最新 tag。
 
-    `gh api repos/{owner}/{repo}/tags` 按提交时间倒序返回，取首条即最新。
     取不到返回 None——**判不出不等于落后**，调用方须区分。
+
+    ⚠️ 「最新」= `^vX.Y.Z` 形态里最大的那个，**不是 tags 数组的第一个**：
+    guardx 拆出嵌套模块后，仓里同时有 `v0.6.0` / `audit/v0.1.0` / `bashguard/v0.1.0`，
+    "第一个"是谁取决于 API 返回顺序——取错就是把「最新版本」写成 v0.1.0。
+    判定与取数都收敛到 repo_meta（唯一实现）。
     """
     parsed = owner_repo(module_path)
     if parsed is None:
         return None
     owner, repo = parsed
-    rc, out = gh("api", f"repos/{owner}/{repo}/tags", "--jq", "[.[].name] | .[0] // empty")
-    if rc != 0:
-        return None
-    tag = out.strip().splitlines()[0].strip() if out.strip() else ""
-    return tag or None
+    return repo_meta.latest_tag(owner, repo)
 
 
 def repo_go_mod(org: str, repo: str, ref: str) -> str | None:
