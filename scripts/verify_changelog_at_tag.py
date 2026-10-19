@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""tag ↔ CHANGELOG 版本节 对账门禁（issue #17 的根治门禁）。
+
+## 守的是哪两件事
+
+**T1｜当前 CHANGELOG ↔ 已发布 tag，双向一一对应**
+
+- tag 有 → CHANGELOG 必须有该版本段（不许「发了版没写记录」）
+- CHANGELOG 有 → tag 必须有（不许「写了记录没发版」）；
+  唯一豁免是**待发版段**：版本号高于当前最高 tag、且是 CHANGELOG 里最高的一段
+  （发版流程用 `gen_changelogs.py --next-version` 预写的那一段）
+
+**T2｜每个已发布 tag 的快照里，CHANGELOG 必须含该 tag 自己的版本段**
+
+这一条才是下游真正会咬到的那一层：下游 `go get` 拿到的是 **tag 快照**，
+快照里的 CHANGELOG 缺自己那段 = 发布说明里没有这个版本自己的内容
+（issue #17 的原话）。人读发布说明、工具从模块缓存读 CHANGELOG，读到的都是残缺那份。
+
+## 为什么 T2 需要「存量欠账基线」
+
+issue #17 报告 7 个模块全中；实测（2026-10-20）**13 个模块 + 门面共 23 个 tag** 中招。
+这些 tag 已经在 GitHub 上发布，且 org 有 `protect-tags` ruleset 限制 tag 的更新与删除，
+**不能重打**（重打会让同名 tag 对应新内容，下游 go.sum 的 h1 对不上，
+直接硬失败「checksum mismatch」——agent 仓 2026-10-19 已经踩过一次）。
+
+所以存量用基线文件 `changelog_tag_debt.json` 记账：
+
+- 基线里的 tag → 报为**存量欠账**（打印出来，不静默）
+- 基线外的 stale tag → **硬失败**（说明又发版发漏了）
+- 基线里已经不 stale 的 → 提示更新基线（警告，不挡）
+
+这就是「欠账可见、增量归零」：门禁不会因为存量而永远红，也不会因为存量而永远绿。
+
+## 根治：让 T2 从今天起可满足
+
+`gen_changelogs.py` 只渲染**已存在 tag** 的版本段 → 「先提交 CHANGELOG 再打 tag」
+的打法下，tag 快照里永远不可能有自己那段（鸡生蛋问题）。
+`gen_changelogs.py --next-version vX.Y.Z` 可以把「上一个 tag 之后的提交」预写成
+待发版段，于是发版顺序变成：
+
+    生成 CHANGELOG（含 vX.Y.Z 段） → 提交 → 打 tag vX.Y.Z
+
+tag 快照里就有自己那段了，T2 对新 tag 恒成立。
+
+用法:
+    verify_changelog_at_tag.py --root /path/to/oagentkit   # 本地 git 读 tag 快照
+    verify_changelog_at_tag.py --org oagentkit             # 联网读 tag 快照
+    verify_changelog_at_tag.py --selftest                  # 离线自测
+
+退出码: 0 = 一致（存量欠账已记账）；1 = 有新问题。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import repo_meta  # noqa: E402
+
+DEFAULT_VERSIONS = HERE.parent / "versions.json"
+DEFAULT_MATRIX = HERE.parent / "modules.json"
+DEBT_FILE = HERE / "changelog_tag_debt.json"
+
+VERSION_HEADING = re.compile(r"^##\s*\[?(?P<v>v\d+\.\d+\.\d+)\]?")
+ROOT_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+
+
+def version_key(v: str) -> tuple:
+    m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", v or "")
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (0, 0, 0)
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def sections(text: str) -> set[str]:
+    """CHANGELOG 里的版本段集合。"""
+    out = set()
+    for line in (text or "").splitlines():
+        m = VERSION_HEADING.match(line)
+        if m:
+            out.add(m.group("v"))
+    return out
+
+
+# --------------------------------------------------------------------------
+# 取数：本地 git / GitHub API
+# --------------------------------------------------------------------------
+
+
+def root_tags_local(root: str, repo: str) -> list[str]:
+    out = subprocess.run(["git", "-C", str(Path(root) / repo), "tag", "--list"],
+                         text=True, capture_output=True)
+    return sorted({t.strip() for t in out.stdout.splitlines() if ROOT_TAG.match(t.strip())},
+                  key=version_key, reverse=True)
+
+
+def root_tags_api(org: str, repo: str) -> list[str]:
+    raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    return sorted({t["name"] for t in data if ROOT_TAG.match(t.get("name", ""))},
+                  key=version_key, reverse=True)
+
+
+def changelog_local(root: str, repo: str, ref: str) -> str | None:
+    """ref 处的 CHANGELOG.md 原文；该 ref 的树里没有这个文件 → None。"""
+    p = subprocess.run(["git", "-C", str(Path(root) / repo), "show", f"{ref}:CHANGELOG.md"],
+                       text=True, capture_output=True)
+    if p.returncode != 0:
+        return None
+    return p.stdout
+
+
+def changelog_api(org: str, repo: str, ref: str) -> str | None:
+    return repo_meta.fetch_file(org, repo, "CHANGELOG.md", ref=ref)
+
+
+def has_unreleased_local(root: str, repo: str, highest_tag: str) -> bool:
+    """最高 tag 之后是否还有提交（= 有待发版的改动）。"""
+    if not highest_tag:
+        return True
+    out = subprocess.run(
+        ["git", "-C", str(Path(root) / repo), "rev-list", f"{highest_tag}..HEAD", "--count"],
+        text=True, capture_output=True)
+    try:
+        return int(out.stdout.strip() or "0") > 0
+    except ValueError:
+        return False
+
+
+def has_unreleased_api(org: str, repo: str, highest_tag: str) -> bool:
+    """main 的 HEAD 与最高 tag 是否同一个 commit。"""
+    if not highest_tag:
+        return True
+
+    def sha(ref: str) -> str:
+        raw = repo_meta.gh_api(f"repos/{org}/{repo}/commits/{ref}")
+        if not raw:
+            return ""
+        try:
+            return json.loads(raw).get("sha", "")
+        except json.JSONDecodeError:
+            return ""
+
+    return sha("main") != sha(highest_tag)
+
+
+# --------------------------------------------------------------------------
+# 判定
+# --------------------------------------------------------------------------
+
+
+def check_current(tags: list[str], current: str | None, unreleased: bool) -> tuple[list[str], list[str], list[str]]:
+    """T1：当前 CHANGELOG ↔ tag 双向。
+
+    → (tag 有但缺版本段, 版本段有但没 tag, 待发版段)
+
+    「版本段有而没 tag」只有一种合法情况：**待发版段**——版本号高于当前最高 tag、
+    是 CHANGELOG 里最高的一段、且仓里确实还有没发版的提交（unreleased）。
+    三个条件缺一即判为孤儿段（写了记录却没发版 / 写了永远不存在的版本）。
+    """
+    if current is None:
+        return [], [], []
+    secs = sections(current)
+    tagset = set(tags)
+    missing = [t for t in tags if t not in secs]
+    orphan = []
+    pending: list[str] = []
+    if secs - tagset:
+        highest_sec = max(secs - tagset, key=version_key)
+        highest_tag = max(tags, key=version_key) if tags else None
+        for v in sorted(secs - tagset, key=version_key):
+            if (v == highest_sec and highest_tag and unreleased
+                    and version_key(v) > version_key(highest_tag)):
+                pending.append(v)  # 待发版段：允许
+            else:
+                orphan.append(v)
+    return missing, orphan, pending
+
+
+def check_tag_snapshot(repo: str, tags: list[str], debt: set[str],
+                       fetch) -> tuple[list[str], list[str], list[str]]:
+    """T2：每个 tag 的快照里是否含自己那段。
+
+    → (新增 stale, 已在基线里的 stale, 无 CHANGELOG 可豁免的 tag)
+    """
+    new_stale: list[str] = []
+    known_stale: list[str] = []
+    exempt: list[str] = []
+    for t in tags:
+        cl = fetch(t)
+        if cl is None:
+            exempt.append(t)  # 该 tag 的树里还没有 CHANGELOG.md —— 当时就没有，非缺陷
+            continue
+        if t not in sections(cl):
+            key = f"{repo}@{t}"
+            (known_stale if key in debt else new_stale).append(key)
+    return new_stale, known_stale, exempt
+
+
+# --------------------------------------------------------------------------
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="tag ↔ CHANGELOG 版本节 对账门禁")
+    ap.add_argument("--matrix", default=str(DEFAULT_MATRIX))
+    ap.add_argument("--versions", default=str(DEFAULT_VERSIONS))
+    ap.add_argument("--debt", default=str(DEBT_FILE))
+    ap.add_argument("--root", help="各仓本地目录的父目录")
+    ap.add_argument("--org", help="联网读各仓 tag 与 CHANGELOG")
+    ap.add_argument("--selftest", action="store_true")
+    args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
+
+    if not args.root and not args.org:
+        print("❌ 必须给 --root（本地各仓目录的父目录）或 --org（联网读）")
+        return 1
+
+    versions = load_json(Path(args.versions))
+    org = args.org or load_json(Path(args.matrix)).get("defaultOrg")
+    repos = [m["repo"] for m in versions.get("modules", [])]
+    repos += [f["repo"] for f in versions.get("facades", [])]
+
+    debt_data = load_json(Path(args.debt)) if Path(args.debt).exists() else {"tags": []}
+    debt = set(debt_data.get("tags", []))
+
+    problems: list[str] = []
+    warnings: list[str] = []
+    all_new_stale: list[str] = []
+    all_known_stale: list[str] = []
+    checked = 0
+
+    for repo in repos:
+        if args.root:
+            tags = root_tags_local(args.root, repo)
+            current = changelog_local(args.root, repo, "HEAD")
+            fetch = lambda t, r=repo: changelog_local(args.root, r, t)  # noqa: E731
+            unreleased = has_unreleased_local(args.root, repo, tags[0] if tags else "")
+        else:
+            tags = root_tags_api(org, repo)
+            current = changelog_api(org, repo, "main")
+            fetch = lambda t, r=repo: changelog_api(org, r, t)  # noqa: E731
+            unreleased = has_unreleased_api(org, repo, tags[0] if tags else "")
+        if not tags:
+            problems.append(f"{repo}: 读不到任何 tag（判不了，不能当成「没有发布」）")
+            continue
+        checked += 1
+
+        missing, orphan, pending = check_current(tags, current, unreleased)
+        for t in missing:
+            problems.append(f"{repo} {t}: 已发布 tag，但 CHANGELOG 里没有该版本段"
+                            f"（tag 有 → CHANGELOG 有）")
+        for v in orphan:
+            problems.append(f"{repo} {v}: CHANGELOG 里有该版本段，但没有对应的 tag"
+                            f"（CHANGELOG 有 → tag 有）")
+        if pending:
+            warnings.append(f"{repo}: 待发版段 {pending}（尚无 tag，属正常）")
+
+        new_stale, known_stale, _exempt = check_tag_snapshot(repo, tags, debt, fetch)
+        all_new_stale.extend(new_stale)
+        all_known_stale.extend(known_stale)
+
+    if checked == 0:
+        print("❌ 一个仓都没检查到（拒绝判定：避免「全绿但什么都没查」）")
+        return 1
+
+    for k in all_new_stale:
+        problems.append(f"{k}: 该 tag 的 CHANGELOG 快照里没有它自己的版本段"
+                        f"（下游 go get 拿到的发布说明是残缺的）")
+    fixed = sorted(debt - set(all_known_stale) - set(all_new_stale))
+    for k in fixed:
+        warnings.append(f"{k}: 欠账基线里已不再 stale —— 请更新 {Path(args.debt).name}")
+
+    if all_known_stale:
+        print(f"ℹ️  存量欠账 {len(all_known_stale)} 个 tag（已发布、tag 受 ruleset 保护不能重打）：")
+        for k in sorted(all_known_stale):
+            print(f"    - {k}")
+        print("   根治办法：按 CHANGELOG-at-tag 的顺序补发补丁 tag"
+              "（gen_changelogs.py --next-version → 提交 → 打 tag）。\n")
+
+    if problems:
+        print(f"❌ tag ↔ CHANGELOG 对账失败：{len(problems)} 处\n")
+        for p in problems:
+            print(f"  - {p}")
+        return 1
+
+    for w in warnings:
+        print(f"  · {w}")
+    print(f"✅ tag ↔ CHANGELOG 对账通过：{checked} 个仓，"
+          f"当前 CHANGELOG 与已发布 tag 双向一致；tag 快照新增 stale 0 个")
+    return 0
+
+
+# ---------------------------------------------------------------- 自测
+
+
+def selftest() -> int:
+    fails = []
+
+    def check(name: str, got, want) -> None:
+        if got != want:
+            fails.append(f"{name}: 期望 {want!r}，实得 {got!r}")
+
+    # T1：tag 有但缺段 / 段有但没 tag / 待发版段
+    tags = ["v1.0.0", "v0.9.0"]
+    cur = "## [v1.0.0] — 2026-01-01\n\n## [v0.9.0] — 2026-01-01\n"
+    missing, orphan, pending = check_current(tags, cur, True)
+    check("齐全时无缺失", missing, [])
+    check("齐全时无孤儿段", orphan, [])
+    check("齐全时无待发版段", pending, [])
+
+    missing, orphan, pending = check_current(["v1.0.0", "v0.9.0"],
+                                             "## [v1.0.0] — 2026-01-01\n", True)
+    check("tag 有而段缺", missing, ["v0.9.0"])
+    check("缺段不算孤儿", orphan, [])
+
+    # 没有未发版提交时，更高的版本段是孤儿段（写了记录却没发版）
+    missing, orphan, pending = check_current(["v1.0.0"],
+                                             "## [v1.0.0] — 2026-01-01\n\n## [v1.1.0] — 2026-01-02\n",
+                                             False)
+    check("无未发版提交时多出的段是孤儿", orphan, ["v1.1.0"])
+    check("孤儿段不算 pending", pending, [])
+
+    # 有未发版提交且该段最高 → 待发版段（允许）
+    missing, orphan, pending = check_current(["v1.0.0"],
+                                             "## [v1.0.0] — 2026-01-01\n\n## [v1.1.0] — 2026-01-02\n",
+                                             True)
+    check("最高段且高于最高 tag → 待发版段", pending, ["v1.1.0"])
+    check("待发版段不算孤儿", orphan, [])
+
+    # 有未发版提交，但多出的段不是最高段 → 仍是孤儿
+    missing, orphan, pending = check_current(["v1.0.0"],
+                                             "## [v1.2.0] — 2026-01-03\n\n## [v1.1.0] — 2026-01-02\n",
+                                             True)
+    check("只有最高段算待发版段", pending, ["v1.2.0"])
+    check("非最高段仍是孤儿", orphan, ["v1.1.0"])
+
+    # T2：快照里有没有自己那段
+    def fetch(t: str) -> str | None:
+        return {
+            "v1.0.0": "## [v1.0.0] — 2026-01-01\n",
+            "v0.9.0": "## [v0.8.0] — 2025-12-01\n",   # 快照里有 CHANGELOG 但缺自己那段
+            "v0.8.0": None,                            # 快照里没有 CHANGELOG
+        }.get(t)
+
+    new_stale, known, exempt = check_tag_snapshot("x", ["v1.0.0", "v0.9.0", "v0.8.0"],
+                                                  {"x@v0.9.0"}, fetch)
+    check("基线内的 stale 记为欠账", known, ["x@v0.9.0"])
+    check("基线外的 stale 报新增", new_stale, [])
+    check("快照无 CHANGELOG 豁免", exempt, ["v0.8.0"])
+
+    new_stale, known, exempt = check_tag_snapshot("x", ["v1.0.0", "v0.9.0", "v0.8.0"],
+                                                  set(), fetch)
+    check("基线外的 stale 报新增", new_stale, ["x@v0.9.0"])
+    check("基线外的不记欠账", known, [])
+
+    if fails:
+        print("❌ verify_changelog_at_tag 自测失败：")
+        for f in fails:
+            print(f"   - {f}")
+        return 1
+    print("✅ verify_changelog_at_tag 自测通过"
+          "（双向对账 / 待发版段豁免 / 欠账基线 / 快照无 CHANGELOG 豁免）")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

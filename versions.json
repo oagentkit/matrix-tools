@@ -244,6 +244,13 @@
           "title": "重构：obsx 迁出本仓 —— eino 耦合的观测适配层该待在重仓",
           "summary": "github.com/oagentkit/obs/obsx → github.com/oagentkit/llm/obsx\nobsx 是 eino callbacks 适配层（intrinsically 绑 eino 框架）。它在本仓时，\n**langfuse 与 audit 这两个轻包被白拖 27 个第三方模块**（eino + sonic 全家）——\nGo 的依赖面按 module 结算。\n迁到 llm（本仓早已 import obsx 做成本记账与阶段打标，同一关注点）后：",
           "detail": "BREAKING CHANGE: github.com/oagentkit/obs/obsx → github.com/oagentkit/llm/obsx\nobsx 是 eino callbacks 适配层（intrinsically 绑 eino 框架）。它在本仓时，\n**langfuse 与 audit 这两个轻包被白拖 27 个第三方模块**（eino + sonic 全家）——\nGo 的依赖面按 module 结算。\n迁到 llm（本仓早已 import obsx 做成本记账与阶段打标，同一关注点）后：\n- obs 的 eino 依赖从 go.mod 消失 → langfuse / audit 只剩 logx 级别的地板\n- llm 仓的「模型调用观测」与「模型客户端」住在一起\n本仓剩两包：langfuse（Langfuse 追踪客户端）、audit（审计留痕）。\n关联 oagentkit/guardx#3\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "title": "新增(audit)：接收 guardx/audit —— 审计留痕落到本来就带 logx 的仓",
+          "summary": "包在模块之间搬家：audit → guardx/obs",
+          "detail": "自 github.com/oagentkit/guardx/audit 迁入（guardx v0.7.0 起该路径退役）。\n为什么迁到 obs：audit 依赖 oekit/logx（审计日志门面），而本仓本来就带 logx。\nguardx 是 tier 0 零依赖底层 —— 依赖面按 module 结算，那条 require 会顺着\n依赖树扩散到矩阵每一层。带重依赖的能力该待在带该依赖的仓里。\n包名与职责不变（审计留痕：结构化审计事件，字段值统一经 logredact 打码），\n只是 import 路径从 github.com/oagentkit/guardx/audit 变为\ngithub.com/oagentkit/obs/audit。\n关联 oagentkit/guardx#3\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
         }
       ],
       "depFloor": [
@@ -390,6 +397,13 @@
       ],
       "breakingIndex": [
         {
+          "version": "v0.12.0",
+          "date": "2026-10-20",
+          "title": "新增(obsx)：接收 obs/obsx —— LLM 调用观测与模型客户端住在一起",
+          "summary": "包在模块之间搬家：obsx → llm/obs",
+          "detail": "自 github.com/oagentkit/obs/obsx 迁入（obs v0.9.0 起该路径退役）。\nobsx 是 eino callbacks 适配层（绑框架），而本仓早已 import 它做成本记账与\n阶段打标 —— 同一关注点，两个包住一起更顺。迁出后 obs 仓的 eino 依赖消失，\nlangfuse / audit 两个轻包不再被白拖 27 个第三方模块。\n包名与语义不变（LLM 调用追踪 + token 用量采集 + 分阶段打标），\n只是 import 路径从 github.com/oagentkit/obs/obsx 变为\ngithub.com/oagentkit/llm/obsx。\n关联 oagentkit/guardx#3\n\n- 文档(changelog)：按远端真实 tag 重生成\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
+        },
+        {
           "version": "v0.9.0",
           "date": "2026-10-19",
           "title": "重构(llm)!：包上移至 module 根，import 路径不再重复末段",
@@ -497,7 +511,15 @@
           "url": "https://github.com/oagentkit/textx"
         }
       ],
-      "breakingIndex": [],
+      "breakingIndex": [
+        {
+          "version": "v0.10.0",
+          "date": "2026-10-19",
+          "title": "新增(bashguard)：接收 guardx/bashguard —— Shell 静态裁决落到重仓",
+          "summary": "包在模块之间搬家：bashguard → guardx/tools",
+          "detail": "自 github.com/oagentkit/guardx/bashguard 迁入（guardx v0.7.0 起该路径退役）。\n为什么迁到 tools：bashguard 依赖 mvdan.cc/sh/v3（真 shell AST 解析），guardx 是\ntier 0 零依赖底层 —— 依赖面按 module 结算，那条 require 会顺着依赖树扩散到\n矩阵每一层。带重依赖的能力该待在带该依赖的仓里；tools 本身就有「git 工作副本\n沙箱」，同属命令执行面。\n包名与语义不变（静态解析、不执行命令；解析失败/含动态词/含写重定向/含复合控制流\n一律非只读），只是 import 路径从 github.com/oagentkit/guardx/bashguard 变为\ngithub.com/oagentkit/tools/bashguard。\n关联 oagentkit/guardx#3\n\n- 文档(changelog)：补 CHANGELOG.md（从 git 历史生成）"
+        }
+      ],
       "depFloor": [
         "github.com/cloudwego/eino",
         "github.com/oekit/logx",

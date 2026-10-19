@@ -142,6 +142,17 @@ jobs:
         # 白名单过期 / 泛型类型不误报。
         run: python3 scripts/verify_facade_symbols.py --selftest
 
+      - name: breakingIndex 独立 oracle 门禁自测
+        # 反证：旧解析器（breaking_index.py）漏收的形态——粗体 **BREAKING**、
+        # 项目符号里的 BREAKING CHANGE、小写 breaking change、散文描述的
+        # import 路径搬家——独立 oracle 必须全部收得到。自测里拿旧解析器
+        # 跑同一份样本，确认它确实漏，才能证明 oracle 不是同一处盲区。
+        run: python3 scripts/verify_breaking_oracle.py --selftest
+
+      - name: tag ↔ CHANGELOG 对账门禁自测
+        # 双向一一对应 / 待发版段豁免 / 存量欠账基线 / 快照里没有 CHANGELOG 豁免。
+        run: python3 scripts/verify_changelog_at_tag.py --selftest
+
       - name: 依赖地板门禁自测
         # tier0/tier1 的地板必须为空——零依赖核心靠这条保证。
         # 这条守卫最危险的失效形态是「豁免名单写太宽」，所以自测里带了负向样本。
@@ -179,6 +190,20 @@ jobs:
 
       - name: import 路径 ↔ 各仓真实 go.mod / 包目录
         run: python3 scripts/verify_import_paths.py --org oagentkit
+
+      - name: breakingIndex ↔ 各仓 CHANGELOG（独立 oracle）
+        # 与上面那条**判据完全解耦**的第二条对账线：上面那条用生成器
+        # breaking_index.py 的解析函数，生成器漏收时它跟着一起漏、门禁全绿
+        # 而矩阵对下游说谎（oekit 与 oagentkit 都实测过这个形态）。
+        # 本条自己扫 CHANGELOG 原文判定，两者结论不一致时以本条为准。
+        run: python3 scripts/verify_breaking_oracle.py --org oagentkit
+
+      - name: tag ↔ CHANGELOG 版本节一一对应
+        # ① 当前 CHANGELOG 与已发布 tag 双向对应（tag 有 → 段有；段有 → tag 有，
+        #    唯一豁免是待发版段）；
+        # ② 每个已发布 tag 的**快照**里必须有它自己的版本段——下游 go get 拿到的
+        #    是 tag 快照，缺段 = 发布说明残缺（issue matrix-tools#17）。
+        run: python3 scripts/verify_changelog_at_tag.py --org oagentkit
 
       - name: 依赖地板（tier0/tier1 必须无重量级第三方）+ depFloor 对账
         # 一条脚本两件事：① 层位判定（tier0/tier1 地板必须为空）；

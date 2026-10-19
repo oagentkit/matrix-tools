@@ -11,15 +11,28 @@ CHANGELOG 说「import 路径已变」——入口与事实不一致，下游只
 更糟的一类：矩阵自己的 `packages[].importPath` 登记的是变更**前**的旧路径。
 机器按它写 import，直接编译不过——而 breakingIndex 若为空，连「这里变过」都查不到。
 
-## 判定「破坏性」的三条依据（任一命中即算）
+## 判定「破坏性」的四条依据（任一命中即算）
 
 1. 小节标题带 conventional commit 的叹号（`### 重构(llm)!：…`）；
 2. 小节标题里出现 `Breaking` / `BREAKING`；
-3. 小节正文里有 `BREAKING CHANGE:` / `BREAKING：` / `BREAKING:` 行。
+3. 小节正文里有 `BREAKING CHANGE:` / `BREAKING：` / `BREAKING:` 行；
+4. **同一个包名出现在 ≥2 个不同模块下**（包在模块之间搬家）。
 
 第 3 条是最可靠的一条：它由 commit body 里的 conventional commit trailer 渲染而来，
 与发版时写的语义同源。另两条是补充——有些破坏性变更的 commit 没写 trailer，
 但标题带了 `!`（发版时用 `!` 标了破坏性）。
+
+第 4 条是 2026-10-20 实测后补的：有一类破坏性变更**只写在散文里、没有显式标记**——
+`llm v0.12.0` 把 `github.com/oagentkit/obs/obsx` 迁到 `github.com/oagentkit/llm/obsx`，
+import 路径真的变了，但版本段里既没有 `BREAKING`、标题也没有 `!`，
+按前三条判定会整个漏掉 → 矩阵对下游说「无破坏性变更」→ 下游照矩阵升版直接构建断裂。
+判据是「同一个包 basename 出现在 ≥2 个不同模块前缀下」，比「出现两个路径」严：
+`queue v0.4.0` 的 `github.com/oagentkit/queue` 与 `github.com/oagentkit/queue/pglease`
+是同仓两个包，不是搬家，不能误判。
+
+**独立 oracle**：`scripts/verify_breaking_oracle.py` 用另一套判据（版本段级聚合、
+大小写不敏感的宽口径标记、跨模块搬家）重新对账，判据与本文件不相干——
+本文件漏收时那条门禁必须能报出来。
 
 ## 边界
 
@@ -58,6 +71,25 @@ BANG_IN_TITLE = re.compile(r"[a-zA-Z]!|!\s*[：:]")
 # （`### Breaking：…`）。散文里提到 breaking（`### 修复：修 breaking change 的说明`）
 # 不算——否则每条「解释破坏性变更」的修复说明都会被误判成破坏性变更。
 BREAKING_IN_TITLE = re.compile(r"^breaking\b", re.IGNORECASE)
+
+# 一方模块的包路径：github.com/oagentkit/<模块>/<包>
+OAGENT_PATH = re.compile(r"github\.com/oagentkit/([A-Za-z0-9_.\-/]+)")
+
+
+def _moved_packages(body: list[str]) -> dict[str, list[str]]:
+    """同一个包 basename 出现在 ≥2 个不同模块前缀下 → 该包在模块之间搬家。
+
+    比「出现两个路径」严：同仓两个包（queue 与 queue/pglease）不是搬家。
+    """
+    by: dict[str, set[str]] = {}
+    for line in body:
+        for m in OAGENT_PATH.finditer(line):
+            path = m.group(1).rstrip(".,，。；;）)")
+            parts = path.split("/")
+            if len(parts) < 2:
+                continue
+            by.setdefault(parts[-1], set()).add(parts[0])
+    return {k: sorted(v) for k, v in by.items() if len(v) >= 2}
 
 
 def _sections(text: str) -> list[dict]:
@@ -118,6 +150,9 @@ def _is_breaking(title: str, body: list[str]) -> tuple[bool, str]:
             # （runtime 的 BREAKING：… 后跟着两行缩进给出迁移写法）
             summary = [m.group("text").rstrip()]
             return True, "\n".join(summary).strip()
+    # 第 4 条依据：包在模块之间搬家（散文形态，无显式 trailer）
+    if _moved_packages(body):
+        return True, ""
     return False, ""
 
 
@@ -156,10 +191,15 @@ def extract(text: str) -> list[dict]:
                 continue
             summary = _summary_with_continuation(body)
             detail = "\n".join(body).strip()
-            # 没有 trailer 行时（标题带 `!` 的那种），摘要退回标题——
+            # 没有 trailer 行时（标题带 `!` 或散文形态的搬家），摘要退回标题——
             # 空摘要对机器读者等于「有变更但说不清是什么」。
             if not summary:
-                summary = title
+                moved = _moved_packages(body)
+                if moved:
+                    summary = "包在模块之间搬家：" + ", ".join(
+                        f"{k} → {'/'.join(v)}" for k, v in sorted(moved.items()))
+                else:
+                    summary = title
             entries.append({
                 "version": sec["version"],
                 "date": sec["date"],
@@ -250,12 +290,30 @@ def selftest() -> int:
     check("空文件", extract(""), [])
     check("无版本段", extract("# demo\n\n随便写点什么\n"), [])
 
+    # 第 4 条依据：散文形态的「包在模块之间搬家」——没有 BREAKING、没有 `!`
+    moved = extract(
+        "## [v0.12.0] — 2026-10-20\n\n"
+        "### 新增(obsx)：接收 obs/obsx\n\n"
+        "自 github.com/oagentkit/obs/obsx 迁入。import 路径从\n"
+        "github.com/oagentkit/obs/obsx 变为 github.com/oagentkit/llm/obsx。\n"
+    )
+    check("散文搬家被收", len(moved), 1)
+    if moved:
+        check("搬家摘要", "搬家" in moved[0]["summary"], True)
+    # 负向样本：同仓两个包不是搬家
+    same_repo = extract(
+        "## [v0.4.0] — 2026-10-20\n\n"
+        "### 新增：queue 仓建立\n\n"
+        "收编 2 个包：\n- github.com/oagentkit/queue\n- github.com/oagentkit/queue/pglease\n"
+    )
+    check("同仓两包不误判", len(same_repo), 0)
+
     if fails:
         print("❌ breaking_index 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ breaking_index 自测通过（三种判定依据 + 负向样本 + 非版本段边界）")
+    print("✅ breaking_index 自测通过（四条判定依据 + 负向样本 + 非版本段边界）")
     return 0
 
 
