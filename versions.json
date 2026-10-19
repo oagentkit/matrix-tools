@@ -12,7 +12,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": null,
+      "latest": "v0.4.0",
       "packages": [
         {
           "pkg": "textutil",
@@ -52,7 +52,7 @@
       "repo": "runtime",
       "url": "https://github.com/oagentkit/runtime",
       "tier": 0,
-      "latest": null,
+      "latest": "v0.6.0",
       "packages": [
         {
           "pkg": "pacer",
@@ -87,7 +87,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.4.0",
+      "latest": "v0.4.1",
       "packages": [
         {
           "pkg": "fence",
@@ -211,7 +211,7 @@
       "repo": "skillkit",
       "url": "https://github.com/oagentkit/skillkit",
       "tier": 1,
-      "latest": "v0.6.0",
+      "latest": "v0.6.1",
       "packages": [
         {
           "pkg": "skill",
@@ -323,7 +323,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.9.0",
+      "latest": "v0.10.0",
       "packages": [
         {
           "pkg": "toolprior",
@@ -358,7 +358,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.7.0",
+      "latest": "v0.7.1",
       "packages": [
         {
           "pkg": "acpx",
@@ -401,7 +401,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.8.0",
+      "latest": "v0.9.1",
       "packages": [
         {
           "pkg": "agentrun",

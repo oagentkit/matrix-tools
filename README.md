@@ -21,6 +21,7 @@ oagentkit 模块矩阵的自动化仓 —— 生成、审计、改写、发布�
 | `scripts/verify_docs.py` | **防漂移**：重新生成 `llms.txt` 与提交版比对，不一致 exit 1（`--fix` 直接覆盖） |
 | `scripts/verify_repo_docs.py` | **防抹除**：检测各仓 README/AGENTS 与 `gen_docs.py` 输出的差异（只报告，不提供 `--fix`） |
 | `scripts/check_facade_imports.py` | **退役守卫**：扫描下游是否仍 import 门面仓/旧 module，命中 exit 1 |
+| `scripts/verify_dep_floors.py` | **地板漂移报告器**：各仓 `go.mod` 的第一方依赖地板 vs 远端最新 tag（`--enforce` 发版前自检 / `--json` 机器可读 / `--selftest` 离线自测）。**默认恒 exit 0**——漂移是常态，硬门禁会逼出发版跑步机 |
 | `scripts/publish_repo.sh` | ⚠️ **已消费**，拆分期的一次性引导脚本（硬编码 v0.1.0 tag），保留仅为记录门禁顺序与踩坑注释 |
 
 > ⚠️ `gen_docs.py` 只生成各仓文档的**骨架**。生成后有人手写补充了大量内容
@@ -67,6 +68,39 @@ python3 scripts/gen_docs.py llm rag    # 指定仓
 python3 scripts/create_repos.py
 python3 scripts/create_repos.py --apply
 ```
+
+## 依赖地板漂移
+
+「子依赖发版时只动了自己的 `go.mod`、没回头抬本仓 `require`」是一类会复发的漂移：
+后果不是编译失败，而是 MVS 被旧地板压住——以本仓为入口的消费方自己 require 了新版，
+最终拿到的仍是旧版本。
+
+`oagentkit/agent#8` 与 `oagentkit/toolgate#10` 是同一类漂移的两份报告。
+
+```bash
+# 报告全矩阵漂移（默认恒 exit 0，只让漂移可见）
+python3 scripts/verify_dep_floors.py
+
+# 只看一个仓 / 查某个已发布 tag 的地板
+python3 scripts/verify_dep_floors.py --repo agent
+python3 scripts/verify_dep_floors.py --ref v0.9.0
+
+# 发版前自检：有漂移则 exit 1
+python3 scripts/verify_dep_floors.py --enforce
+
+# 守卫自测（离线，不联网）
+python3 scripts/verify_dep_floors.py --selftest
+```
+
+**为什么不做成硬门禁**：任何一次子仓发版都会让所有下游变落后。硬门禁等于要求每个仓
+在每次子仓发版后都跟着发一版，长期只会训练出「红了就加豁免」的习惯。所以判定放在
+`--enforce` 供发版 runbook 手动用，CI 里跑的是**报告器**（`dep-floors` job，
+`continue-on-error`，且不挂 `pull_request`）。
+
+> ⚠️ 取最新 tag 用 `gh api repos/{owner}/{repo}/tags`，**不要用 `go list -m -versions`**：
+> 后者报的是 proxy 的缓存目录而非远端现实（实测 `oagentkit/agent` 会列出远端已删的
+> v0.1.0～v0.5.0，`oekit/pkg` 会列出不存在的 v0.9.2）。要确认真相用
+> `git ls-remote --tags`。
 
 ## verify_split 校验什么
 

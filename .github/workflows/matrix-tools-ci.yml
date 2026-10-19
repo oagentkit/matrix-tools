@@ -96,6 +96,59 @@ jobs:
         # （agentkit@v1.2.0 的 go.mod 把 13 个内部依赖全钉在 v0.1.0）。
         run: python3 scripts/verify_facade_release.py --selftest
 
+      - name: 依赖地板守卫自测
+        # 这条守卫有过一次真实的静默失效：owner/repo 拆分把 owner 拼成
+        # "github.com/oagentkit"，于是每个依赖都查不到 tag，报告里 43 条
+        # 全是「判不了」却照样 exit 0 —— 一直绿、从没生效过。
+        # 所以它的判据纯函数部分必须离线可测，不能只靠联网跑一次。
+        run: python3 scripts/verify_dep_floors.py --selftest
+
+  dep-floors:
+    name: Dep floors (report)
+    # ⚠️ 这是**报告器**，不是门禁，恒不失败。
+    #
+    # 依赖地板漂移在设计上就是常态：任何一次子仓发版都会让下游全部变落后。
+    # 做成硬门禁等于要求每个仓在每次子仓发版后都跟着发一版，这是发版跑步机，
+    # 长期只会训练出「红了就加豁免」的习惯。漂移的**判定**放在
+    # `--enforce`（发版 runbook 手动跑），这里只负责让漂移**可见**。
+    #
+    # 只在 push 到 main / 定时 / 手动时跑，不挂 pull_request：
+    # PR 上的全矩阵漂移是既成事实，反复报只会变成噪音，PR 还要多等一分钟。
+    #
+    # 复发背景：oagentkit/agent#8、oagentkit/toolgate#10 是同一类漂移的两份
+    # 报告（子依赖发版只动自己 go.mod，没回头抬本仓 require），两份 issue
+    # 都建议加一条对齐检查来阻断复发——本 job 就是那条检查的常驻形态。
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 第一方依赖地板 vs 远端最新
+        # 需要 gh 已认证（上面的 GH_TOKEN），且要联网读 tag——
+        # 与 drift job 的离线校验不同，故分开成独立 job。
+        continue-on-error: true
+        run: python3 scripts/verify_dep_floors.py
+
+      - name: 漂移清单（机器可读）
+        continue-on-error: true
+        run: python3 scripts/verify_dep_floors.py --json > dep-floors.json
+
+      - name: 上传漂移清单
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dep-floors
+          path: dep-floors.json
+
   drift:
     name: versions.json drift
     # modules.json 是单一数据源，versions.json 是它的生成物。
