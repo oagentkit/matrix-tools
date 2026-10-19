@@ -159,6 +159,14 @@ jobs:
         # 自测覆盖：取 T 时刻之前的最新 / T 之后发布的不算账 / 取不到即报。
         run: python3 scripts/verify_tag_floor.py --selftest
 
+      - name: CHANGELOG 生成器自测（预写→提交→打 tag 端到端自洽）
+        # 生成器最危险的失效形态是「看起来生成了正确的文件，但与事后重生成
+        # 的结果不一致」——不跑完整流程发现不了，而后果是 .github 的
+        # 「各仓 CHANGELOG 未过期」门禁永远红、且越修越红。
+        # 自测跑完整流程（临时 git 仓），要求事后重生成与提交版逐字节一致，
+        # 且覆盖「直推打 tag」与「走 PR 打 tag」两种发版打法。
+        run: python3 scripts/gen_changelogs.py --selftest
+
       - name: 依赖地板门禁自测
         # tier0/tier1 的地板必须为空——零依赖核心靠这条保证。
         # 这条守卫最危险的失效形态是「豁免名单写太宽」，所以自测里带了负向样本。
@@ -211,17 +219,6 @@ jobs:
         #    是 tag 快照，缺段 = 发布说明残缺（issue matrix-tools#17）。
         run: python3 scripts/verify_changelog_at_tag.py --org oagentkit
 
-      - name: 发版时刻的依赖地板时效（各仓最新 tag）
-        # 与上面的「当前地板 vs 当前最新」不同：这条按**发版时刻**回看，
-        # 判「这个 tag 打出来时地板就已经落后」——llm v0.12.0/v0.12.1 就是这类
-        # （textx v0.6.0、oekit/pkg v0.16.0 在发版前 75 分钟就已发布，地板没跟）。
-        # 时间口径保证不会误伤「依赖在发版之后才发布」的情况。
-        # 只判各仓**最新** tag：2026-10-19 那次全量 tag 重写把一批历史 tag 的
-        # 日期改成同一时刻，用它们回看「当时最新」已不可信（实测会多出 100+ 条
-        # 历史噪声）。已知的 4 个欠账记在 scripts/tag_floor_debt.json，
-        # 基线外的新增 = 硬失败。
-        run: python3 scripts/verify_tag_floor.py --org oagentkit --latest-only
-
       - name: 依赖地板（tier0/tier1 必须无重量级第三方）+ depFloor 对账
         # 一条脚本两件事：① 层位判定（tier0/tier1 地板必须为空）；
         # ② 对账——矩阵 versions.json 登记的 depFloor 必须等于各仓真实
@@ -230,16 +227,16 @@ jobs:
 
   release-floor:
     name: Release floor (发版时刻的地板时效)
-    # 单独一个 job，不塞进 matrix-truth：那里「tag ↔ CHANGELOG」要拉 100+ 个
+    # 单独一个 job，不塞进 matrix-truth：那边「tag ↔ CHANGELOG」要拉 100+ 个
     # tag 快照，已经吃掉 job 的大部分时间预算，两个慢步骤叠在一起会双双超时
-    # ——超时是「判不了」，不是「判过」，必须让它们各自有独立的预算与结论。
+    # ——超时是「判不了」不是「判过」，必须让它们各自有独立的预算与结论。
     #
     # 判的是「这个 tag 打出来时地板就已经落后」：llm v0.12.0/v0.12.1 就是这类
     # （textx v0.6.0、oekit/pkg v0.16.0 在发版前 75 分钟就已发布，地板没跟）。
     # 时间口径保证不会误伤「依赖在发版之后才发布」的情况。
     # 只判各仓**最新** tag：2026-10-19 那次全量 tag 重写把一批历史 tag 的日期
     # 改成同一时刻，用它们回看「当时最新」已不可信（实测会多出 100+ 条历史噪声）。
-    # 已知的 4 个欠账记在 scripts/tag_floor_debt.json，基线外的新增 = 硬失败。
+    # 已知的欠账记在 scripts/tag_floor_debt.json，基线外的新增 = 硬失败。
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

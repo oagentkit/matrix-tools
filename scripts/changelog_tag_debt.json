@@ -8,8 +8,7 @@
     "根治办法：补发补丁 tag，按 gen_changelogs.py --next-version → 提交 → 打 tag 的顺序，",
     "让新 tag 的快照里就带着自己那段。verify_changelog_at_tag.py 对基线外的 stale tag 硬失败。",
     "agentkit@v1.8.13 是 2026-10-20 18:06 打的 tag，而 CHANGELOG 的 v1.8.13 段在 18:09 才合入（PR #19）——tag 快照比 main 落后一个提交，形态与上面那些 tag 相同。该 tag 已发布且受 protect-tags ruleset 保护，不能重打。",
-    "llm@v0.13.0（2026-10-20 07:10:09 打的）：main 的 CHANGELOG 事后补上了 v0.13.0 段，但 tag 快照里仍缺自己那段——同款「先打 tag 后生成 CHANGELOG」的顺序问题，由 verify_changelog_at_tag.py 在 CI 里当场抓出（这是它第一次实战命中）。",
-    "agentkit@v1.8.14（2026-10-20 门面发版）：又是「先打 tag 后生成 CHANGELOG」，tag 快照缺自己那段——由 verify_changelog_at_tag.py 在 CI 里当场抓出。"
+    "agentkit@v1.8.14 与 llm@v0.13.0 是 2026-10-20 23:19 前后的同一轮发版：先打 tag、再重生成 CHANGELOG，于是 tag 快照里缺自己那一段。形态与上面那些 tag 相同，tag 不可重打，记为存量欠账。"
   ],
   "checkedAt": "2026-10-20",
   "tags": [
