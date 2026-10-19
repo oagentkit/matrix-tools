@@ -185,6 +185,12 @@ def main() -> int:
     else:
         L.append("- **import 路径不是纯前缀映射**：旧单仓迁新矩阵时中间层目录会被丢掉，"
                  "按「仓库名 + 完整旧路径」拼会直接构建断裂。")
+    L.append("- **`guardx/audit` 与 `guardx/bashguard` 已迁出**（guardx v0.7.0）："
+             "`github.com/oagentkit/obs/audit`（依赖 oekit/logx）、"
+             "`github.com/oagentkit/tools/bashguard`（依赖 mvdan.cc/sh/v3）。"
+             "guardx 回到**一个 module、一条版本线、零外部依赖**的 tier0 底座 —— "
+             "Go 的依赖面按 module 结算：只 import `guardx/logredact` 的下游，"
+             "模块图里不该多出任何第三方依赖。旧路径的嵌套 module tag 仍在但**已冻结**。")
     L.append("- **`progress` 撞名但语义相反**：`oekit/concurrency/progress` 是长任务**阶段进度追踪器**，"
              "而 `oagentkit/runtime/progress` 是泛型**事件总线**。按包名对齐会做错。")
     L.append("- **`pacer` ≠ `ratelimit`**：前者是聚合缓冲（攒够窗口再发），后者是准入控制。")
