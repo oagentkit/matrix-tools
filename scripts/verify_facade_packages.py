@@ -72,6 +72,13 @@ _ALIAS_IMPORT_RE = re.compile(r'import\s+upstream\s+"(?P<path>[^"]+)"')
 _IMPORT_PATH_RE = re.compile(
     r"^github\.com/(?P<org>[^/]+)/(?P<repo>[^/]+)(?P<rest>/.*)?$"
 )
+# MIGRATION.md 的映射行：| `旧包` | `新模块` | `新 import 路径` |
+# 退役行的第二列是 **已退役**（不是反引号包名），所以第二列用宽松匹配。
+_MIGRATION_ROW_RE = re.compile(
+    r"^\|\s*`(?P<old>[a-z0-9/]+)`\s*\|\s*(?P<mid>[^|]+?)\s*\|\s*`(?P<new>[^`]+)`\s*\|",
+    re.M,
+)
+_RETIRED_MARK = "已退役"
 
 
 def matrix_packages(matrix_path: Path) -> dict[str, set[str]]:
@@ -96,6 +103,84 @@ def facade_packages(facade_path: Path) -> dict[str, str]:
             continue
         found[alias.parent.name] = m.group("path")
     return found
+
+
+def migration_map(facade_path: Path) -> dict[str, dict]:
+    """MIGRATION.md 的映射表 → {包名(末段): {module, path, retired, old}}。
+
+    ## 为什么按**末段**归集
+
+    旧单仓里包路径是嵌套的（`llm/llmtest`、`worker/pglease`、`knowledge/rag`），
+    而门面仓的**目录名是末段**（`llmtest/`、`pglease/`、`rag/`）——
+    拆分时的 import 改写规则就是「包名一律保留，只加模块前缀」。
+    所以比对必须按末段，��按整条旧路径。
+
+    ## 为什么要有这个解析
+
+    迁移映射表是**下游唯一的迁移指引**（「照表逐包替换」）。
+    实测 2026-10-21：门面的 `port` 包（转发 llm/port 的 51 个符号）
+    早就存在，MIGRATION.md 却**漏了这一行**——下游照表逐包替换会漏掉它，
+    而 llm 是 tier2 重依赖仓，漏掉等于把重依赖拉回来。
+
+    而当时**没有任何门禁**读 MIGRATION.md：
+    `verify_facade_packages.py` 只比目录与 modules.json，`verify_facade_symbols.py`
+    只比符号。于是这行漏了多久就错了多久。
+    """
+    out: dict[str, dict] = {}
+    mig = facade_path / "MIGRATION.md"
+    if not mig.is_file():
+        return out
+    text = mig.read_text(encoding="utf-8")
+    for m in _MIGRATION_ROW_RE.finditer(text):
+        mid = m.group("mid").strip().strip("`").strip()
+        old = m.group("old")
+        out[old.split("/")[-1]] = {
+            "module": mid,
+            "path": m.group("new"),
+            "retired": _RETIRED_MARK in m.group("mid"),
+            "old": old,
+        }
+    return out
+
+
+def check_migration_map(facade: dict[str, str], migration: dict[str, dict]) -> list[dict]:
+    """迁移映射表 ↔ 门面实际转发的一致性。返回问题列表。
+
+    三条判据：
+    1. 门面的每个包，MIGRATION.md 里都要有迁移行（否则下游不知道往哪迁）
+    2. MIGRATION.md 的每个**活包**行，门面上都要有对应转发（否则是空指引）
+    3. 行的目标 import 路径要与 alias.go 的 upstream 一致（否则表与实现漂移）
+    """
+    problems: list[dict] = []
+    if not migration:
+        problems.append({"kind": "no-map", "package": "-", "repo": "-",
+                         "detail": "门面仓没有 MIGRATION.md，或表里一行映射都解析不到"})
+        return problems
+
+    for name, path in sorted(facade.items()):
+        row = migration.get(name)
+        if row is None:
+            problems.append({"kind": "map-missing", "package": name, "repo": "-",
+                             "detail": f"门面包 {name} 在 MIGRATION.md 里没有迁移行"
+                                       f"（下游照表逐包替换会漏掉它）"})
+            continue
+        if row["retired"]:
+            problems.append({"kind": "map-retired", "package": name, "repo": "-",
+                             "detail": f"门面包 {name} 仍转发着，但 MIGRATION.md 把它标成已退役"})
+            continue
+        if row["path"] != path:
+            problems.append({"kind": "map-drift", "package": name, "repo": "-",
+                             "detail": f"MIGRATION.md 说 {name} → {row['path']}，"
+                                       f"而 alias.go 实际转发 {path}"})
+
+    for old, row in sorted(migration.items()):
+        if row["retired"]:
+            continue
+        if old not in facade:
+            problems.append({"kind": "map-orphan", "package": old, "repo": "-",
+                             "detail": f"MIGRATION.md 有 {row.get('old', old)} 的映射，"
+                                       "但门面上没有对应转发"})
+    return problems
 
 
 def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str]) -> list[dict]:
@@ -225,6 +310,46 @@ def _selftest() -> int:
     check_ok("数量相同但集合缺也要报",
              any(p["kind"] == "missing" and p["package"] == "invoke" for p in probs), True)
 
+    # 7. 迁移映射表 ↔ 实际转发的一致性
+    full_map = {
+        "textutil": {"module": "textx", "path": "github.com/oagentkit/textx/textutil", "retired": False},
+        "diffx": {"module": "textx", "path": "github.com/oagentkit/textx/diffx", "retired": False},
+        "llm": {"module": "llm", "path": "github.com/oagentkit/llm", "retired": False},
+        "llmtest": {"module": "llm", "path": "github.com/oagentkit/llm/llmtest", "retired": False},
+        "rag": {"module": "rag", "path": "github.com/oagentkit/rag", "retired": False},
+        "fence": {"module": "guardx", "path": "github.com/oagentkit/guardx/fence", "retired": False},
+        "injectband": {"module": "guardx", "path": "github.com/oagentkit/guardx/injectband", "retired": False},
+        "invoke": {"module": "toolgate", "path": "github.com/oagentkit/toolgate/invoke", "retired": False},
+        "policy": {"module": "toolgate", "path": "github.com/oagentkit/toolgate/policy", "retired": False},
+    }
+    check_ok("映射表完整时无问题", check_migration_map(facade_full, full_map), [])
+
+    # 7a. **线上真实形态**：门面有 port，MIGRATION.md 漏了它
+    facade_with_port = dict(facade_full)
+    facade_with_port["port"] = "github.com/oagentkit/llm/port"
+    kinds = {(p["kind"], p["package"]) for p in check_migration_map(facade_with_port, full_map)}
+    check_ok("门面包缺迁移行被判出", ("map-missing", "port") in kinds, True)
+
+    # 7b. 映射表指向门面没有的包（空指引）
+    orphan = dict(full_map)
+    orphan["ghost"] = {"module": "llm", "path": "github.com/oagentkit/llm/ghost", "retired": False}
+    kinds = {(p["kind"], p["package"]) for p in check_migration_map(facade_full, orphan)}
+    check_ok("空映射被判出", ("map-orphan", "ghost") in kinds, True)
+
+    # 7c. 表与实现漂移：行的目标路径与 alias.go 不一致
+    drifted = dict(full_map)
+    drifted["textutil"] = {"module": "textx", "path": "github.com/oagentkit/textx/textutil2",
+                            "retired": False}
+    kinds = {(p["kind"], p["package"]) for p in check_migration_map(facade_full, drifted)}
+    check_ok("表与实现漂移被判出", ("map-drift", "textutil") in kinds, True)
+
+    # 7d. 退役行不该要求门面有对应转发
+    with_retired = dict(full_map)
+    with_retired["breaker"] = {"module": "已退役", "path": "github.com/oekit/concurrency/breaker",
+                                "retired": True}
+    kinds = {(p["kind"], p["package"]) for p in check_migration_map(facade_full, with_retired)}
+    check_ok("退役行不误报", any(k[0] in ("map-orphan", "map-missing") for k in kinds), False)
+
     if failures:
         print("❌ verify_facade_packages 自测失败：")
         for f in failures:
@@ -263,6 +388,8 @@ def main() -> int:
     matrix_pkgs = matrix_packages(matrix_path)
     facade = facade_packages(facade_path)
     problems = check(matrix_pkgs, facade)
+    # 迁移映射表的一致性：下游唯一的迁移指引，必须与实际转发一一对应
+    problems += check_migration_map(facade, migration_map(facade_path))
 
     if args.as_json:
         print(json.dumps({"facade_packages": len(facade),

@@ -364,6 +364,23 @@ def pending_version(repo_dir: Path, repo: str) -> str | None:
         return top
     return None
 
+def resolve_next_version(repo_dir: Path, repo: str, requested: str | None = None) -> tuple[str | None, bool]:
+    """决定重生成时用哪个版本号作为「待发版段」。→ (版本号, 是否自动识别到的)。
+
+    抽成独立函数是为了让**主流程与自测走同一条路**——
+    自测里直接调 main() 会牵扯 argparse，而这条规则本身很容易被改坏。
+
+    规则：
+    - 显式给了 `--next-version` → 用它（调用者明确要写哪一段）。
+    - 没给 → **自动识别提交版里已有的待发版段**（预写了但还没打 tag 的那一段），
+      保住它。无参重生成因此**不会吞掉别人的预写成果**。
+    """
+    if requested:
+        return requested, False
+    detected = pending_version(repo_dir, repo)
+    return detected, bool(detected)
+
+
 def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
     # 区间必须**升序**计算：tag 区间的定义是「上一个更旧的 tag .. 这个 tag」。
     # 若从最新 tag 倒着算，prev=None 会退化成「该 tag 的全部可达历史」，
@@ -659,6 +676,32 @@ def selftest() -> int:
                 sys.argv = saved
             check("待发版段: --check 在有预写段时通过（不因预写段而红）", rc, 0)
 
+            # ── F4 反证：无参重生成**不得吞掉**待发版段 ──
+            # 实测踩过的真实事故：agent 的 v0.10.1 预写段被一次「按新生成器规则
+            # 重生成」的提交删掉（距上一个重生成提交只隔 17 分钟），
+            # 后果是「Go 地板降到 1.24」这个改动**既没有 tag 也没有 CHANGELOG 段**，
+            # 而 4 道门禁同时全绿——因为它们从提交版里找待发版段，段没了就无对象可比。
+            #
+            # 判据：无参重生成后，CHANGELOG 里**仍然有**那一段。
+            saved_argv = sys.argv
+            sys.argv = ["gen_changelogs.py", "--repo", "demo", "--root", str(repo.parent)]
+            buf3 = _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(buf3):
+                    rc3 = main()
+            finally:
+                sys.argv = saved_argv
+            written = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+            check("重生成护栏: 无参重生成后待发版段仍在", "## [v0.2.0]" in written, True)
+            check("重生成护栏: 无参重生成 exit 0", rc3, 0)
+            check("重生成护栏: 提示了「保留待发版段」", "保留待发版段" in buf3.getvalue(), True)
+            # 显式指定别的版本号时，以显式为准（调用者明确要写哪一段）
+            nv, detected = resolve_next_version(repo, "demo", "v0.9.9")
+            check("重生成护栏: 显式 --next-version 优先", (nv, detected), ("v0.9.9", False))
+            # 自动识别路径
+            nv2, detected2 = resolve_next_version(repo, "demo")
+            check("重生成护栏: 自动识别待发版段", (nv2, detected2), ("v0.2.0", True))
+
             # ⚠️ 反证②：--check 失败时**必须指出差在哪**——
             # 只说「已过期」会把排查带偏（不知道是哪个版本段、差哪几行）。
             #
@@ -940,13 +983,10 @@ def main() -> int:
         return 1
 
     out = Path(args.out) if args.out else repo_dir / "CHANGELOG.md"
-    next_version = args.next_version
-    if args.check and not next_version:
-        # check 模式：自动识别「待发版段」（预写了但还没打 tag 的那一段）。
-        # 不带上它 ⇒ 预写段在重生成结果里不存在 ⇒ 门禁在「预写→打 tag」之间
-        # **必然红**（实测 2026-10-20：agent / mcpkit / obs / promptx / queue /
-        # rag / skillkit 七仓同时红）。这不是缺陷，是发版流程本身的要求。
-        next_version = pending_version(repo_dir, args.repo)
+    next_version, auto_detected = resolve_next_version(repo_dir, args.repo, args.next_version)
+    if auto_detected and not args.check:
+        print(f"ℹ️  {args.repo}: 保留待发版段 {next_version}"
+              "（无参重生成不会吞掉预写段；要放弃它请显式传 --next-version）")
     content = render(repo_dir, args.repo, next_version)
 
     if args.check:

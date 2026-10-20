@@ -2,7 +2,7 @@
   "note": "门面包集合的冻结快照——门面仓已废弃，不得再长出新包（判据单向：门面的实际包集合 ⊆ 本基线）",
   "why": [
     "门面包集合的**冻结快照**。门面仓 oagentkit/agentkit 已废弃——README 首行「门面仓 · 已废弃」，",
-    "「状态：v1.x 退役条件**已满足**。本仓不接受任何新功能，只做别名转发与安全修复」（门面 README 的状态行至今仍写「当前 v1.8.20」，而门面实际最新 tag 已是 v1.8.21——门面的包集合在 v1.8.20 → v1.8.21 之间**没变**，仍是 48 个包）。",
+    "「状态：v1.x 退役条件**已满足**。本仓不接受任何新功能，只做别名转发与安全修复」（门面 README 的状态行已随 PR #38 更新到「当前 v1.8.21」，与实际最新 tag 一致——门面的包集合在 v1.8.20 → v1.8.21 之间**没变**，仍是 48 个包）。",
     "所以门面的语义是「只保留既有兼容面」，而**新增包**正是门面继续长胖的主要形态——",
     "「不许再引门面」有机器约束（check_facade_imports.py），「门面不得长新包」此前**一条机器约束都没有**：",
     "有人往门面加一个新包目录 + 一批别名，CI 全绿。",
@@ -28,7 +28,20 @@
     "反向不查：上游模块真删包时，门面跟着删是对的（否则 alias.go 指向已不存在的包，编译不过）。",
     "",
     "**基线不是「放过」清单，是「已确认的既有兼容面」清单**——",
-    "它记录的是「门面活着时向存量下游承诺过的那 48 个包」，不是「随便放过的包」。"
+    "它记录的是「门面活着时向存量下游承诺过的那 48 个包」，不是「随便放过的包」。",
+    "",
+    "—— 2026-10-21 增补：已知例外与合规面分开登记 ——",
+    "新增 `knownExceptions` 段：这三个包是在**废弃声明之后**才加进门面的，",
+    "而 2026-10-20 取样时它们已经在基线里 ⇒ 冻结门禁对它们**免疫**（它只知道「包在集合里」）。",
+    "规则级门禁 `verify_facade_no_new_packages.py`（判据取自 README 的废弃声明 + git 历史，",
+    "不依赖本快照）把它们判为「废弃后新增」。",
+    "",
+    "它们之所以保留，是**兼容面维护**而非「新增功能」：",
+    "  - injectband：guardx 的新包，下游可能已按门面路径引用；",
+    "  - invoke：自 toolgate 迁到 guardx，门面要保住旧路径 `toolgate/invoke`；",
+    "  - port：llm 的无 eino 窄接口层，门面转发 51 个符号。",
+    "把「已知例外」与「合规面」在数据上分开，是为了让冻结门禁不再把违规和合规混在一起——",
+    "此后任何**新的**废弃后新增包都会同时被两条门禁判红。"
   ],
   "frozenAt": "2026-10-20",
   "facadeRepo": "oagentkit/agentkit",
@@ -39,7 +52,8 @@
     "module": "拥有该包的 Go module 在 org 内的路径（仓根 module 取仓名，如 tools / llm / queue）",
     "package": "包名 = 门面目录名 = 上游 import 路径的末段（如 llmtest）",
     "upstream": "门面 alias.go 里 `import upstream \"...\"` 的完整路径——冻结的是**转发目标**本身：改指新上游 = 门面又长出一张新脸",
-    "例子": "{\"module\": \"llm\", \"package\": \"llmtest\", \"upstream\": \"github.com/oagentkit/llm/llmtest\"} 读作「llm 模块下的 llmtest 包，门面转发到 github.com/oagentkit/llm/llmtest」"
+    "例子": "{\"module\": \"llm\", \"package\": \"llmtest\", \"upstream\": \"github.com/oagentkit/llm/llmtest\"} 读作「llm 模块下的 llmtest 包，门面转发到 github.com/oagentkit/llm/llmtest」",
+    "knownExceptions": "[{package, addedIn, reason}]——**废弃声明之后**才加进门面、但因存量下游兼容需要而保留的包。与 packages（废弃之前就存在的合规兼容面）分开登记。"
   },
   "packages": [
     {
@@ -281,6 +295,23 @@
       "module": "llm",
       "package": "wrap",
       "upstream": "github.com/oagentkit/llm/wrap"
+    }
+  ],
+  "knownExceptions": [
+    {
+      "package": "injectband",
+      "addedIn": "135ab65b",
+      "reason": "guardx 的包，下游可能已按门面路径引用；属兼容面维护，不是新功能。"
+    },
+    {
+      "package": "invoke",
+      "addedIn": "135ab65b",
+      "reason": "自 toolgate/invoke 迁至 guardx/invoke，门面需保住旧 import 路径不断。"
+    },
+    {
+      "package": "port",
+      "addedIn": "ddb4149",
+      "reason": "llm 的无 eino 窄接口层，门面转发其 51 个导出符号。"
     }
   ]
 }

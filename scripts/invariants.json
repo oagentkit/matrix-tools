@@ -1,0 +1,667 @@
+{
+  "note": "矩阵的**不变量登记表**：每条不变量 = 一条机器可判的承诺 + 判据脚本 + CI 接线。",
+  "why": [
+    "本表的存在理由是一句反复出现的话：「文档承诺由脚本强制校验」≠「实际有脚本在强制校验」。",
+    "实测过的三个形态：",
+    "  ① profile README 写「tier 不变量由 verify_split.py 在每次拆分/发版时强制校验」",
+    "     —— 该脚本**没被任何 CI 引用**，且它读的数据路径在当前布局下已不存在；",
+    "  ② 门面 README 写「本仓不接受任何新功能」—— 当时只有事后快照守卫，",
+    "     而快照把违规包吸收进基线后，违规对守卫完全免疫；",
+    "  ③ 矩阵源 versions.json 的 latest 字段—— drift 门禁明确忽略它，而全 CI 无人在查。",
+    "三者同一个根因：**承诺与接线之间没有任何登记与核对**。",
+    "",
+    "所以本表把每条不变量的三件事登记在一起：**判据在哪、谁在跑、什么条件下跑**。",
+    "缺任何一件，verify_inventory.py 会判红。",
+    "",
+    "新增不变量的流程：先在本表登记 → 写判据脚本 → 接进 CI → 跑 verify_inventory.py 通过。",
+    "顺序反了会被门禁拦住（这是刻意的：先接线再登记，登记就成了事后追认）。"
+  ],
+  "schemaVersion": 1,
+  "invariants": [
+    {
+      "id": "tier-direction",
+      "claim": "tier N 的模块不得依赖 tier > N 的模块（自底向上、无环）",
+      "judges": [
+        "verify_import_direction.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "真实 import 图（go list 编译器视角，含测试依赖）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "取代 verify_split.py 的分层方向判定：旧脚本只校验 modules.json 里**声明**的 dependsOn 图，而声明本身已漂（llm/obs）。"
+    },
+    {
+      "id": "dependency-declaration",
+      "claim": "真实存在的第一方依赖必须被 modules.json 的 dependsOn 声明；陈旧声明要被指出来",
+      "judges": [
+        "verify_import_direction.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "真实 import 图 + go.mod require（direct 与 indirect 分开）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "与 tier-direction 同一脚本（同一族事实、两种判定），不另开脚本是为了避免两个脚本各取一次数。"
+    },
+    {
+      "id": "facade-not-consumed-internally",
+      "claim": "矩阵内部不得消费门面仓（门面只服务存量下游）",
+      "judges": [
+        "verify_import_direction.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "真实 import 图",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21"
+    },
+    {
+      "id": "facade-no-new-packages",
+      "claim": "已废弃的门面不得再长出新包（规则级判定，不靠事后快照）",
+      "judges": [
+        "verify_facade_no_new_packages.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "门面的废弃声明提交 + 其后新增 alias.go 的提交历史",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "冻结基线（facade_package_baseline.json）只回答「违规是否已被吸收」，不作为「什么算违规」的判据；判据取自门面自己的 README 承诺 + git 历史。"
+    },
+    {
+      "id": "facade-package-coverage",
+      "claim": "门面的每个包都要有迁移映射行，且映射目标与 alias.go 的转发一致",
+      "judges": [
+        "verify_facade_packages.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "门面 alias.go 目录 + MIGRATION.md 映射表 + modules.json",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "2026-10-21 实测：门面的 port 包（转发 llm/port 的 51 个符号）在 MIGRATION.md 里没有映射行，而当时没有任何门禁读 MIGRATION.md。"
+    },
+    {
+      "id": "facade-frozen",
+      "claim": "门面的包集合不得超出冻结基线",
+      "judges": [
+        "verify_facade_frozen.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "门面实际包目录 vs facade_package_baseline.json",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "facade-frozen",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "facade-symbol-coverage",
+      "claim": "门面必须逐符号转发上游的导出符号，且 kind 一致（const 不得降级成 var）",
+      "judges": [
+        "verify_facade_symbols.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "上游源码 + 门面 alias.go，用 go/parser 解析语法树求差集",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "facade-symbols",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20"
+    },
+    {
+      "id": "facade-release-floor",
+      "claim": "门面的第一方依赖地板必须与各模块最新 tag 一致",
+      "judges": [
+        "verify_facade_release.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "门面 go.mod + 各模块远端最新 tag",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "facade-symbols",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20"
+    },
+    {
+      "id": "no-facade-import",
+      "claim": "不得新增对门面仓与旧单仓的引用（存量下游不再新增引用）",
+      "judges": [
+        "check_facade_imports.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓源码与文档里的 import 路径",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        },
+        {
+          "file": ".github/.github/workflows/repo-ci.yml",
+          "job": "matrix-docs",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "breaking-index",
+      "claim": "矩阵的破坏性变更索引必须与各仓 CHANGELOG 一致",
+      "judges": [
+        "verify_breaking_index.py",
+        "verify_breaking_oracle.py"
+      ],
+      "oracle": "dual",
+      "sharedWith": [
+        {
+          "module": "breaking_index",
+          "by": "verify_breaking_index.py",
+          "why": "这条线复用生成器的解析函数——它是**快**的那条；与它并列的独立 oracle 是**准**的那条，两者结论不一致时以 oracle 为准。"
+        }
+      ],
+      "facts": "各仓 CHANGELOG.md 原文",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19",
+      "note": "双线设计：生成器线快但会跟着生成器一起漏，独立 oracle 线用自己的正则、与生成器完全解耦。"
+    },
+    {
+      "id": "changelog-coverage",
+      "claim": "各仓 CHANGELOG 必须覆盖 tag 之后的全部提交与正文（两级覆盖）",
+      "judges": [
+        "verify_changelog_coverage.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "原始 git 历史（提交 subject/body）+ 提交版 CHANGELOG",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "changelog-coverage",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        },
+        {
+          "file": ".github/.github/workflows/repo-ci.yml",
+          "job": "matrix-docs",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20",
+      "note": "必须独立于生成器——否则生成器丢 body 时门禁跟着一起丢（实测 7 仓 773 处正文缺失，逐字节门禁一条没报出来）。"
+    },
+    {
+      "id": "pending-section-visible",
+      "claim": "「预写段被重生成吞掉」这个状态必须可观测（黄灯）",
+      "judges": [
+        "verify_pending_release.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [
+        {
+          "module": "gen_changelogs",
+          "by": "verify_pending_release.py",
+          "why": "只取 tags_in_order / semver_key / commits_between 这些**事实**函数，不复用它的渲染与切段逻辑——判定逻辑仍然独立。"
+        }
+      ],
+      "facts": "CHANGELOG.md 的提交历史 + 各仓 tag",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "pending-release",
+          "triggers": [
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "覆盖门禁从提交版里找待发版段，段被吞掉时它就无对象可比——这条是那个盲区的补充观测。"
+    },
+    {
+      "id": "changelog-at-tag",
+      "claim": "每个已发布 tag 的快照里必须有它自己的版本段",
+      "judges": [
+        "verify_changelog_at_tag.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 tag + tag 快照里的 CHANGELOG.md",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "latest-field",
+      "claim": "versions.json 的 latest 字段必须等于远端真实最新 tag",
+      "judges": [
+        "verify_latest_field.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "远端各仓最新 tag（只认主模块版本线）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "latest-field",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "drift 门禁明确忽略 latest（离线取不到），所以必须另配一条联网对账——「忽略 + 补门禁」必须成对。"
+    },
+    {
+      "id": "versions-drift",
+      "claim": "versions.json 必须是 modules.json 的确定性产物；站点副本必须与源逐字节一致",
+      "judges": [
+        "verify_versions_drift.py"
+      ],
+      "oracle": "generator-coupled",
+      "sharedWith": [
+        {
+          "module": "gen_versions",
+          "by": "verify_versions_drift.py",
+          "why": "这条**就是**「生成物 vs 数据源」的一致性检查，必须用生成器重生成才能比——它守的是生成器与产物的关系，不是内容对错。"
+        }
+      ],
+      "facts": "modules.json + versions.json + 站点副本",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "drift",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        },
+        {
+          "file": ".github/.github/workflows/repo-ci.yml",
+          "job": "matrix-docs",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20"
+    },
+    {
+      "id": "import-paths",
+      "claim": "矩阵登记的 import 路径必须与各仓真实的 go.mod / 包目录一致",
+      "judges": [
+        "verify_import_paths.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 go.mod 的 module 行 + 实际包目录",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "dep-floor",
+      "claim": "tier0/tier1 不得有重量级第三方直接依赖；登记的 depFloor 必须与各仓真实 go.mod 一致",
+      "judges": [
+        "verify_dep_floor.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 go.mod 的 require 段 + modules.json 的 heavyDeps",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "dep-floor-freshness",
+      "claim": "各仓第一方依赖地板不应落后远端最新（报告器，不硬拦）",
+      "judges": [
+        "verify_dep_floors.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 go.mod + 远端最新 tag",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "dep-floors",
+          "triggers": [
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20",
+      "note": "刻意**不挂 PR**：任何子仓发版都会让下游全部变落后，硬门禁等于发版跑步机，训练出「红了就加豁免」的习惯。"
+    },
+    {
+      "id": "tag-floor-freshness",
+      "claim": "打 tag 那一刻的依赖地板必须是当时的最新",
+      "judges": [
+        "verify_tag_floor.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓最新 tag 快照里的 go.mod + 当时的远端 tag",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "release-floor",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20"
+    },
+    {
+      "id": "go-floor",
+      "claim": "tier0 的 go 指令必须 1.24.x；CI 的 go-version 必须与 go.mod 成对",
+      "judges": [
+        "verify_go_floor.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 go.mod 原文 + ci.yml 原文",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "ghost-packages",
+      "claim": "仓里有、矩阵未登记的包（幽灵包）必须为零",
+      "judges": [
+        "verify_ghost_packages.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓实际包目录 vs modules.json 的 packages",
+      "ci": [
+        {
+          "file": ".github/.github/workflows/repo-ci.yml",
+          "job": "matrix-docs",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20"
+    },
+    {
+      "id": "stale-refs",
+      "claim": "文档里不得引用已不存在的包（照着 import 会 module not found）",
+      "judges": [
+        "scan_stale_refs.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓文档原文 + modules.json 的包清单",
+      "ci": [
+        {
+          "file": ".github/.github/workflows/repo-ci.yml",
+          "job": "matrix-docs",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-20"
+    },
+    {
+      "id": "llms-txt-consistency",
+      "claim": "站点的 llms.txt 必须与 modules.json 一致（生成物 vs 数据源）",
+      "judges": [
+        "verify_docs.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "modules.json + 站点 llms.txt",
+      "ci": [
+        {
+          "file": ".github/.github/workflows/repo-ci.yml",
+          "job": "matrix-docs",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-19"
+    },
+    {
+      "id": "repo-docs",
+      "claim": "各仓的文档必须与矩阵声明一致（包清单、层位等）",
+      "judges": [
+        "verify_repo_docs.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 README/AGENTS.md 原文 + modules.json",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "2026-10-21 接入：此前脚本存在但从未被任何 CI 调用——「写了没接线」的死代码。"
+    },
+    {
+      "id": "invariant-inventory",
+      "claim": "每条不变量都必须有判据脚本与 CI 接线；每条守卫脚本都必须在本表登记",
+      "judges": [
+        "verify_inventory.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "本表 + scripts/ 目录 + 两个 CI workflow 文件",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "inventory",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "本表自己的守门人。它同时强制「独立 oracle 不得悄悄 import 生成器」——耦合必须显式登记并说明理由。"
+    }
+  ],
+  "retired": [
+    {
+      "script": "verify_split.py",
+      "retiredAt": "2026-10-21",
+      "supersededBy": [
+        "verify_import_direction.py",
+        "verify_ghost_packages.py",
+        "verify_import_paths.py"
+      ],
+      "why": "它声称守的「覆盖度 / 分层方向 / 依赖闭包」三项里，覆盖度由 verify_ghost_packages.py 守、布局由 verify_import_paths.py 守、分层方向与依赖闭包由 verify_import_direction.py 守（读**真实 import**，比它读声明图强）。而它自己：未被任何 CI 引用、数据路径 docs/split-matrix/modules.json 在当前布局下已不存在。"
+    }
+  ],
+  "notInvariants": {
+    "note": "这些脚本是**工具/生成器/取数层**，不是守卫——它们不该被登记成不变量，但也不该被误当成守卫。",
+    "tools": [
+      "matrix_facts.py",
+      "judge_report.py",
+      "repo_meta.py",
+      "matrix_paths.py",
+      "gen_changelogs.py",
+      "gen_versions.py",
+      "gen_llms_txt.py",
+      "gen_docs.py",
+      "rewrite_imports.py",
+      "create_repos.py",
+      "release.py",
+      "publish_repo.sh",
+      "test_matrix_paths.py",
+      "breaking_index.py"
+    ],
+    "sharedLayers": {
+      "note": "守卫可以自由 import 共享层——它们**不含判定**：matrix_facts 只取事实、judge_report 只渲染、repo_meta 只取数、matrix_paths 是 import 路径规则本体（自带独立断言 test_matrix_paths.py）。共享它们不会造成「共同盲区」；共享**生成器/判据层**才会，所以后者必须逐条披露。",
+      "modules": [
+        "matrix_facts",
+        "judge_report",
+        "repo_meta",
+        "matrix_paths"
+      ]
+    }
+  }
+}
