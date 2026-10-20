@@ -51,6 +51,29 @@ CC_RE = re.compile(
     r"^(?P<type>[a-z]+)(?P<bang1>!)?(?:\((?P<scope>[^)]*)\))?(?P<bang2>!)?:\s*(?P<subject>.+)$"
 )
 
+# 本矩阵的**派单流程**强制要求 PR 标题带 `[round-N] ` 前缀（round 账本靠它记账），
+# 于是几乎每个 commit 的 subject 都长这样：`[round-2] feat(mcp): 自检原语`。
+#
+# ⚠️ 这个前缀会让 CC_RE **匹配失败** → render_entry 走 other 分支 → 返回空 body
+# → **整个 commit body 静默丢失**（实测：body_lines=[]，而去掉前缀后是
+# ['正文第一行','正文第二行']）。同时 type 退化成 other → 标题失去小节层级。
+#
+# 所以解析前**只剥离前缀**，再走 conventional commit 解析。body 照常保留。
+#
+# 为什么要「只剥离」而不是放宽 CC_RE：`[round-2] feat(mcp): x` 里 type 是 `feat`、
+# scope 是 `mcp`、subject 是 `x` —— 与 `feat(mcp): x` 完全同构。前缀是**编排标记**，
+# 不属于 conventional commit 本身，剥离它才是符合语义的解析。
+ROUND_PREFIX_RE = re.compile(r"^\s*\[round-[^\]]*\]\s*")
+
+# 剥离 round 前缀后仍不匹配 conventional commit 的 subject —— 这类提交要**保留 body**。
+#
+# 旧实现在这里直接 `return "other", subject, []`：body 被丢弃 ⇒ 发布说明的正文
+# （迁移步骤、代码块、判据锚点）整段消失，而**没有任何门禁能发现**——
+# 门禁比的正是「丢 body 之后的结果」。
+#
+# 现在：解析不出 type 时，body 照常渲染（other 桶渲染时带上 body）。
+OTHER_BODY_RENDERED = True
+
 # 哪些类型值得单独起小标题（其余压成一行要点）
 HEADING_TYPES = {"feat", "fix", "perf", "refactor", "security"}
 
@@ -182,6 +205,40 @@ def dedent_body(body: str) -> list[str]:
     return lines
 
 
+def drop_subject_echo(lines: list[str], subject: str) -> list[str]:
+    """去掉 body 开头与 subject 重复的那一行。
+
+    本矩阵的 commit 写法常见是「subject + 空行 + `* subject` + 空行 + 正文」
+    ——body 的第一行是 subject 的 markdown 复述。渲染时若不去掉，
+    版本段里会出现同一句话两遍（标题一次、正文一次）。
+
+    判据是**去掉 markdown 列表符后与 subject 文字相同**，不看具体写法
+    （`* feat(x): y` / `- feat(x): y` / `feat(x): y` 都算）。
+    """
+    if not lines or not subject:
+        return lines
+    first = lines[0].strip()
+    for mark in ("* ", "- ", "+ "):
+        if first.startswith(mark):
+            first = first[len(mark):].strip()
+            break
+    # body 的 echo 是**完整 conventional commit 格式**（`feat(mcp): xxx`），
+    # 而 subject 是**剥离后**的文字（`xxx`）——两者不可直接比较。
+    # 判据：把 body 首行按 conventional commit 解析，取其 subject 部分再比。
+    head_subject = first
+    m2 = CC_RE.match(ROUND_PREFIX_RE.sub("", first))
+    if m2:
+        head_subject = strip_pr_suffix(m2.group("subject").strip())
+    # 比较时两边都去掉 PR 号后缀——body 里那句是**合并前**写的，
+    # 可能还没有 GitHub 强加的「(#N)」。
+    if (first == subject.strip()
+            or strip_pr_suffix(first) == strip_pr_suffix(subject)
+            or head_subject == subject.strip()
+            or strip_pr_suffix(head_subject) == strip_pr_suffix(subject)):
+        return lines[1:]
+    return lines
+
+
 PR_SUFFIX_RE = re.compile(r"\s*\(#\d+\)\s*$")
 
 
@@ -215,18 +272,53 @@ def render_entry(c: dict) -> tuple[str, str, list[str]]:
     body **原样保留**，不逐行加 "- " 前缀——commit body 本身已是 markdown
     （列表、表格、代码块），再套一层 "- " 会把表格和代码块拆坏。
     """
-    m = CC_RE.match(c["subject"])
+    raw = c["subject"]
+    # 剥离派单流程的 `[round-N] ` 编排前缀（只剥前缀，body 与 subject 其余部分不动）
+    raw = ROUND_PREFIX_RE.sub("", raw)
+    m = CC_RE.match(raw)
     if not m:
-        return "other", strip_pr_suffix(c["subject"]), []
+        # 解析不出 conventional commit 时**仍要保留 body**——
+        # 旧实现在这里返回空 body，正文（迁移步骤/代码块/判据锚点）整段消失，
+        # 而没有任何门禁能发现（门禁比的正是丢 body 后的结果）。
+        return ("other", strip_pr_suffix(raw),
+                drop_subject_echo(dedent_body(c["body"]), strip_pr_suffix(raw)))
     ctype = m.group("type")
     scope = m.group("scope") or ""
     bang = "!" if (m.group("bang1") or m.group("bang2")) else ""
     subject = strip_pr_suffix(m.group("subject").strip())
     label = TYPE_LABEL.get(ctype, ctype)
     head = f"{label}({scope}){bang}：{subject}" if scope else f"{label}：{subject}"
-    body = dedent_body(c["body"])
+    body = drop_subject_echo(dedent_body(c["body"]), subject)
     return ctype, head, body
 
+
+def pending_version(repo_dir: Path, repo: str) -> str | None:
+    """提交版 CHANGELOG 的**待发版段**版本号（若有）。
+
+    发版流程是「预写 → 提交 → 打 tag」：预写段先落到 main，tag 是**之后**才打的。
+    于是从预写到打 tag 之间，CHANGELOG 的首段版本号 **高于** 最高 tag。
+
+    判据：首段版本号 > 最高 tag（按 semver 比较）。
+    —— 只认**最高**的那一段，且必须严格高于最高 tag（已发布段不可能高于 tag）。
+
+    为什么需要它：`--check` 用「按 tag 切段重生成」的结果与提交版逐字节比对，
+    而重生成**只认已存在的 tag** ⇒ 预写段在重生成结果里不存在 ⇒ 门禁必红。
+    且这个红是**必然**的（发版流程本身要求的），不是缺陷。
+    """
+    out = Path(repo_dir) / "CHANGELOG.md"
+    if not out.exists():
+        return None
+    secs = re.findall(r"^## \[(v\d+\.\d+\.\d+)\]", out.read_text(encoding="utf-8"),
+                       re.M)
+    if not secs:
+        return None
+    tags = tags_in_order(repo_dir)
+    if not tags:
+        return None
+    top = max(secs, key=semver_key)
+    if semver_key(top) > semver_key(tags[0]):
+        return top
+    return None
 
 def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
     # 区间必须**升序**计算：tag 区间的定义是「上一个更旧的 tag .. 这个 tag」。
@@ -286,8 +378,16 @@ def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
                     lines.append("")
             else:
                 for c in groups[ctype]:
-                    _, head, _ = render_entry(c)
+                    _, head, body = render_entry(c)
                     lines.append(f"- {head}")
+                    # 非 heading 类型（docs/chore/ci 等）也要落 body——
+                    # 迁移步骤、代码块、判据锚点都在 body 里，
+                    # 丢了正文等于发布说明残缺，而**没有任何门禁能发现**
+                    # （门禁比的正是丢 body 后的结果）。
+                    if body:
+                        lines.append("")
+                        lines.extend(body)
+                        lines.append("")
                 lines.append("")
     while lines and not lines[-1]:
         lines.pop()
@@ -369,6 +469,41 @@ def selftest() -> int:
             check(f"{scenario}: 段内剔除「补 CHANGELOG」条目",
                   "补 CHANGELOG.md（从 git 历史生成）" in pre, False)
 
+            # ⚠️ 反证：[round-N] 前缀必须被剥离，且 body 必须保留。
+            #
+            # 实测 2026-10-20（本仓的派单流程强制要求 PR 标题带这个前缀）：
+            #   旧实现 → CC_RE 匹配失败 → type=other、body_lines=[] ⇒
+            #           **整个 commit body 静默丢失**（正文、代码块、迁移步骤全没）。
+            #           而没有任何门禁能发现——门禁比的正是「丢 body 之后的结果」。
+            (repo / "e.go").write_text("package e\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m",
+                  "[round-9] feat(round): 圆前缀下的功能\n\n"
+                  "* feat(round): 圆前缀下的功能\n\n"
+                  "正文第一行\n正文第二行")
+            pre_round = render(repo, "demo", "v0.8.0")
+            check(f"{scenario}: [round-N] 前缀被剥离（type 正确）",
+                  "### 新增(round)：圆前缀下的功能" in pre_round, True)
+            check(f"{scenario}: [round-N] 前缀的 body 保留",
+                  "正文第一行" in pre_round and "正文第二行" in pre_round, True)
+            check(f"{scenario}: body 首行的 subject 回声被去掉",
+                  "* feat(round): 圆前缀下的功能" in pre_round, False)
+
+            # ⚠️ 反证：**解析不出 conventional commit 时 body 也必须保留**。
+            # 旧实现在这里 `return "other", subject, []` —— body 被丢弃 ⇒
+            # 发布说明的正文（迁移步骤/代码块/判据锚点）整段消失，
+            # 而**没有任何门禁能发现**（门禁比的正是丢 body 后的结果）。
+            (repo / "f.go").write_text("package f\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "没有类型的提交\n\n非 conventional 的正文")
+            pre_other = render(repo, "demo", "v0.7.0")
+            check(f"{scenario}: 非 conventional 提交也保留 body",
+                  "非 conventional 的正文" in pre_other, True)
+            _git(repo, "reset", "-q", "--hard", "HEAD~1")
+            (repo / "f.go").unlink(missing_ok=True)
+            _git(repo, "reset", "-q", "--hard", "HEAD~1")
+            (repo / "e.go").unlink(missing_ok=True)
+
             # ⚠️ 反证：squash merge 的 subject 后缀「(#N)」必须被去掉。
             # 实测 2026-10-20：预写时看到 PR head 的 subject（无后缀），
             # 事后重生成看到 squash 后的 subject（带「(#25)」）——
@@ -424,6 +559,53 @@ def selftest() -> int:
                 _git(repo, "reset", "-q", "--hard", "HEAD~1")
                 _git(repo, "branch", "-D", "chore/pre")
 
+            # ── F3 反证：待发版段（预写了但没打 tag）必须被识别 ──
+            # 发版流程是「预写 → 提交 → 打 tag」⇒ 从预写到打 tag 之间，
+            # CHANGELOG 首段版本号 **高于** 最高 tag。--check 若不识别它，
+            # 重生成结果里就没有那一段 ⇒ 门禁**必然红**（实测七仓同时红）。
+            #
+            # ⚠️ 必须在「还没打 v0.2.0 tag」的**那一刻**测：
+            # tag 一旦存在，它就是已发布段（不再算待发版段）。
+            _git(repo, "reset", "-q", "--hard", "HEAD")
+            pre_only = render(repo, "demo", "v0.2.0")
+            (repo / "CHANGELOG.md").write_text(pre_only)
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "docs(changelog): 预写 v0.2.0 段")
+            # 此时 v0.2.0 tag 尚未创建（下面才打）⇒ 预写段就是「待发版段」
+            _git(repo, "tag", "-d", "v0.2.0")
+            pv = pending_version(repo, "demo")
+            check("待发版段: pending_version 识别出未打 tag 的预写段", pv, "v0.2.0")
+            with_pending = render(repo, "demo", pv)
+            check("待发版段: 带 pending 重生成后含该段",
+                  "## [v0.2.0]" in with_pending, True)
+            without_pending = render(repo, "demo")
+            check("待发版段: 不带 pending 重生成后不含该段（证明判据有效）",
+                  "## [v0.2.0]" in without_pending, False)
+            # ⚠️ 端到端：--check **必须真的用上** pending_version，
+            # 否则「预写段必然红」这个缺陷还在（只测函数不算数）。
+            # 判据：--check 在有预写段时必须**通过**（exit 0）。
+            import io as _io
+            import contextlib as _ctx
+            saved = sys.argv
+            sys.argv = ["gen_changelogs.py", "--repo", "demo", "--root", str(repo.parent),
+                        "--check"]
+            buf = _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(buf):
+                    rc = main()
+            finally:
+                sys.argv = saved
+            check("待发版段: --check 在有预写段时通过（不因预写段而红）", rc, 0)
+            # ⚠️ 反证3b：首段**已发布**（有 tag）时，pending 必须是 None——
+            # 否则会把已发布段误当待发版段，掩盖真问题。
+            # 这一条能区分「判据正确」与「判据恒真」两种实现。
+            _git(repo, "tag", "-a", "v0.2.0", "-m", "v0.2.0", "HEAD")
+            pv2 = pending_version(repo, "demo")
+            check("待发版段: 首段已发布时 pending 为 None", pv2, None)
+            _git(repo, "tag", "-d", "v0.2.0")
+            # 恢复：把 v0.2.0 tag 打回去（后续流程依赖它）
+            _git(repo, "tag", "-a", "v0.2.0", "-m", "v0.2.0", "HEAD")
+
             # 复位到 v0.1.0，重跑下一个场景
             _git(repo, "tag", "-d", "v0.2.0")
             _git(repo, "reset", "-q", "--hard", base)
@@ -474,8 +656,15 @@ def main() -> int:
               "若是浅克隆（--depth 1）请改用完整克隆；若是全新仓则应先发版。")
         return 1
 
-    content = render(repo_dir, args.repo, args.next_version)
     out = Path(args.out) if args.out else repo_dir / "CHANGELOG.md"
+    next_version = args.next_version
+    if args.check and not next_version:
+        # check 模式：自动识别「待发版段」（预写了但还没打 tag 的那一段）。
+        # 不带上它 ⇒ 预写段在重生成结果里不存在 ⇒ 门禁在「预写→打 tag」之间
+        # **必然红**（实测 2026-10-20：agent / mcpkit / obs / promptx / queue /
+        # rag / skillkit 七仓同时红）。这不是缺陷，是发版流程本身的要求。
+        next_version = pending_version(repo_dir, args.repo)
+    content = render(repo_dir, args.repo, next_version)
 
     if args.check:
         if not out.exists():

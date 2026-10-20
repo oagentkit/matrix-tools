@@ -414,6 +414,51 @@ def main() -> int:
     return 1
 
 
+def go_module_repos(data_all: str | None = None) -> set[str]:
+    """org 下**真正是 Go 模块**的仓名集合。
+
+    判据来自 modules.json（矩阵的单一数据源）：
+      - `modules[]`     —— 13 个独立发版的 Go 模块
+      - `infraRepos[]`  —— 门面仓 agentkit（`goModule: true`）
+
+    为什么必须有这个判据：org 下还有**非 Go 仓**（`.github` 规则仓、
+    `matrix-tools` 工具仓、`oagentkit.github.io` 文档站）——它们没有 go.mod，
+    去读必然 404 →「判不了」→ 整条门禁判红。
+
+    ⚠️ 实测 2026-10-20：`--org` 模式没做这个过滤（`--root` 模式只排了
+    `.github`），两条路径不一致 ⇒ main 上该门禁持续红，且**阻塞所有无关 PR**
+    （实测 oagentkit/.github#15 被卡住）。
+
+    为什么不硬编码仓名黑名单：org 新增非 Go 仓时黑名单会再次漏判。
+    用 modules.json 的声明（客观事实）⇒ 新增仓时由数据源自动裁决。
+    """
+    raw = data_all
+    if raw is None:
+        raw = repo_meta.gh_api(f"orgs/{org_of_modules()}/repos?per_page=100")
+    # modules.json 是本地文件（真相源在 matrix-tools 仓内）
+    import json as _json
+    path = HERE.parent / "modules.json"
+    try:
+        d = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    names = {m.get("repo") for m in d.get("modules", []) if m.get("repo")}
+    for m in d.get("infraRepos", []):
+        if m.get("goModule") and m.get("repo"):
+            names.add(m["repo"])
+    return names
+
+
+def org_of_modules() -> str:
+    import json as _json
+    path = HERE.parent / "modules.json"
+    try:
+        d = _json.loads(path.read_text(encoding="utf-8"))
+        return d.get("defaultOrg") or "oagentkit"
+    except Exception:
+        return "oagentkit"
+
+
 def list_repos(args) -> list[str]:
     if args.root:
         d = Path(args.root)
@@ -425,7 +470,18 @@ def list_repos(args) -> list[str]:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return []
-    return sorted(r["name"] for r in data if r.get("name"))
+    # ⚠️ 必须排除 **非 Go 仓**：org 下有 `.github` / `matrix-tools` /
+    # `oagentkit.github.io`（规则仓、工具仓、文档站，都无 go.mod），
+    # 把它们当 Go 仓去读 go.mod → 404 →「判不了」→ 整条门禁判红。
+    #
+    # 实测 2026-10-20：CI 跑 `--org` 模式，而 `--root` 模式只排除了 `.github`，
+    # 两条路径不一致 ⇒ main 上该门禁持续红，且**阻塞所有无关 PR**
+    # （实测 oagentkit/.github#15 被卡住）。
+    #
+    # 判据：**该仓有 Go 模块**（modules.json 的 modules + facades 清单），
+    # 不用仓名黑名单——黑名单会在 org 新增非 Go 仓时再次漏判。
+    return sorted(r["name"] for r in data
+                  if r.get("name") and r["name"] in go_module_repos(raw))
 
 
 def scan_latest(args, tags_of, commit_date, go_mod) -> int:
