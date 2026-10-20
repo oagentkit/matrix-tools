@@ -222,7 +222,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.2",
+      "latest": "v0.9.3",
       "packages": [
         {
           "pkg": "langfuse",
@@ -269,7 +269,7 @@
       "repo": "skillkit",
       "url": "https://github.com/oagentkit/skillkit",
       "tier": 2,
-      "latest": "v0.8.1",
+      "latest": "v0.8.2",
       "packages": [
         {
           "pkg": "skill",
@@ -308,7 +308,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.8.2",
+      "latest": "v0.8.3",
       "packages": [
         {
           "pkg": "mcp",
@@ -333,7 +333,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.8.2",
+      "latest": "v0.8.3",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -482,7 +482,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.10.0",
+      "latest": "v0.10.1",
       "packages": [
         {
           "pkg": "acpx",
@@ -606,7 +606,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.17",
+      "latest": "v1.8.18",
       "retiring": true,
       "breakingIndex": [
         {
