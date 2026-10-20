@@ -31,6 +31,24 @@ issue #17 报告 7 个模块全中；实测（2026-10-20）**13 个模块 + 门�
 
 这就是「欠账可见、增量归零」：门禁不会因为存量而永远红，也不会因为存量而永远绿。
 
+## 性能：tag 快照的持久缓存
+
+T2 要读**每个已发布 tag 的 CHANGELOG.md 快照**。org 有 `protect-tags` ruleset
+（tag 不可改不可删）⇒ **快照内容不可变** ⇒ `(repo, tag, 该 tag 的 commit sha)`
+是稳定缓存键，命中即可跳过 API 调用。
+
+实测（2026-10-20，14 仓 102 个 tag）：
+
+| | API 调用 | 耗时 |
+|---|---|---|
+| 冷缓存 | 116 | 46s |
+| 热缓存 | **14** | 26s |
+
+「列 tag」也并发取（实测串行列 tag 单独就吃掉 32s）。
+
+⚠️ 缓存**只收确定状态**（ok / not_found）。`error`（判不了）是瞬时状态，
+缓存下来等于把一次网络抖动变成永久的静默通过——这是这类门禁最危险的失效形态。
+
 ## 根治：让 T2 从今天起可满足
 
 `gen_changelogs.py` 只渲染**已存在 tag** 的版本段 → 「先提交 CHANGELOG 再打 tag」
@@ -57,6 +75,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -67,6 +86,9 @@ import repo_meta  # noqa: E402
 DEFAULT_VERSIONS = HERE.parent / "versions.json"
 DEFAULT_MATRIX = HERE.parent / "modules.json"
 DEBT_FILE = HERE / "changelog_tag_debt.json"
+
+# tag 快照的持久缓存目录（tag 在 protect-tags 下不可变 ⇒ 内容可缓存）。
+DEFAULT_CACHE_DIR = Path.home() / ".cache" / "oagentkit" / "changelog-at-tag"
 
 VERSION_HEADING = re.compile(r"^##\s*\[?(?P<v>v\d+\.\d+\.\d+)\]?")
 ROOT_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
@@ -103,16 +125,88 @@ def root_tags_local(root: str, repo: str) -> list[str]:
                   key=version_key, reverse=True)
 
 
-def root_tags_api(org: str, repo: str) -> list[str]:
+def root_tags_api(org: str, repo: str) -> dict[str, str]:
+    """联网取该仓的根 tag → {tag 名: 该 tag 指向的 commit sha}。
+
+    顺带取 sha 是为了给**持久缓存**当失效判据（见 TagSnapshotCache）：
+    tag 名可能被改指到别的 commit，光看名字认不出「同一个 tag 的内容变了」。
+    """
     raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
     if not raw:
-        return []
+        return {}
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        return []
-    return sorted({t["name"] for t in data if ROOT_TAG.match(t.get("name", ""))},
-                  key=version_key, reverse=True)
+        return {}
+    out: dict[str, str] = {}
+    for t in data:
+        name = t.get("name", "")
+        if not ROOT_TAG.match(name):
+            continue
+        sha = ((t.get("commit") or {}).get("sha")) or ""
+        out[name] = sha
+    return {k: out[k] for k in sorted(out, key=version_key, reverse=True)}
+
+
+class TagSnapshotCache:
+    """tag 快照的**持久缓存**（tag 不可变 ⇒ 内容不可变 ⇒ 可缓存）。
+
+    ## 为什么能缓存
+
+    org 有 `protect-tags` ruleset：tag 发布后不可改、不可删 ⇒ **某个 tag 处的
+    CHANGELOG.md 内容是不可变的**。于是 `(repo, tag, 该 tag 的 commit sha)` 是
+    一个**稳定键**：命中即可跳过 API 调用。
+
+    ## 为什么不用「跳过基线内的欠账 tag」来省调用
+
+    基线里的欠账 tag 也一样不可变、一样可以缓存——跳过它们只省掉「校验」，
+    却丢掉了「基线条目已不再 stale ⇒ 提示更新基线」这个信号；
+    而缓存省的是**调用本身**，一个信号都不丢。实测（2026-10-20，14 仓 102 个 tag）：
+    当前约 **130 次**调用（14 列 tag + 14 取 main + 102 取 tag 快照），
+    跳过基线只省 **26 次（20%）**，而热缓存只需 **28 次左右（省 78%）**。
+
+    ## 一条硬规矩：error（判不了）绝不入缓存
+
+    「判不了」是**瞬时状态**（网络抖动 / API 报错）。把它缓存下来等于把一次抖动
+    变成永久的「既不豁免也不报」的静默通过——正是这类门禁最危险的失效形态。
+    缓存只收**确定状态**（ok / not_found）。
+    """
+
+    def __init__(self, root: Path | None):
+        self.root = Path(root) if root else None
+
+    def _path(self, repo: str, tag: str) -> Path | None:
+        if self.root is None:
+            return None
+        return self.root / repo / f"{tag}.json"
+
+    def get(self, repo: str, tag: str, sha: str) -> tuple[str | None, str] | None:
+        """命中返回 (正文, 状态)；未命中/失效返回 None。"""
+        p = self._path(repo, tag)
+        if p is None or not p.is_file():
+            return None
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return None
+        if d.get("sha") != sha:
+            return None          # tag 被改指到别的 commit → 缓存作废
+        status = d.get("status")
+        if status not in ("ok", "not_found"):
+            return None          # 只认确定状态
+        return (d.get("text"), status)
+
+    def put(self, repo: str, tag: str, sha: str, text: str | None, status: str) -> None:
+        """写缓存。error 状态不写；写失败不影响门禁判定。"""
+        p = self._path(repo, tag)
+        if p is None or status not in ("ok", "not_found"):
+            return
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"sha": sha, "status": status, "text": text},
+                                    ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
 
 
 def changelog_local(root: str, repo: str, ref: str) -> tuple[str | None, str]:
@@ -244,6 +338,9 @@ def main() -> int:
     ap.add_argument("--debt", default=str(DEBT_FILE))
     ap.add_argument("--root", help="各仓本地目录的父目录")
     ap.add_argument("--org", help="联网读各仓 tag 与 CHANGELOG")
+    ap.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR),
+                    help="tag 快照的持久缓存目录（tag 不可变 ⇒ 命中即可信）")
+    ap.add_argument("--no-cache", action="store_true", help="不用持久缓存（每次都重新取）")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
 
@@ -253,6 +350,8 @@ def main() -> int:
     if not args.root and not args.org:
         print("❌ 必须给 --root（本地各仓目录的父目录）或 --org（联网读）")
         return 1
+
+    snap_cache = TagSnapshotCache(None if args.no_cache else Path(args.cache_dir))
 
     versions = load_json(Path(args.versions))
     org = args.org or load_json(Path(args.matrix)).get("defaultOrg")
@@ -276,11 +375,30 @@ def main() -> int:
     if not args.root:
         work: list[tuple[str, str]] = []
         tag_map: dict[str, list[str]] = {}
+        sha_map: dict[str, dict[str, str]] = {}
+        # 「列 tag」也是 API 调用，**串行**做的话 14 仓 × ~2.3s ≈ 32s 就把
+        # 整轮的时间吃掉了（实测热缓存 36s，其中 32s 花在列 tag 上）。
+        # 所以先并发列 tag，再并发取快照。
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            tag_futures = {pool.submit(root_tags_api, org, r): r for r in repos}
+            for fut in as_completed(tag_futures):
+                r = tag_futures[fut]
+                try:
+                    tags = fut.result()
+                except Exception:      # noqa: BLE001 —— 列不到 tag 一律当「判不了」
+                    tags = {}
+                tag_map[r] = list(tags)
+                sha_map[r] = tags
         for repo in repos:
-            tags = root_tags_api(org, repo)
-            tag_map[repo] = tags
+            tags = sha_map.get(repo, {})
             work.append((repo, "main"))
-            work.extend((repo, t) for t in tags)
+            for t in tags:
+                # 持久缓存命中 ⇒ 不用发 API 调用（tag 快照不可变，命中即可信）
+                hit = snap_cache.get(repo, t, tags[t])
+                if hit is not None:
+                    cache[(repo, t)] = hit
+                    continue
+                work.append((repo, t))
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = {pool.submit(changelog_api, org, r, t): (r, t) for r, t in work}
             for fut in as_completed(futures):
@@ -289,6 +407,15 @@ def main() -> int:
                     cache[(r, t)] = fut.result()
                 except Exception:      # noqa: BLE001 —— 取数异常一律当「判不了」
                     cache[(r, t)] = (None, "error")
+        # 持久缓存：把取到的 tag 快照落盘（tag 不可变 ⇒ 内容可缓存）。
+        # 只写**确定状态**（ok / not_found）；error 绝不入缓存（见 TagSnapshotCache）。
+        for (r, t), (text, st) in cache.items():
+            if t == "main":
+                continue        # main 每次都变，不缓存
+            snap_cache.put(r, t, sha_map.get(r, {}).get(t, ""), text, st)
+        print(f"ℹ️ tag 快照：缓存命中 {len(cache) - len(work)} / "
+              f"{len(cache)}，本次实际发起 API 调用 {len(work)} 次"
+              f"（缓存目录 {snap_cache.root}）")
 
     for repo in repos:
         if args.root:
@@ -428,13 +555,34 @@ def selftest() -> int:
     check("基线外的 stale 报新增", new_stale, ["x@v0.9.0"])
     check("基线外的不记欠账", known, [])
 
+    # ---- 持久缓存（tag 快照不可变 ⇒ (repo, tag, sha) 是稳定键）----
+    with tempfile.TemporaryDirectory() as td:
+        c = TagSnapshotCache(Path(td))
+        check("未命中返回 None", c.get("x", "v1.0.0", "sha1"), None)
+        c.put("x", "v1.0.0", "sha1", "## [v1.0.0]\n", "ok")
+        hit = c.get("x", "v1.0.0", "sha1")
+        check("命中返回缓存内容", hit, ("## [v1.0.0]\n", "ok"))
+        # tag 被改指到别的 commit ⇒ 缓存作废（不能拿旧内容当新的）
+        check("sha 变化则缓存失效", c.get("x", "v1.0.0", "sha2"), None)
+        # error（判不了）绝不入缓存：一次网络抖动不该变成永久状态
+        c.put("x", "v0.9.0", "sha9", None, "error")
+        check("error 不入缓存", c.get("x", "v0.9.0", "sha9"), None)
+        # not_found（当时确实没有 CHANGELOG）是确定状态，可以缓存
+        c.put("x", "v0.8.0", "sha8", None, "not_found")
+        check("not_found 可缓存", c.get("x", "v0.8.0", "sha8"), (None, "not_found"))
+        # 禁用缓存时（root=None）一律不命中
+        c2 = TagSnapshotCache(None)
+        c2.put("x", "v1.0.0", "sha1", "text", "ok")
+        check("禁用缓存时不命中", c2.get("x", "v1.0.0", "sha1"), None)
+
     if fails:
         print("❌ verify_changelog_at_tag 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
     print("✅ verify_changelog_at_tag 自测通过"
-          "（双向对账 / 待发版段豁免 / 欠账基线 / 快照无 CHANGELOG 豁免 / 取数失败不豁免）")
+          "（双向对账 / 待发版段豁免 / 欠账基线 / 快照无 CHANGELOG 豁免 / 取数失败不豁免 / "
+          "持久缓存命中与失效）")
     return 0
 
 

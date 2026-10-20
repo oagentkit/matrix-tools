@@ -202,6 +202,22 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: 缓存 tag 快照
+        # tag 受 protect-tags ruleset 保护**不可变** ⇒ 某个 tag 处的 CHANGELOG.md
+        # 内容也不可变 ⇒ (repo, tag, commit sha) 是稳定缓存键。
+        # 实测（2026-10-20，14 仓 102 个 tag）：冷缓存 116 次 API 调用 / 46s，
+        # 热缓存 **14 次 / 26s**。调用次数才是这个 job 的真正风险——
+        # 串行取数曾让本地一次跑挂死 7 小时（#26 加超时后缓解）。
+        #
+        # key 用 run_id（每轮一个新条目，旧的 7 天后被 GitHub 淘汰），
+        # restore-keys 用前缀把上一轮的缓存捞回来 ⇒ 只有**新增的 tag** 需要真的取。
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/oagentkit/changelog-at-tag
+          key: changelog-tag-snapshots-${{ github.run_id }}
+          restore-keys: |
+            changelog-tag-snapshots-
+
       - name: breakingIndex ↔ 各仓 CHANGELOG
         run: python3 scripts/verify_breaking_index.py --org oagentkit
 
