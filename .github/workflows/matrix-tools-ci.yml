@@ -153,6 +153,12 @@ jobs:
         # 双向一一对应 / 待发版段豁免 / 存量欠账基线 / 快照里没有 CHANGELOG 豁免。
         run: python3 scripts/verify_changelog_at_tag.py --selftest
 
+      - name: CHANGELOG 覆盖门禁自测（独立 oracle）
+        # 两级覆盖判据（issue matrix-tools#41）：条目级 + body 级。
+        # 自测含五组：漏条目 / 正文缺失 / 零信息量提交不误报 /
+        # 「tag 后有提交但无待发版段 → 不报红」/ subject 回声不误报。
+        run: python3 scripts/verify_changelog_coverage.py --selftest
+
       - name: 发版时刻地板时效门禁自测
         run: python3 scripts/verify_tag_floor.py --selftest
 
@@ -176,6 +182,51 @@ jobs:
         # 自测带负向样本：tier0 地板抬高 / toolchain 超标 / CI 不成对 / 判不了即红，
         # 同时带**不误报**样本——tier1/tier2/tier3 用 1.26 是合法的，不能报成漂移。
         run: python3 scripts/verify_go_floor.py --selftest
+
+  changelog-coverage:
+    name: CHANGELOG coverage (独立 oracle)
+    # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的
+    # 条目与正文」，与提交版 CHANGELOG.md 比对。
+    #
+    # 为什么必须**独立于生成器**：门禁若复用 gen_changelogs.py 的解析/渲染函数，
+    # 生成器丢 body 时门禁会跟着一起丢——门禁比的正是「丢 body 之后的结果」，
+    # 于是门禁全绿而发布说明已经残缺。实测 2026-10-20：7 个仓合计 773 处正文缺失，
+    # 逐字节门禁一条都没报出来。
+    #
+    # 范围按「**谁造成漂移谁负责**」裁剪（issue #41 裁决 2）：
+    #   PR 事件 → 只校验**本 PR 触及的仓**（= PR 的 base 仓），且用 **PR head** 的
+    #             内容校验（只裁剪不换 ref 解决不了问题：合入前各仓 main 上还是旧产物）；
+    #   非 PR 事件（push / 定时 / 手动）→ 全矩阵（**周期性全量审计兜底**，不可省，
+    #             否则是漏检）。
+    #
+    # ⚠️ 本 job 在 matrix-tools 自己的 PR 上是**空跑**（matrix-tools 不在
+    # 「有 CHANGELOG 要求的仓」清单里 ⇒ 范围为空）——这正是「无关 PR 不因别的仓
+    # 欠账而红」。模块仓的 PR 要各自校验自己，需要在
+    # oagentkit/.github 的可复用工作流 go-ci.yml 里加同一个 job（**另一个仓**，
+    # 本仓改不到）。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 缓存各仓克隆
+        # 覆盖判据要读**完整历史**（tag 区间 + 每个 commit 的 body），浅克隆不够用。
+        # 缓存命中时只需 fetch 增量，省掉每次重新克隆 14 个仓的时间。
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/oagentkit/changelog-coverage
+          key: changelog-coverage-${{ github.run_id }}
+          restore-keys: |
+            changelog-coverage-
+
+      - name: CHANGELOG 覆盖（独立 oracle；PR 只查本 PR 触及的仓）
+        run: python3 scripts/verify_changelog_coverage.py --ci --org oagentkit
 
   matrix-truth:
     name: Matrix truth (breakingIndex / import paths)

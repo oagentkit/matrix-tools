@@ -16,6 +16,8 @@ oagentkit 模块矩阵的自动化仓 —— 生成、审计、改写、发布�
 | `scripts/verify_breaking_index.py` | **对账门禁**：矩阵 `breakingIndex` ↔ 各仓 CHANGELOG（漏收 / 过期 / 内容漂移 / 取不到即红） |
 | `scripts/verify_import_paths.py` | **对账门禁**：矩阵 `importPath` ↔ 各仓**真实** go.mod 与包目录（旧路径 / 幽灵包 / 模块改名 / 取不到即红） |
 | `scripts/verify_dep_floor.py` | **依赖地板门禁 + 地板对账**：① tier0/tier1 不得有重量级第三方直接依赖（零依赖核心不许白吃它）；② 矩阵 `depFloor` ↔ 各仓**真实** go.mod 的实际地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。`--org` 联网读远端 go.mod，`--root` 读本地，`--selftest` 离线自测 |
+| `scripts/verify_changelog_at_tag.py` | **对账门禁**：tag ↔ CHANGELOG 版本节双向一一对应 + 每个已发布 tag 的快照里必须含自己那段（存量欠账走基线记账） |
+| `scripts/verify_changelog_coverage.py` | **覆盖门禁（独立 oracle）**：直接扫**原始 git 历史**算「应当出现的条目与正文」，与提交版 CHANGELOG 比对（**条目级 + body 级**）。不复用生成器的解析函数——生成器丢 body 时门禁必须还能报出来（issue matrix-tools#41） |
 | `scripts/verify_split.py` | 矩阵三项硬校验：覆盖度 / 分层方向 / 依赖闭包 |
 | `scripts/matrix_paths.py` | **旧→新 import 路径构造规则的唯一事实源**。`rewrite_imports.py` / `gen_versions.py` / `gen_llms_txt.py` 全部 import 它，规则改一处即可 |
 | `scripts/rewrite_imports.py` | **唯一的 import 改写引擎**：旧 module 路径 → 新矩阵路径。只改 import 块内引号字符串，未登记的包直接报错退出（`--check` / `--apply` / `--print-rules` / `--manual`） |
@@ -82,6 +84,62 @@ python3 scripts/gen_docs.py llm rag    # 指定仓
 # 建仓（默认 dry-run）
 python3 scripts/create_repos.py
 python3 scripts/create_repos.py --apply
+```
+
+## CHANGELOG 门禁
+
+各仓的 `CHANGELOG.md` 由 `gen_changelogs.py` 从 git 历史生成。守它的是**三道**门禁，
+各管一件事：
+
+| 门禁 | 守什么 | 判据 |
+|---|---|---|
+| `gen_changelogs.py --check` | **提交版跟上了 git 历史吗** | 两级覆盖：重生成结果里的每个版本段、每条条目、每行正文都必须在提交版里（**提交版可以更丰富**） |
+| `verify_changelog_coverage.py` | **发布说明的内容完整吗** | 独立 oracle：扫原始 git 历史算「应当出现的条目与正文」，与提交版比对 |
+| `verify_changelog_at_tag.py` | **tag 与版本节对得上吗** | 双向一一对应 + 每个已发布 tag 的快照里必须含自己那段 |
+
+### 为什么 `--check` 不再逐字节相等
+
+逐字节相等会**逼人删掉手写发布说明**：手写的迁移步骤、补充说明在重生成结果里没有
+对应行，于是「不一致」⇒ 人只能把手写内容删掉，或者干脆不写。而发布说明的价值恰恰
+常常在这些**生成器写不出来**的内容上（issue matrix-tools#41）。
+
+放宽到「覆盖」之后：
+
+- 提交版**可以更丰富**（多出来的手写内容不算问题）；
+- **缺内容仍然是红的**（漏条目 / 漏正文 / 缺版本段都红）；
+- **顺序仍然守**（按顺序做子序列匹配）⇒「段落张冠李戴」「条目顺序错乱」仍会被发现；
+- `--check --strict` 保留**逐字节相等**模式（守住格式一致性），默认不启用。
+
+⚠️ 这道门禁只看「内容在不在」，**生成器自己算错**它看不见——那正是独立 oracle
+（`verify_changelog_coverage.py`）存在的理由：它直接扫原始 git 历史，
+完全不经过生成器的解析逻辑。实测 2026-10-20：7 个仓合计 **773 处正文缺失**
+（旧产物里 body 整段消失、条目却都在），逐字节门禁一条都没报出来。
+
+### 门禁范围：谁造成漂移谁负责
+
+org 级全量审计**不能**跑在每个 PR 上——任一模块欠账会堵住所有无关 PR
+（实测 `oagentkit/.github#15` 被「各仓 CHANGELOG 未过期」卡了两天）。
+
+范围按 **PR 触及范围**裁剪：
+
+- **PR 事件** → 只校验「PR 触及的仓」= **PR 的 base 仓**（GitHub 的 PR 是单仓的：
+  PR 能改动的文件全部落在它自己的 base 仓里），且用 **PR head** 的内容校验
+  （只裁剪不换 ref 解决不了问题：合入前各仓 main 上还是旧产物）；
+- **非 PR 事件**（push / 定时 / 手动）→ 全矩阵（**周期性全量审计兜底**，不可省）。
+
+```bash
+# 独立 oracle：本地各仓（--root 的每个子目录是一个 git 仓）
+python3 scripts/verify_changelog_coverage.py --root /path/to/oagentkit
+python3 scripts/verify_changelog_coverage.py --root ... --repo agent --repo rag
+
+# 联网：按需把各仓克隆下来再校验
+python3 scripts/verify_changelog_coverage.py --org oagentkit
+
+# CI 模式：按 GitHub 事件上下文裁剪范围（PR → 只查本 PR 触及的仓）
+python3 scripts/verify_changelog_coverage.py --ci --org oagentkit
+
+# 离线自测
+python3 scripts/verify_changelog_coverage.py --selftest
 ```
 
 ## 依赖地板漂移
