@@ -60,6 +60,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -174,7 +175,13 @@ def api_dates_batch(pairs: list[tuple[str, str, str]]) -> dict[tuple[str, str, s
         p = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}"],
                            text=True, capture_output=True)
         if p.returncode != 0:
-            continue
+            # 次级限流是按分钟的：等 20s 再试一次，别把「取不到」当成事实
+            if "rate limit" in (p.stderr or "").lower() and start == 0:
+                time.sleep(20)
+                p = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}"],
+                                   text=True, capture_output=True)
+            if p.returncode != 0:
+                continue
         try:
             data = json.loads(p.stdout)
         except json.JSONDecodeError:
@@ -188,7 +195,10 @@ def api_dates_batch(pairs: list[tuple[str, str, str]]) -> dict[tuple[str, str, s
     return out
 
 
-_TAGS_CACHE: dict[tuple[str, str, str | None], list[tuple[str, str]]] = {}
+# 缓存键**不含** min_version：同一个依赖在不同仓的 floor 不同
+# （textx 在 llm 里是 v0.5.0、在 rag 里是 v0.4.0），按 floor 缓存几乎不命中。
+# 缓存「该依赖的完整 tag 列表 + 日期」，用的时候再按 floor 过滤。
+_TAGS_CACHE: dict[tuple[str, str], list[tuple[str, str]]] = {}
 
 
 def api_tags_with_dates(org: str, repo: str,
@@ -198,32 +208,25 @@ def api_tags_with_dates(org: str, repo: str,
     联网拿不到「tag 的创建时间」（annotated tag 的 tagger 时间不在 API 里），
     只能用 tag 指向的**提交日期**近似。口径差异记在这里，不藏。
     """
-    key = (org, repo, min_version)
-    if key in _TAGS_CACHE:
-        return _TAGS_CACHE[key]
-    raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
-    if not raw:
-        _TAGS_CACHE[key] = []
-        return []
-    try:
-        tags = json.loads(raw)
-    except json.JSONDecodeError:
-        _TAGS_CACHE[key] = []
-        return []
-    names = []
-    for t in tags:
-        name = t.get("name", "")
-        if not ROOT_TAG_RE.match(name):
-            continue
-        if min_version and not (version_lt(min_version, name) or min_version == name):
-            continue  # 低于或等于地板的版本不可能是「当时该接的」
-        names.append(name)
-    if not names:
-        return []
-    dates = api_dates_batch([(org, repo, n) for n in names])
-    res = [(n, dates[(org, repo, n)]) for n in names if (org, repo, n) in dates]
-    _TAGS_CACHE[key] = res
-    return res
+    key = (org, repo)
+    if key not in _TAGS_CACHE:
+        raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
+        names: list[str] = []
+        if raw:
+            try:
+                for t in json.loads(raw):
+                    name = t.get("name", "")
+                    if ROOT_TAG_RE.match(name):
+                        names.append(name)
+            except json.JSONDecodeError:
+                names = []
+        dates = api_dates_batch([(org, repo, n) for n in names]) if names else {}
+        _TAGS_CACHE[key] = [(n, dates[(org, repo, n)]) for n in names if (org, repo, n) in dates]
+    full = _TAGS_CACHE[key]
+    if min_version:
+        return [(n, d) for n, d in full
+                if version_lt(min_version, n) or min_version == n]
+    return full
 
 
 def api_commit_date(org: str, repo: str, ref: str) -> str | None:
