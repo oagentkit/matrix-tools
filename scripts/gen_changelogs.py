@@ -51,6 +51,33 @@ CC_RE = re.compile(
     r"^(?P<type>[a-z]+)(?P<bang1>!)?(?:\((?P<scope>[^)]*)\))?(?P<bang2>!)?:\s*(?P<subject>.+)$"
 )
 
+# 本项目的派单流程要求 PR 标题带 `[round-N] ` 前缀（round 账本靠 PR 标题记账），
+# squash merge 之后这个前缀会留在 commit subject 的**最前面**。
+#
+# ⚠️ 不剥它会导致**整段 commit body 被静默丢弃**（实测 2026-10-20）：
+#   1. subject 带前缀 → CC_RE 不匹配 → render_entry 归入 "other" 且 body 置空
+#      （第三个返回值就是 body，直接写死成 []）
+#   2. "other" 桶的渲染分支只取标题行，body 不落盘
+#   3. 后果：发布说明里的 API 说明、代码块、判据锚点全部消失，
+#      而**没有任何门禁能发现**——门禁比的正是丢 body 之后的结果。
+#
+# 所以必须先剥前缀再解析 conventional commit。
+# 只认**行首**的 `[round-<数字>] `；subject 内部出现的 `[round-2]` 不是前缀。
+ROUND_PREFIX_RE = re.compile(r"^\[round-(\d+)\]\s+")
+
+# markdown 列表符号：`- ` / `* ` / `+ ` / `1. `
+MD_LIST_PREFIX_RE = re.compile(r"^(?:[*+-]|\d+[.)])\s+")
+
+
+def strip_round_prefix(subject: str) -> str:
+    """剥掉 subject **行首**的 `[round-N] ` 前缀。
+
+    只剥一次、只剥行首：subject 内部的 `[round-2]`（如 `feat(x): [round-2] foo`）
+    不是前缀，剥了会改写作者本意。
+    """
+    return ROUND_PREFIX_RE.sub("", subject, count=1)
+
+
 # 哪些类型值得单独起小标题（其余压成一行要点）
 HEADING_TYPES = {"feat", "fix", "perf", "refactor", "security"}
 
@@ -209,22 +236,53 @@ def strip_pr_suffix(subject: str) -> str:
     return PR_SUFFIX_RE.sub("", subject).strip()
 
 
+def drop_redundant_first_body_line(body: list[str], subject: str) -> list[str]:
+    """丢掉 body 首行里与 subject **重复**的那一行。
+
+    为什么需要：squash merge 时 commit body = PR 描述正文，而 PR 描述的**第一行**
+    通常就是标题的 markdown 版（实测 mcpkit v0.8.2：
+    `* feat(mcp): 自检 / 工具目录差集 / 健康聚合 / 错误分类原语`）。
+    渲染时若原样保留，重生成结果会比提交版多出一行 ⇒ 逐字节比对失败。
+
+    判据是**等值**，不是词表：首行去掉 markdown 列表符号后，必须与
+    「剥掉 round 前缀与 PR 号后缀的 subject」**逐字相等**才丢。
+    不相等就保留——那可能是正文里的真实首行。
+
+    ⚠️ 这条规则不会吞掉正文：实测 mcpkit v0.8.2 段的正文首行是
+    `补一组**通用 MCP 客户端能力**……`，与 subject 不等，122 行完整保留。
+    """
+    if not body:
+        return body
+    bare = MD_LIST_PREFIX_RE.sub("", body[0].strip(), count=1).strip()
+    # 首行也可能带 PR 号后缀（squash 后 subject 有、首行跟着抄了也会有），
+    # 比较前必须同样剥掉，否则永远判为「不重复」。
+    bare = strip_pr_suffix(bare)
+    if bare and bare == subject.strip():
+        return body[1:]
+    return body
+
+
 def render_entry(c: dict) -> tuple[str, str, list[str]]:
     """→ (type, heading, body_lines)
 
     body **原样保留**，不逐行加 "- " 前缀——commit body 本身已是 markdown
     （列表、表格、代码块），再套一层 "- " 会把表格和代码块拆坏。
+
+    ⚠️ subject 行首的 `[round-N] ` 前缀必须先剥：带前缀时 CC_RE 不匹配，
+    commit 会降级成 "other" 且 **body 整段被丢弃**（见 ROUND_PREFIX_RE 注释）。
     """
-    m = CC_RE.match(c["subject"])
+    subject = strip_round_prefix(c["subject"])
+    m = CC_RE.match(subject)
     if not m:
-        return "other", strip_pr_suffix(c["subject"]), []
+        return "other", strip_pr_suffix(subject), []
     ctype = m.group("type")
     scope = m.group("scope") or ""
     bang = "!" if (m.group("bang1") or m.group("bang2")) else ""
-    subject = strip_pr_suffix(m.group("subject").strip())
+    subj = strip_pr_suffix(m.group("subject").strip())
     label = TYPE_LABEL.get(ctype, ctype)
-    head = f"{label}({scope}){bang}：{subject}" if scope else f"{label}：{subject}"
-    body = dedent_body(c["body"])
+    head = f"{label}({scope}){bang}：{subj}" if scope else f"{label}：{subj}"
+    body = drop_redundant_first_body_line(dedent_body(c["body"]),
+                                          strip_pr_suffix(subject))
     return ctype, head, body
 
 
@@ -292,6 +350,75 @@ def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
     while lines and not lines[-1]:
         lines.pop()
     return "\n".join(lines) + "\n"
+
+
+# 提交版 CHANGELOG 里的版本段标题
+VERSION_HEAD_RE = re.compile(r"^## \[(v\d+\.\d+\.\d+(?:-[^\]]+)?)\]", re.M)
+
+
+def pending_versions_in(content: str, repo_dir: Path) -> list[str]:
+    """提交版里「版本号比最新 tag 还新」的段 = 已预写但还没打 tag 的待发版段。
+
+    为什么必须单独识别：发版流程是「预写 → 提交 → 打 tag」，而打 tag 发生在
+    **发版时**。所以从预写提交到打 tag 之间，提交版**必然**比「按 tag 切段
+    重生成」多一个待发版段。只按 tag 比对 ⇒ 这段窗口里门禁必然红，
+    而红的不是真问题（实测 2026-10-20：agent / mcpkit 等 7 仓连续红，
+    其中 agent 的 `## [v0.10.1] — 2026-10-20` 就是这种预写段，
+    v0.10.1 的 tag 还没打）。
+    """
+    newest = tags_in_order(repo_dir)
+    newest_key = semver_key(newest[0]) if newest else (0, 0, 0, 0, "")
+    return [v for v in VERSION_HEAD_RE.findall(content)
+            if semver_key(v) > newest_key]
+
+
+def diagnose(cur: str, want: str) -> str:
+    """给「已过期」报错补上指得到真正原因的定位信息。
+
+    教训：CI 报错文案要指得到真正原因。「已过期」这四个字会把排查带偏——
+    实测中真正的差异是「渲染器把 commit 降级成 other 丢了 body」，
+    而「过期」完全指不到它。
+    """
+    import difflib
+
+    notes: list[str] = []
+    cur_v = VERSION_HEAD_RE.findall(cur)
+    want_v = VERSION_HEAD_RE.findall(want)
+    only_cur = sorted(set(cur_v) - set(want_v))
+    only_want = sorted(set(want_v) - set(cur_v))
+    if only_cur:
+        notes.append("提交版多出的版本段: " + ", ".join(only_cur))
+    if only_want:
+        notes.append("重生成多出的版本段: " + ", ".join(only_want))
+    diff = list(difflib.unified_diff(
+        cur.splitlines(), want.splitlines(),
+        fromfile="提交版", tofile="重生成", lineterm="", n=1))
+    if diff:
+        notes.append("差异（前 20 行）：")
+        notes.extend("  " + d for d in diff[:20])
+    return "\n".join(notes)
+
+
+def check_against_history(repo_dir: Path, repo: str, cur: str) -> tuple[bool, str]:
+    """比对提交版 CHANGELOG 与「按 git 历史重生成」的结果 → (是否一致, 说明)。
+
+    两种比对：
+      1. 按 tag 切段重生成；
+      2. 若提交版含「已预写但还没打 tag」的待发版段，再带上该段比对一次。
+
+    第 2 种是必需的，不是宽松化：打 tag 发生在发版时，预写到发版之间
+    提交版必然多一个段。若只按 tag 比对，这段窗口里门禁必然红，
+    且**红的原因与本 PR 无关**（实测它把 oagentkit/.github#15 卡了两天）。
+    """
+    want = render(repo_dir, repo)
+    if cur == want:
+        return True, ""
+    pending = pending_versions_in(cur, repo_dir)
+    if len(pending) == 1:
+        want = render(repo_dir, repo, pending[0])
+        if cur == want:
+            return True, f"（含未打 tag 的待发版段 {pending[0]}）"
+    return False, diagnose(cur, want)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -428,6 +555,87 @@ def selftest() -> int:
             _git(repo, "tag", "-d", "v0.2.0")
             _git(repo, "reset", "-q", "--hard", base)
             (repo / "CHANGELOG.md").unlink(missing_ok=True)
+
+        # ────────────────────────────────────────────────────────────
+        # 新增用例：round 前缀 / 重复首行 / 待发版段
+        #
+        # 这三类的共同点是「渲染结果与提交版不一致」，而旧自测**全绿**——
+        # 它们是 2026-10-20 真实踩出来的（7 个仓连续红）。
+        # ────────────────────────────────────────────────────────────
+        import os
+
+        # 固定提交日期：待发版段用的是 HEAD 的提交日期，跨零点会让
+        # 「预写时的日期」与「事后重生成的日期」不同 → 逐字节比对假失败。
+        saved_env = {k: os.environ.get(k) for k in
+                     ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE")}
+        os.environ["GIT_AUTHOR_DATE"] = "2026-01-01T00:00:00+00:00"
+        os.environ["GIT_COMMITTER_DATE"] = "2026-01-01T00:00:00+00:00"
+        try:
+            repo2 = tmp / "demo2"
+            repo2.mkdir()
+            _git(repo2, "init", "-q", "-b", "main")
+            _git(repo2, "config", "user.email", "t@example.com")
+            _git(repo2, "config", "user.name", "T")
+            (repo2 / "a.go").write_text("package a\n")
+            _git(repo2, "add", "-A")
+            _git(repo2, "commit", "-q", "-m", "feat(x): 第一个功能")
+            _git(repo2, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+
+            # 用例1：subject 行首带 `[round-N] ` 前缀。
+            # 反证：旧行为下 CC_RE 不匹配 → 归 other → body 整段丢失。
+            (repo2 / "b.go").write_text("package b\n")
+            _git(repo2, "add", "-A")
+            _git(repo2, "commit", "-q",
+                 "-m", "[round-3] feat(mcp): 带 round 前缀的提交 (#77)",
+                 "-m", "MARKER_BODY_LINE 这是 body 里的关键行")
+            r1 = render(repo2, "demo2", "v0.2.0")
+            check("round 前缀: 走 conventional commit 路径（起小标题）",
+                  "### 新增(mcp)：带 round 前缀的提交" in r1, True)
+            check("round 前缀: body 关键行必须保留（反证：旧行为丢 body）",
+                  "MARKER_BODY_LINE 这是 body 里的关键行" in r1, True)
+            check("round 前缀: 不再退化成 other 的 bullet 形式",
+                  "- [round-3] feat(mcp):" in r1, False)
+
+            # 用例2：subject **内部**的 `[round-N]` 不是前缀，不能剥。
+            (repo2 / "c.go").write_text("package c\n")
+            _git(repo2, "add", "-A")
+            _git(repo2, "commit", "-q", "-m", "feat(x): [round-9] 内嵌不算前缀")
+            r2 = render(repo2, "demo2", "v0.3.0")
+            check("内嵌 [round-N] 不被剥离",
+                  "[round-9] 内嵌不算前缀" in r2, True)
+
+            # 用例3：body 首行与 subject 重复 → 渲染时跳过；
+            #         正文首行不是重复时必须保留。
+            (repo2 / "d.go").write_text("package d\n")
+            _git(repo2, "add", "-A")
+            _git(repo2, "commit", "-q",
+                 "-m", "feat(y): 重复首行测试 (#88)",
+                 "-m", "* feat(y): 重复首行测试 (#88)\n\n真正的正文第一行")
+            r3 = render(repo2, "demo2", "v0.4.0")
+            check("重复首行: 渲染结果不含 markdown 重复行",
+                  "* feat(y): 重复首行测试" in r3, False)
+            check("重复首行: 真正的正文必须保留",
+                  "真正的正文第一行" in r3, True)
+
+            # 用例4：待发版段（预写 → 提交 → **还没打 tag**）必须判为一致。
+            pre4 = render(repo2, "demo2", "v0.5.0")
+            (repo2 / "CHANGELOG.md").write_text(pre4)
+            _git(repo2, "add", "-A")
+            _git(repo2, "commit", "-q", "-m", "docs(changelog): 预写 v0.5.0 段")
+            committed4 = (repo2 / "CHANGELOG.md").read_text()
+            ok4, note4 = check_against_history(repo2, "demo2", committed4)
+            check("待发版段: 预写但未打 tag 时判为一致", ok4, True)
+            check("待发版段: 说明里点明是待发版段", "v0.5.0" in note4, True)
+            # 反证：内容被改坏（删掉一个标题）必须判为不一致。
+            broken4 = committed4.replace("### 新增(mcp)：带 round 前缀的提交", "")
+            ok4b, _ = check_against_history(repo2, "demo2", broken4)
+            check("待发版段: 内容缺失时判为不一致（反证）", ok4b, False)
+        finally:
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -474,7 +682,6 @@ def main() -> int:
               "若是浅克隆（--depth 1）请改用完整克隆；若是全新仓则应先发版。")
         return 1
 
-    content = render(repo_dir, args.repo, args.next_version)
     out = Path(args.out) if args.out else repo_dir / "CHANGELOG.md"
 
     if args.check:
@@ -482,12 +689,16 @@ def main() -> int:
             print(f"❌ {args.repo} 缺 CHANGELOG.md")
             return 1
         cur = out.read_text(encoding="utf-8")
-        if cur != content:
-            print(f"❌ {args.repo} 的 CHANGELOG.md 与 git 历史不一致（已过期）")
-            return 1
-        print(f"✅ {args.repo} 的 CHANGELOG.md 是最新的")
-        return 0
+        ok, note = check_against_history(repo_dir, args.repo, cur)
+        if ok:
+            print(f"✅ {args.repo} 的 CHANGELOG.md 是最新的{note}")
+            return 0
+        print(f"❌ {args.repo} 的 CHANGELOG.md 与 git 历史不一致（已过期）")
+        if note:
+            print(note)
+        return 1
 
+    content = render(repo_dir, args.repo, args.next_version)
     out.write_text(content, encoding="utf-8")
     n = content.count("\n## [")
     print(f"✅ {args.repo}: 生成 {n} 个版本段 → {out}")
