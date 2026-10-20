@@ -236,30 +236,37 @@ def strip_pr_suffix(subject: str) -> str:
     return PR_SUFFIX_RE.sub("", subject).strip()
 
 
-def drop_redundant_first_body_line(body: list[str], subject: str) -> list[str]:
-    """丢掉 body 首行里与 subject **重复**的那一行。
+def drop_redundant_body_lines(body: list[str], subject: str) -> list[str]:
+    """丢掉 body 开头**连续多行**与 subject 重复的行。
 
-    为什么需要：squash merge 时 commit body = PR 描述正文，而 PR 描述的**第一行**
-    通常就是标题的 markdown 版（实测 mcpkit v0.8.2：
-    `* feat(mcp): 自检 / 工具目录差集 / 健康聚合 / 错误分类原语`）。
-    渲染时若原样保留，重生成结果会比提交版多出一行 ⇒ 逐字节比对失败。
+    为什么需要：squash merge 时 commit body = PR 描述正文，而 PR 描述的**开头**
+    通常是标题的 markdown 版（实测 agent：
+    ```
+    * chore(deps): 依赖地板升到「历史最新 + 0.1.0」
+    chore(deps): 依赖地板升到「历史最新 + 0.1.0」
+    ```
+    两行都与 subject 重复——第一行带 markdown 列表符，第二行不带）。
 
-    判据是**等值**，不是词表：首行去掉 markdown 列表符号后，必须与
-    「剥掉 round 前缀与 PR 号后缀的 subject」**逐字相等**才丢。
+    渲染时若原样保留，重生成结果会比提交版多出重复行 ⇒ 逐字节比对失败。
+
+    判据是**等值**，不是词表：每行去掉 markdown 列表符号与 `(#N)` 后缀后，
+    必须与「剥掉 round 前缀与 PR 号后缀的 subject」**逐字相等**才丢。
     不相等就保留——那可能是正文里的真实首行。
 
     ⚠️ 这条规则不会吞掉正文：实测 mcpkit v0.8.2 段的正文首行是
     `补一组**通用 MCP 客户端能力**……`，与 subject 不等，122 行完整保留。
     """
-    if not body:
-        return body
-    bare = MD_LIST_PREFIX_RE.sub("", body[0].strip(), count=1).strip()
-    # 首行也可能带 PR 号后缀（squash 后 subject 有、首行跟着抄了也会有），
-    # 比较前必须同样剥掉，否则永远判为「不重复」。
-    bare = strip_pr_suffix(bare)
-    if bare and bare == subject.strip():
-        return body[1:]
-    return body
+    out = list(body)
+    while out:
+        bare = MD_LIST_PREFIX_RE.sub("", out[0].strip(), count=1).strip()
+        # 首行也可能带 PR 号后缀（squash 后 subject 有、首行跟着抄了也会有），
+        # 比较前必须同样剥掉，否则永远判为「不重复」。
+        bare = strip_pr_suffix(bare)
+        if bare and bare == subject.strip():
+            out.pop(0)
+            continue
+        break
+    return out
 
 
 def render_entry(c: dict) -> tuple[str, str, list[str]]:
@@ -281,8 +288,8 @@ def render_entry(c: dict) -> tuple[str, str, list[str]]:
     subj = strip_pr_suffix(m.group("subject").strip())
     label = TYPE_LABEL.get(ctype, ctype)
     head = f"{label}({scope}){bang}：{subj}" if scope else f"{label}：{subj}"
-    body = drop_redundant_first_body_line(dedent_body(c["body"]),
-                                          strip_pr_suffix(subject))
+    body = drop_redundant_body_lines(dedent_body(c["body"]),
+                                      strip_pr_suffix(subject))
     return ctype, head, body
 
 
@@ -343,9 +350,21 @@ def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
                         lines.append(f"- {c['sha'][:7]}")
                     lines.append("")
             else:
+                # ⚠️「压成一行要点」≠「丢弃正文」。
+                # 实测 2026-10-20（agent 仓 v0.6.0 段）：chore(deps) 的 body 里是
+                # 版本线重置说明与 go.sum 注意事项——**实质内容**，却因为 chore
+                # 不在 HEADING_TYPES 而被整段丢弃。
+                #
+                # 而且**逐字节门禁根本看不出来**：产物也是丢 body 之后生成的，
+                # 比对必然一致 ⇒ 门禁全绿而内容在丢。只有直接扫原始 git 历史的
+                # 独立 oracle 才抓得到（见 oagentkit_changelog_coverage_oracle.py）。
                 for c in groups[ctype]:
-                    _, head, _ = render_entry(c)
+                    _, head, body = render_entry(c)
                     lines.append(f"- {head}")
+                    if body:
+                        lines.append("")
+                        lines.extend(body)
+                        lines.append("")
                 lines.append("")
     while lines and not lines[-1]:
         lines.pop()
@@ -616,6 +635,22 @@ def selftest() -> int:
                   "* feat(y): 重复首行测试" in r3, False)
             check("重复首行: 真正的正文必须保留",
                   "真正的正文第一行" in r3, True)
+
+            # 用例5：非 HEADING_TYPES 的类型（chore/docs）其 body **必须**保留。
+            # 反证：旧行为下 other 桶渲染分支只取 head，body 被丢弃。
+            # 实测受害样本：agent 仓 v0.6.0 段的
+            # `chore(deps): 依赖地板升到「历史最新 + 0.1.0」`，其 body 是
+            # 版本线重置说明与 go.sum 注意事项——实质内容，却整段消失。
+            (repo2 / "e.go").write_text("package e\n")
+            _git(repo2, "add", "-A")
+            _git(repo2, "commit", "-q",
+                 "-m", "chore(deps): 地板升到某版本 (#66)",
+                 "-m", "* chore(deps): 地板升到某版本 (#66)\n\nCHORE_BODY_MARKER 这行正文必须留下")
+            r5 = render(repo2, "demo2", "v0.6.0")
+            check("other 桶（chore）: body 必须保留（反证：旧行为丢 body）",
+                  "CHORE_BODY_MARKER 这行正文必须留下" in r5, True)
+            check("other 桶（chore）: 与 subject 重复的行被去掉",
+                  "chore(deps): 地板升到某版本 (#66)" in r5, False)
 
             # 用例4：待发版段（预写 → 提交 → **还没打 tag**）必须判为一致。
             pre4 = render(repo2, "demo2", "v0.5.0")
