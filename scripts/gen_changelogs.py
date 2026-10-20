@@ -65,6 +65,13 @@ CC_RE = re.compile(
 # 不属于 conventional commit 本身，剥离它才是符合语义的解析。
 ROUND_PREFIX_RE = re.compile(r"^\s*\[round-[^\]]*\]\s*")
 
+# GitHub squash merge 给 subject 加的 PR 号后缀「(#N)」。
+#
+# ⚠️ 这个定义曾一度**丢失**（`strip_pr_suffix` 引用了它但没定义）——
+# 模块 import 不报错（模块级不求值），只在**调用时**才 NameError ⇒ 潜伏的 P0。
+# 凡是被函数引用的模块级常量，都要有「引用即定义」的检查。
+PR_SUFFIX_RE = re.compile(r"\s*\(#\d+\)\s*$")
+
 # 剥离 round 前缀后仍不匹配 conventional commit 的 subject —— 这类提交要**保留 body**。
 #
 # 旧实现在这里直接 `return "other", subject, []`：body 被丢弃 ⇒ 发布说明的正文
@@ -217,29 +224,48 @@ def drop_subject_echo(lines: list[str], subject: str) -> list[str]:
     """
     if not lines or not subject:
         return lines
-    first = lines[0].strip()
-    for mark in ("* ", "- ", "+ "):
-        if first.startswith(mark):
-            first = first[len(mark):].strip()
+    # ⚠️ 要去**连续多行**，不能只去首行：实测 2026-10-20 有 commit 的 body 开头
+    # 是**两行**都重复（第一行带 `* `、第二行不带）：
+    #     * chore(deps): 依赖地板升到「历史最新 + 0.1.0」
+    #     chore(deps): 依赖地板升到「历史最新 + 0.1.0」
+    # 只去首行会留下一行冗余（实测 10 个仓各 1 处）。
+    idx = 0
+    while idx < len(lines):
+        cand = lines[idx].strip()
+        if not cand:
             break
+        bare = cand
+        for mark in ("* ", "- ", "+ "):
+            if bare.startswith(mark):
+                bare = bare[len(mark):].strip()
+                break
+        if not _echo_equals(bare, subject):
+            break
+        idx += 1
+    if idx == 0:
+        return lines
+    return lines[idx:]
+
+
+def _echo_equals(bare: str, subject: str) -> bool:
+    """body 的一行是否与 subject 等值（去掉列表符 / round 前缀 / PR 号后缀后）。"""
+    if not bare or not subject:
+        return False
     # body 的 echo 是**完整 conventional commit 格式**（`feat(mcp): xxx`），
     # 而 subject 是**剥离后**的文字（`xxx`）——两者不可直接比较。
-    # 判据：把 body 首行按 conventional commit 解析，取其 subject 部分再比。
-    head_subject = first
-    m2 = CC_RE.match(ROUND_PREFIX_RE.sub("", first))
+    # 判据：把该行按 conventional commit 解析，取其 subject 部分再比。
+    head_subject = bare
+    m2 = CC_RE.match(ROUND_PREFIX_RE.sub("", bare))
     if m2:
         head_subject = strip_pr_suffix(m2.group("subject").strip())
+    target = subject.strip()
     # 比较时两边都去掉 PR 号后缀——body 里那句是**合并前**写的，
     # 可能还没有 GitHub 强加的「(#N)」。
-    if (first == subject.strip()
-            or strip_pr_suffix(first) == strip_pr_suffix(subject)
-            or head_subject == subject.strip()
-            or strip_pr_suffix(head_subject) == strip_pr_suffix(subject)):
-        return lines[1:]
-    return lines
+    return (bare == target
+            or strip_pr_suffix(bare) == strip_pr_suffix(target)
+            or head_subject == target
+            or strip_pr_suffix(head_subject) == strip_pr_suffix(target))
 
-
-PR_SUFFIX_RE = re.compile(r"\s*\(#\d+\)\s*$")
 
 
 def strip_pr_suffix(subject: str) -> str:
@@ -489,6 +515,24 @@ def selftest() -> int:
             check(f"{scenario}: body 首行的 subject 回声被去掉",
                   "* feat(round): 圆前缀下的功能" in pre_round, False)
 
+            # ⚠️ 反证：body 开头**连续多行**都重复 subject 时要**全部**去掉。
+            # 只去首行会留下一行冗余（实测 2026-10-20：10 个仓各 1 处，
+            # 第一行带 `* `、第二行不带）。
+            (repo / "g.go").write_text("package g\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m",
+                  "chore(deps): 地板升到最新\n\n"
+                  "* chore(deps): 地板升到最新\n"
+                  "chore(deps): 地板升到最新\n\n"
+                  "本轮做了版本线重置：xxx")
+            pre_echo = render(repo, "demo", "v0.6.0")
+            echo_lines = [ln for ln in pre_echo.splitlines()
+                          if "地板升到最新" in ln]
+            check(f"{scenario}: 连续多行 subject 回声全部去掉",
+                  len(echo_lines), 1)  # 只剩标题那一行
+            _git(repo, "reset", "-q", "--hard", "HEAD~1")
+            (repo / "g.go").unlink(missing_ok=True)
+
             # ⚠️ 反证：**解析不出 conventional commit 时 body 也必须保留**。
             # 旧实现在这里 `return "other", subject, []` —— body 被丢弃 ⇒
             # 发布说明的正文（迁移步骤/代码块/判据锚点）整段消失，
@@ -596,6 +640,31 @@ def selftest() -> int:
             finally:
                 sys.argv = saved
             check("待发版段: --check 在有预写段时通过（不因预写段而红）", rc, 0)
+
+            # ⚠️ 反证②：--check 失败时**必须指出差在哪**——
+            # 只说「已过期」会把排查带偏（不知道是哪个版本段、差哪几行）。
+            #
+            # 场景：把 CHANGELOG.md 改坏（删掉一段），--check 必然失败，
+            # 此时报错必须指到「哪个版本段」+「unified diff」。
+            saved_cl = (repo / "CHANGELOG.md").read_text()
+            (repo / "CHANGELOG.md").write_text(
+                saved_cl.replace("## [v0.1.0]", "## [v0.0.9]", 1))
+            import io as _io2
+            import contextlib as _ctx2
+            saved2 = sys.argv
+            sys.argv = ["gen_changelogs.py", "--repo", "demo", "--root", str(repo.parent),
+                        "--check"]
+            buf2 = _io2.StringIO()
+            try:
+                with _ctx2.redirect_stdout(buf2):
+                    rc2 = main()
+            finally:
+                sys.argv = saved2
+            out2 = buf2.getvalue()
+            (repo / "CHANGELOG.md").write_text(saved_cl)
+            check("报错带差异: --check 失败时 exit 非 0", rc2 != 0, True)
+            check("报错带差异: 输出含「版本段差异」", "版本段差异" in out2, True)
+            check("报错带差异: 输出含 unified diff", "unified diff" in out2, True)
             # ⚠️ 反证3b：首段**已发布**（有 tag）时，pending 必须是 None——
             # 否则会把已发布段误当待发版段，掩盖真问题。
             # 这一条能区分「判据正确」与「判据恒真」两种实现。
@@ -621,6 +690,57 @@ def selftest() -> int:
     print("✅ gen_changelogs 自测通过（预写→提交→打 tag 端到端自洽，"
           "两种发版打法产出一致）")
     return 0
+
+
+def _print_diff(cur: str, content: str, limit: int = 20) -> None:
+    """把差异打出来——「已过期」四个字会把排查带偏。
+
+    为什么要附差异：门禁只说「已过期」时，排查者得自己 diff 才知道是哪一段、
+    差哪几行。实测 2026-10-20：agent 仓的差异横跨 4 个版本段（其中 3 段是
+    「补回了此前被丢弃的 commit body」），只报「已过期」根本看不出方向。
+
+    输出两块：
+      ① **版本段集合差异**——哪一段缺了 / 多了 / 内容不一致（先看这个定位到段）
+      ② **unified diff 前 N 行**——具体差在哪
+    """
+    import difflib
+
+    def secs(text: str) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        cur_v = None
+        for ln in text.splitlines():
+            m = re.match(r"^## \[(v[0-9.]+)\]", ln)
+            if m:
+                cur_v = m.group(1)
+                out[cur_v] = []
+            elif cur_v is not None:
+                out[cur_v].append(ln)
+        return out
+
+    a, b = secs(cur), secs(content)
+    only_cur = sorted(set(a) - set(b), key=semver_key)
+    only_new = sorted(set(b) - set(a), key=semver_key)
+    changed = sorted((v for v in set(a) & set(b)
+                      if "\n".join(a[v]).strip() != "\n".join(b[v]).strip()),
+                     key=semver_key)
+    print()
+    print("   版本段差异：")
+    for v in only_cur:
+        print(f"     - {v}: 提交版有、重生成没有（多半是「待发版段」或已删段）")
+    for v in only_new:
+        print(f"     + {v}: 重生成有、提交版没有（多半是待发版段没预写）")
+    for v in changed:
+        print(f"     ~ {v}: 两边都有但内容不同（多半是 commit body 缺失/新增）")
+    if not (only_cur or only_new or changed):
+        print("     （版本段集合一致，差异在段内细节）")
+    print()
+    print("   unified diff（前 %d 行）：" % limit)
+    d = list(difflib.unified_diff(cur.splitlines(), content.splitlines(),
+                                  "提交版", "重生成", lineterm="", n=1))
+    for ln in d[:limit]:
+        print("     " + ln)
+    if len(d) > limit:
+        print(f"     …（共 {len(d)} 行，完整差异用 diff 提交版 重生成）")
 
 
 def main() -> int:
@@ -673,6 +793,7 @@ def main() -> int:
         cur = out.read_text(encoding="utf-8")
         if cur != content:
             print(f"❌ {args.repo} 的 CHANGELOG.md 与 git 历史不一致（已过期）")
+            _print_diff(cur, content)
             return 1
         print(f"✅ {args.repo} 的 CHANGELOG.md 是最新的")
         return 0
