@@ -182,6 +182,33 @@ def dedent_body(body: str) -> list[str]:
     return lines
 
 
+PR_SUFFIX_RE = re.compile(r"\s*\(#\d+\)\s*$")
+
+
+def strip_pr_suffix(subject: str) -> str:
+    """去掉 subject 末尾的 GitHub PR 号后缀「(#N)」。
+
+    为什么必须去：GitHub 的 **squash merge** 会把 PR 内的 commit 合成一个，
+    并把 subject 改写成「<PR 标题> (#N)」。于是：
+
+      - 预写待发版段时（`--next-version`）看到的是 PR **head** 的 subject，
+        没有「(#N)」；
+      - 事后重生成时（按 tag 切段）看到的是 squash 后 commit 的 subject，
+        带「(#N)」。
+
+    两者不一致 ⇒ tag 快照里的 CHANGELOG 与 main 上的**逐字节不同**
+    ⇒ `.github` 的「各仓 CHANGELOG 未过期」门禁永远红，且**每次发版必红**
+    （实测 2026-10-20：agentkit v1.8.16 段标题与重生成结果差一个「(#25)」）。
+
+    在**渲染层**统一去掉后缀 ⇒ 预写与事后重生成必然一致，
+    与「用哪种合并策略」解耦。
+
+    顺带的好处：PR 号对读发布说明的人零信息量（得去 GitHub 上查才知道是什么），
+    去掉后标题更干净。
+    """
+    return PR_SUFFIX_RE.sub("", subject).strip()
+
+
 def render_entry(c: dict) -> tuple[str, str, list[str]]:
     """→ (type, heading, body_lines)
 
@@ -190,11 +217,11 @@ def render_entry(c: dict) -> tuple[str, str, list[str]]:
     """
     m = CC_RE.match(c["subject"])
     if not m:
-        return "other", c["subject"], []
+        return "other", strip_pr_suffix(c["subject"]), []
     ctype = m.group("type")
     scope = m.group("scope") or ""
     bang = "!" if (m.group("bang1") or m.group("bang2")) else ""
-    subject = m.group("subject").strip()
+    subject = strip_pr_suffix(m.group("subject").strip())
     label = TYPE_LABEL.get(ctype, ctype)
     head = f"{label}({scope}){bang}：{subject}" if scope else f"{label}：{subject}"
     body = dedent_body(c["body"])
@@ -341,6 +368,24 @@ def selftest() -> int:
             # 预写段里不能出现「补 CHANGELOG」这个零信息量条目
             check(f"{scenario}: 段内剔除「补 CHANGELOG」条目",
                   "补 CHANGELOG.md（从 git 历史生成）" in pre, False)
+
+            # ⚠️ 反证：squash merge 的 subject 后缀「(#N)」必须被去掉。
+            # 实测 2026-10-20：预写时看到 PR head 的 subject（无后缀），
+            # 事后重生成看到 squash 后的 subject（带「(#25)」）——
+            # 两者不一致 ⇒ tag 快照与 main 逐字节不同 ⇒ 门禁每次发版必红。
+            #
+            # 样本必须**真的带**「(#N)」，否则断言是假通过（实测踩过：
+            # 原本样本的 subject 不带后缀，移除 strip 后自测仍绿）。
+            (repo / "d.go").write_text("package d\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "feat(w): 带 PR 号的提交 (#99)")
+            pre_pr = render(repo, "demo", "v0.9.0")
+            check(f"{scenario}: 去掉 subject 的 PR 号后缀",
+                  "(#99)" in pre_pr, False)
+            check(f"{scenario}: 去掉后缀后标题仍完整",
+                  "带 PR 号的提交" in pre_pr, True)
+            _git(repo, "reset", "-q", "--hard", "HEAD~1")
+            (repo / "d.go").unlink(missing_ok=True)
 
             # 场景2 额外验证：merge commit 也不能进段
             if use_pr:
