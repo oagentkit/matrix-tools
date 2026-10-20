@@ -150,12 +150,17 @@ def main() -> int:
             L.append(f"  - 安装：`go get github.com/{org}/{m['repo']}@latest`")
         L.append("")
 
-    L.append("## 门面仓（迁移过渡）")
+    L.append("## 门面仓（迁移过渡 · 已废弃）")
     L.append("")
     L.append(f"- [agentkit](https://github.com/{org}/agentkit): 原单仓 "
-             f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面，{npkg} 包 re-export，"
-             f"v1.x 后退役。新代码不要引它。")
+             f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面，{npkg} 包 re-export。"
+             f"**已废弃**：v1.x 退役条件已满足，只保留兼容转发、不接受新功能，"
+             f"**新代码不要引它**。归档待旧单仓 "
+             f"`git.enjoye.top/enjoydream/agentkit` 下线后执行；在此之前本仓继续可用，"
+             f"已有 tag 的 `go get` 照常解析。")
     L.append(f"- 完整旧→新包路径映射见该仓 [MIGRATION.md](https://github.com/{org}/agentkit/blob/main/MIGRATION.md)。")
+    L.append(f"- 门面**包集合已冻结**：矩阵新增的包不再要求门面跟上（见 "
+             f"`scripts/facade_package_baseline.json` 与 `scripts/verify_facade_frozen.py`）。")
     L.append("")
     L.append("## 基建")
     L.append("")

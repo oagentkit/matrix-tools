@@ -1,0 +1,286 @@
+{
+  "note": "门面包集合的冻结快照——门面仓已废弃，不得再长出新包（判据单向：门面的实际包集合 ⊆ 本基线）",
+  "why": [
+    "门面包集合的**冻结快照**。门面仓 oagentkit/agentkit 已废弃——README 首行「门面仓 · 已废弃」，",
+    "「状态：v1.x 退役条件**已满足**。本仓不接受任何新功能，只做别名转发与安全修复」（门面 README 的状态行至今仍写「当前 v1.8.20」，而门面实际最新 tag 已是 v1.8.21——门面的包集合在 v1.8.20 → v1.8.21 之间**没变**，仍是 48 个包）。",
+    "所以门面的语义是「只保留既有兼容面」，而**新增包**正是门面继续长胖的主要形态——",
+    "「不许再引门面」有机器约束（check_facade_imports.py），「门面不得长新包」此前**一条机器约束都没有**：",
+    "有人往门面加一个新包目录 + 一批别名，CI 全绿。",
+    "",
+    "为什么必须是快照、不能从 modules.json 实时推导：矩阵是**活数据**——矩阵一新增包，",
+    "从它推导出来的基线就跟着变大，冻结当场失效（守卫会对着一个自己会变大的上限比对，永远绿）。",
+    "本文件是 2026-10-20 的一次性快照，**只能人工改**：",
+    "新增条目 = 「有人决定让这个已废弃的仓继续变大」，那是需要 review 的决定。",
+    "",
+    "冻结依据（2026-10-20 实测）：门面包在矩阵内**零消费方**——",
+    "  - oagentkit org 内引用数 0；",
+    "  - 姊妹 org oekit 内引用数 0；",
+    "  - GitHub 全站代码搜索命中 0。",
+    "新增一个门面包没有任何已知下游需求，只增加维护面（每加一个包 = 一份 alias.go + 一条 go.mod 地板 + MIGRATION.md 一行映射）。",
+    "",
+    "门面的其它几条守卫继续在守，所以本文件不重复它们的活：",
+    "  - verify_facade_symbols.py：符号级转发完整性（别名不漏 / 不错配 / 不幽灵）；",
+    "  - verify_facade_packages.py：包级覆盖与陈旧转发；",
+    "  - check_facade_imports.py：谁还在 import 门面或旧单仓（存量下游不再新增引用）。",
+    "它们守的是「已冻结的那张脸有没有长歪」，本文件守的是「这张脸有没有变宽」。",
+    "",
+    "判据是**单向**的：门面的实际包集合必须 ⊆ 本基线（不得新增）。",
+    "反向不查：上游模块真删包时，门面跟着删是对的（否则 alias.go 指向已不存在的包，编译不过）。",
+    "",
+    "**基线不是「放过」清单，是「已确认的既有兼容面」清单**——",
+    "它记录的是「门面活着时向存量下游承诺过的那 48 个包」，不是「随便放过的包」。"
+  ],
+  "frozenAt": "2026-10-20",
+  "facadeRepo": "oagentkit/agentkit",
+  "facadeVersionAtFreeze": "v1.8.21",
+  "packageCount": 48,
+  "format": {
+    "packages": "[{module, package, upstream}]，每条 = 一个门面包。",
+    "module": "拥有该包的 Go module 在 org 内的路径（仓根 module 取仓名，如 tools / llm / queue）",
+    "package": "包名 = 门面目录名 = 上游 import 路径的末段（如 llmtest）",
+    "upstream": "门面 alias.go 里 `import upstream \"...\"` 的完整路径——冻结的是**转发目标**本身：改指新上游 = 门面又长出一张新脸",
+    "例子": "{\"module\": \"llm\", \"package\": \"llmtest\", \"upstream\": \"github.com/oagentkit/llm/llmtest\"} 读作「llm 模块下的 llmtest 包，门面转发到 github.com/oagentkit/llm/llmtest」"
+  },
+  "packages": [
+    {
+      "module": "tools",
+      "package": "acpx",
+      "upstream": "github.com/oagentkit/tools/acpx"
+    },
+    {
+      "module": "agent",
+      "package": "agentrun",
+      "upstream": "github.com/oagentkit/agent/agentrun"
+    },
+    {
+      "module": "obs",
+      "package": "audit",
+      "upstream": "github.com/oagentkit/obs/audit"
+    },
+    {
+      "module": "tools",
+      "package": "bashguard",
+      "upstream": "github.com/oagentkit/tools/bashguard"
+    },
+    {
+      "module": "agent",
+      "package": "blackboard",
+      "upstream": "github.com/oagentkit/agent/blackboard"
+    },
+    {
+      "module": "agent",
+      "package": "clarify",
+      "upstream": "github.com/oagentkit/agent/clarify"
+    },
+    {
+      "module": "textx",
+      "package": "codeintel",
+      "upstream": "github.com/oagentkit/textx/codeintel"
+    },
+    {
+      "module": "textx",
+      "package": "compact",
+      "upstream": "github.com/oagentkit/textx/compact"
+    },
+    {
+      "module": "textx",
+      "package": "conversation",
+      "upstream": "github.com/oagentkit/textx/conversation"
+    },
+    {
+      "module": "textx",
+      "package": "diffx",
+      "upstream": "github.com/oagentkit/textx/diffx"
+    },
+    {
+      "module": "agent",
+      "package": "dispatch",
+      "upstream": "github.com/oagentkit/agent/dispatch"
+    },
+    {
+      "module": "guardx",
+      "package": "egress",
+      "upstream": "github.com/oagentkit/guardx/egress"
+    },
+    {
+      "module": "guardx",
+      "package": "fence",
+      "upstream": "github.com/oagentkit/guardx/fence"
+    },
+    {
+      "module": "promptx",
+      "package": "filestate",
+      "upstream": "github.com/oagentkit/promptx/filestate"
+    },
+    {
+      "module": "runtime",
+      "package": "hookx",
+      "upstream": "github.com/oagentkit/runtime/hookx"
+    },
+    {
+      "module": "runtime",
+      "package": "hotplug",
+      "upstream": "github.com/oagentkit/runtime/hotplug"
+    },
+    {
+      "module": "guardx",
+      "package": "injectband",
+      "upstream": "github.com/oagentkit/guardx/injectband"
+    },
+    {
+      "module": "guardx",
+      "package": "invoke",
+      "upstream": "github.com/oagentkit/guardx/invoke"
+    },
+    {
+      "module": "obs",
+      "package": "langfuse",
+      "upstream": "github.com/oagentkit/obs/langfuse"
+    },
+    {
+      "module": "skillkit",
+      "package": "lineage",
+      "upstream": "github.com/oagentkit/skillkit/lineage"
+    },
+    {
+      "module": "llm",
+      "package": "llm",
+      "upstream": "github.com/oagentkit/llm"
+    },
+    {
+      "module": "llm",
+      "package": "llmtest",
+      "upstream": "github.com/oagentkit/llm/llmtest"
+    },
+    {
+      "module": "guardx",
+      "package": "logredact",
+      "upstream": "github.com/oagentkit/guardx/logredact"
+    },
+    {
+      "module": "mcpkit",
+      "package": "mcp",
+      "upstream": "github.com/oagentkit/mcpkit/mcp"
+    },
+    {
+      "module": "llm",
+      "package": "obsx",
+      "upstream": "github.com/oagentkit/llm/obsx"
+    },
+    {
+      "module": "runtime",
+      "package": "pacer",
+      "upstream": "github.com/oagentkit/runtime/pacer"
+    },
+    {
+      "module": "skillkit",
+      "package": "pack",
+      "upstream": "github.com/oagentkit/skillkit/pack"
+    },
+    {
+      "module": "guardx",
+      "package": "permgate",
+      "upstream": "github.com/oagentkit/guardx/permgate"
+    },
+    {
+      "module": "queue",
+      "package": "pglease",
+      "upstream": "github.com/oagentkit/queue/pglease"
+    },
+    {
+      "module": "toolgate",
+      "package": "policy",
+      "upstream": "github.com/oagentkit/toolgate/policy"
+    },
+    {
+      "module": "llm",
+      "package": "port",
+      "upstream": "github.com/oagentkit/llm/port"
+    },
+    {
+      "module": "runtime",
+      "package": "procx",
+      "upstream": "github.com/oagentkit/runtime/procx"
+    },
+    {
+      "module": "runtime",
+      "package": "progress",
+      "upstream": "github.com/oagentkit/runtime/progress"
+    },
+    {
+      "module": "rag",
+      "package": "rag",
+      "upstream": "github.com/oagentkit/rag"
+    },
+    {
+      "module": "agent",
+      "package": "reflection",
+      "upstream": "github.com/oagentkit/agent/reflection"
+    },
+    {
+      "module": "textx",
+      "package": "reportutil",
+      "upstream": "github.com/oagentkit/textx/reportutil"
+    },
+    {
+      "module": "agent",
+      "package": "router",
+      "upstream": "github.com/oagentkit/agent/router"
+    },
+    {
+      "module": "tools",
+      "package": "sast",
+      "upstream": "github.com/oagentkit/tools/sast"
+    },
+    {
+      "module": "skillkit",
+      "package": "skill",
+      "upstream": "github.com/oagentkit/skillkit/skill"
+    },
+    {
+      "module": "promptx",
+      "package": "steering",
+      "upstream": "github.com/oagentkit/promptx/steering"
+    },
+    {
+      "module": "promptx",
+      "package": "sysprompt",
+      "upstream": "github.com/oagentkit/promptx/sysprompt"
+    },
+    {
+      "module": "textx",
+      "package": "textutil",
+      "upstream": "github.com/oagentkit/textx/textutil"
+    },
+    {
+      "module": "toolgate",
+      "package": "toolprior",
+      "upstream": "github.com/oagentkit/toolgate/toolprior"
+    },
+    {
+      "module": "toolgate",
+      "package": "toolsched",
+      "upstream": "github.com/oagentkit/toolgate/toolsched"
+    },
+    {
+      "module": "tools",
+      "package": "websearch",
+      "upstream": "github.com/oagentkit/tools/websearch"
+    },
+    {
+      "module": "tools",
+      "package": "workcopy",
+      "upstream": "github.com/oagentkit/tools/workcopy"
+    },
+    {
+      "module": "queue",
+      "package": "worker",
+      "upstream": "github.com/oagentkit/queue/worker"
+    },
+    {
+      "module": "llm",
+      "package": "wrap",
+      "upstream": "github.com/oagentkit/llm/wrap"
+    }
+  ]
+}

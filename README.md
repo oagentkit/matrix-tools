@@ -28,6 +28,7 @@ oagentkit 模块矩阵的自动化仓 —— 生成、审计、改写、发布�
 | `scripts/verify_docs.py` | **防漂移**：重新生成 `llms.txt` 与提交版比对，不一致 exit 1（`--fix` 直接覆盖） |
 | `scripts/verify_repo_docs.py` | **防抹除**：检测各仓 README/AGENTS 与 `gen_docs.py` 输出的差异（只报告，不提供 `--fix`） |
 | `scripts/check_facade_imports.py` | **退役守卫**：扫描下游是否仍 import 门面仓/旧 module，命中 exit 1 |
+| `scripts/verify_facade_frozen.py` | **冻结守卫**：门面仓已废弃（v1.x 退役条件已满足），**不得再长出新包**——门面的实际包集合必须 ⊆ 冻结基线 `scripts/facade_package_baseline.json`（2026-10-20 的人工快照，不从矩阵推导）。判据单向：新增包 / 新增转发目标 ⇒ 红；上游删包、门面跟着删 ⇒ 绿。「取不到」分两种：网络失败 ⇒ 红，门面已不存在 ⇒ 绿（门面不在就没有新增可言） |
 | `scripts/verify_dep_floors.py` | **地板漂移报告器**：各仓 `go.mod` 的第一方依赖地板 vs 远端最新 tag（`--enforce` 发版前自检 / `--json` 机器可读 / `--selftest` 离线自测）。**默认恒 exit 0**——漂移是常态，硬门禁会逼出发版跑步机 |
 | `scripts/publish_repo.sh` | ⚠️ **已消费**，拆分期的一次性引导脚本（硬编码 v0.1.0 tag），保留仅为记录门禁顺序与踩坑注释 |
 
