@@ -93,10 +93,36 @@ import argparse
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+
+def _force_ipv4() -> None:
+    """强制 urllib 走 IPv4。
+
+    为什么必须（本机实测）：urllib 默认按系统偏好解析，IPv6 优先。
+    本机 IPv6 路由通但**到 proxy.golang.org 的 IPv6 路径不通**，
+    于是每次请求都挂到超时才返回——实测 62 个依赖 × 60s = 分钟级，
+    CI job 直接超时。强制 IPv4 后同样的请求 0.58s 返回。
+    """
+    orig = socket.getaddrinfo
+
+    def v4(host, port, *args, **kwargs):
+        try:
+            infos = orig(host, port, *args, **kwargs)
+        except Exception:
+            return []
+        v4_infos = [i for i in infos if i[0] == socket.AF_INET]
+        return v4_infos or infos
+
+    socket.getaddrinfo = v4
+
+
+_force_ipv4()
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -410,22 +436,48 @@ def remote_dep_go_versions(org: str, repo: str,
                             gomod_text: str) -> tuple[dict[str, str] | None, str | None]:
     """联网取某仓依赖链上每个依赖的 go 指令。
 
-    直接读各依赖模块的 go.mod（`proxy.golang.org/<mod>/@v/<ver>.mod` 或
-    `repo_meta` 抓第一方仓的 go.mod），**不走本地 go list**——
+    直接读各依赖模块的 go.mod（第一方仓走 `repo_meta`，三方走
+    `proxy.golang.org/<mod>/@v/<ver>.mod`），**不走本地 go list**——
     CI 里没有各仓的本地副本。
 
     读不到某个依赖的 go 指令 → 该依赖不计入「全兼容」判定
     （保守：只把**确认 ≤ 1.24** 的依赖算作兼容），
     但「一条都读不到」要判红（判不了 ≠ 合规）。
     """
-    deps: dict[str, str] = {}
-    for mod, ver in parse_requires(gomod_text).items():
-        gover = remote_module_go_version(org, mod, ver)
-        if gover:
-            deps[mod] = gover
+    requires = parse_requires(gomod_text)
+    if not requires:
+        return None, f"{repo}: go.mod 里没有 require 依赖（判不了）"
+    deps = {mod: gover for mod, gover in
+            ((m, _GO_VER_CACHE.get((m, v))) for m, v in requires.items())
+            if gover}
     if not deps:
         return None, f"{repo}: 依赖链的 go 指令一条都读不到（判不了）"
     return deps, None
+
+
+# 全局缓存：(模块路径, 版本) → go 指令。
+# 同一依赖被多个矩阵仓引用时只取一次——否则 13 仓 × 数十依赖 =
+# 上百次网络调用，CI job 会超时。
+_GO_VER_CACHE: dict[tuple[str, str], str] = {}
+
+
+def prefetch_go_versions(org: str, gomods: dict[str, str]) -> None:
+    """预取所有仓依赖的 go 指令，填进全局缓存。并发执行。"""
+    wanted: dict[tuple[str, str], None] = {}
+    for text in gomods.values():
+        for mod, ver in parse_requires(text).items():
+            wanted.setdefault((mod, ver), None)
+    if not wanted:
+        return
+
+    def one(key):
+        mod, ver = key
+        return key, remote_module_go_version(org, mod, ver)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for key, gover in pool.map(one, list(wanted.keys())):
+            if gover:
+                _GO_VER_CACHE[key] = gover
 
 
 def remote_module_go_version(org: str, mod: str, ver: str) -> str | None:
@@ -444,7 +496,7 @@ def remote_module_go_version(org: str, mod: str, ver: str) -> str | None:
     # 三方模块：走 Go module proxy 的 .mod 端点
     url = f"https://proxy.golang.org/{mod}/@v/{ver}.mod"
     try:
-        with urllib.request.urlopen(url, timeout=60) as resp:
+        with urllib.request.urlopen(url, timeout=20) as resp:
             text = resp.read().decode("utf-8", errors="replace")
     except Exception:
         return None
@@ -478,6 +530,9 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
+    # 先把所有仓的 go.mod 收齐，再一次性预取依赖的 go 指令（跨仓去重 + 并发）
+    gomods: dict[str, str] = {}
+    cis: dict[str, str] = {}
     for repo, tier in sorted(tiers.items()):
         if args.root:
             gomod_text, ci_text, err = local_facts(Path(args.root), repo)
@@ -486,14 +541,25 @@ def main() -> int:
         if err:
             problems.append(err)
             continue
-        go_version, toolchain = parse_go_directive(gomod_text)
-        ci_go_version = parse_ci_go_version(ci_text)
+        gomods[repo] = gomod_text
+        cis[repo] = ci_text
+    if not gomods:
+        print("❌ 一个仓都没读到 go.mod（拒绝判定：避免「全绿但什么都没查」）")
+        return 1
+    if not args.root:
+        prefetch_go_versions(org, gomods)
+
+    for repo, tier in sorted(tiers.items()):
+        if repo not in gomods:
+            continue
+        go_version, toolchain = parse_go_directive(gomods[repo])
+        ci_go_version = parse_ci_go_version(cis[repo])
         # 判据 4 需要依赖链的 go 指令
         deps: dict[str, str] | None = None
         if args.root:
             deps, derr = dep_go_versions(Path(args.root) / repo)
         else:
-            deps, derr = remote_dep_go_versions(org, repo, gomod_text)
+            deps, derr = remote_dep_go_versions(org, repo, gomods[repo])
         if derr and repo not in EXEMPTIONS:
             problems.append(derr)
         problems.extend(check_repo(repo, tier, go_version, toolchain,
