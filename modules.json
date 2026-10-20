@@ -296,6 +296,7 @@
       "oekitAnalog": "httpx",
       "packages": [
         "llm",
+        "llm/port",
         "llm/wrap",
         "llm/llmtest",
         "obsx"
@@ -324,6 +325,7 @@
       "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-llm\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- 模型请求/响应落日志前必须脱敏（凭据与用户数据都可能出现在 prompt 里）。",
       "pkgDesc": {
         "llm": "模型客户端：多模型降级链、任务级预算、成本记账、分阶段路由、主备切换",
+        "llm/port": "窄接口层（不引 eino）：Complete(ctx,req) 形态的降级链/预算/成本记账；无 eino 的内核（预算/成本/价表/熔断）由根包下沉而来，两条路径共用同一份实现",
         "llm/wrap": "调用包装与限流适配",
         "llm/llmtest": "模型层契约测试套件",
         "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）"
