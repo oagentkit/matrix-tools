@@ -80,6 +80,19 @@ def git_out(repo: Path, *args: str) -> str:
     return run(["git", "-C", str(repo), *args]).stdout.strip()
 
 
+def git_out_opt(repo: Path, *args: str) -> str | None:
+    """跑一条 git 命令，**失败不抛**——返回 None。
+
+    用在「这条命令非零退出是正常情况」的探查上，
+    例如 `git rev-parse --verify <branch>`：分支不存在时它就该返回非零，
+    若按普通命令处理会把「分支不存在」抛成异常。
+    """
+    p = run(["git", "-C", str(repo), *args], check=False)
+    if p.returncode != 0:
+        return None
+    return p.stdout.strip()
+
+
 def commit_message_file(text: str) -> Path:
     """把提交信息写成 UTF-8 文件。
 
@@ -155,6 +168,12 @@ def cmd_prewrite(args) -> int:
                  "不需要预写")
         return emit(rep)
 
+    branch_name = args.branch or f"chore/changelog-prewrite-{args.version}"
+    if git_out_opt(repo_dir, "rev-parse", "--verify", branch_name):
+        rep.red(args.repo, f"分支 {branch_name} 已存在",
+                "换个分支名，或先把它删掉")
+        return emit(rep)
+
     if args.dry_run:
         rep.info(args.repo, f"[dry-run] 将把 CHANGELOG.md 更新为含 {args.version} 段",
                  f"当前分支 {branch}")
@@ -173,12 +192,6 @@ def cmd_prewrite(args) -> int:
                 "预写段必须单独成一个提交")
         return emit(rep)
 
-    branch_name = args.branch or f"chore/changelog-prewrite-{args.version}"
-    if git_out(repo_dir, "rev-parse", "--verify", branch_name):
-        rep.red(args.repo, f"分支 {branch_name} 已存在",
-                "换个分支名，或先把它删掉")
-        run(["git", "-C", str(repo_dir), "reset", "--quiet"])
-        return emit(rep)
     run(["git", "-C", str(repo_dir), "checkout", "-b", branch_name])
     msg = commit_message_file(
         f"docs(changelog): 预写 {args.version} 待发版段\n\n"
@@ -218,7 +231,7 @@ def cmd_tag(args) -> int:
         return emit(rep)
 
     # tag 不能已存在
-    if git_out(repo_dir, "tag", "--list", args.version):
+    if git_out_opt(repo_dir, "tag", "--list", args.version):
         rep.red(args.repo, f"本地已有 tag {args.version}")
         return emit(rep)
     remote_tags = run(["git", "-C", str(repo_dir), "ls-remote", "--tags", "origin",
@@ -377,15 +390,34 @@ def cmd_doctor(args) -> int:
     else:
         rep.red(args.repo, "没有 CHANGELOG.md")
 
-    # 依赖地板时效（发版时刻的地板必须是当时的最新）
+    # 依赖地板时效（发版时刻的地板必须是当时的最新）。
+    #
+    # ⚠️ 只看**本仓**的依赖：地板报告器是全矩阵口径，
+    # 而别的仓欠账不是本仓的阻塞项（否则每发一版都要先修完全矩阵的欠账，
+    # 那正是「发版跑步机」）。
+    # 用 --json 取机器可读结果再按仓过滤，而不是解析人类可读输出。
     dep = HERE / "verify_dep_floors.py"
     if dep.is_file():
-        p = run([sys.executable, str(dep), "--org", args.org, "--enforce"], check=False)
-        out = (p.stdout or "") + (p.stderr or "")
-        if p.returncode != 0:
-            rep.red(args.repo, "依赖地板不满足发版条件", out.strip()[-600:])
+        p = run([sys.executable, str(dep), "--org", args.org, "--json"], check=False)
+        try:
+            payload = json.loads(p.stdout)
+        except ValueError:
+            payload = None
+        if payload is None:
+            rep.yellow(args.repo, "依赖地板取数失败（判不了），未做地板校验",
+                       "网络或脚本问题——判不了不能当成「地板没问题」")
         else:
-            rep.info(args.repo, "依赖地板满足发版条件")
+            rows = [r for r in payload.get("rows", []) if r.get("repo") == args.repo]
+            bad = [r for r in rows if r.get("state") != "ok"]
+            for r in bad:
+                rep.red(args.repo,
+                        f"依赖 {r.get('dep')} 钉在 {r.get('pinned')}，远端最新是 {r.get('latest')}",
+                        f"先发一版把地板抬到 {r.get('latest')}，再发本仓——"
+                        "打 tag 时刻的地板必须是当时的最新")
+            if not bad and rows:
+                rep.info(args.repo, f"依赖地板满足发版条件（{len(rows)} 条第一方依赖）")
+            elif not rows:
+                rep.yellow(args.repo, "没有取到本仓的依赖地板记录（判不了）")
 
     return emit(rep)
 
