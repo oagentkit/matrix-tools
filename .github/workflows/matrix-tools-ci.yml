@@ -154,9 +154,6 @@ jobs:
         run: python3 scripts/verify_changelog_at_tag.py --selftest
 
       - name: 发版时刻地板时效门禁自测
-        # 时间口径的门禁：判据写反会把「依赖在发版之后才发布」误判成
-        # 「这个 tag 当时就落后」——那会让发版者被冤枉地改 go.mod。
-        # 自测覆盖：取 T 时刻之前的最新 / T 之后发布的不算账 / 取不到即报。
         run: python3 scripts/verify_tag_floor.py --selftest
 
       - name: CHANGELOG 生成器自测（预写→提交→打 tag 端到端自洽）
@@ -173,6 +170,12 @@ jobs:
         # 自测同时覆盖 depFloor 对账（漏登记 / 多登记 / 内容漂移三个负向样本）——
         # 离线 drift job 忽略 depFloor 之后，它就是这个字段唯一的守门人。
         run: python3 scripts/verify_dep_floor.py --selftest
+
+      - name: Go 地板门禁自测
+        # tier0 的 go 指令必须 1.24.x，且 CI go-version 与 go.mod 成对。
+        # 自测带负向样本：tier0 地板抬高 / toolchain 超标 / CI 不成对 / 判不了即红，
+        # 同时带**不误报**样本——tier1/tier2/tier3 用 1.26 是合法的，不能报成漂移。
+        run: python3 scripts/verify_go_floor.py --selftest
 
   matrix-truth:
     name: Matrix truth (breakingIndex / import paths)
@@ -225,18 +228,19 @@ jobs:
         # go.mod 算出的地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。
         run: python3 scripts/verify_dep_floor.py --org oagentkit
 
+      - name: Go 地板（tier0 必须 1.24.x）+ CI go-version 与 go.mod 成对
+        # ① tier0 的 go 指令必须 1.24.x——tier0 是「需要依赖低版本 Go」的那一类，
+        #    抬高地板会把 Go 1.24 用户挡在门外（issue matrix-tools#22）；
+        # ② CI go-version 必须与 go.mod 的 go 指令成对——CI 用高版本构建、
+        #    go.mod 承诺低版本时，CI 全绿但用户按最低版本编译失败。
+        #
+        # 判据独立：直接解析各仓 go.mod 与 ci.yml 原文，
+        # 不复用任何生成器的推导（共享判断逻辑 = 共同盲区）。
+        # tier1 及以上**不设 1.24 约束**——业务层 1.24/1.25/1.26 都合法。
+        run: python3 scripts/verify_go_floor.py --org oagentkit
+
   release-floor:
     name: Release floor (发版时刻的地板时效)
-    # 单独一个 job，不塞进 matrix-truth：那边「tag ↔ CHANGELOG」要拉 100+ 个
-    # tag 快照，已经吃掉 job 的大部分时间预算，两个慢步骤叠在一起会双双超时
-    # ——超时是「判不了」不是「判过」，必须让它们各自有独立的预算与结论。
-    #
-    # 判的是「这个 tag 打出来时地板就已经落后」：llm v0.12.0/v0.12.1 就是这类
-    # （textx v0.6.0、oekit/pkg v0.16.0 在发版前 75 分钟就已发布，地板没跟）。
-    # 时间口径保证不会误伤「依赖在发版之后才发布」的情况。
-    # 只判各仓**最新** tag：2026-10-19 那次全量 tag 重写把一批历史 tag 的日期
-    # 改成同一时刻，用它们回看「当时最新」已不可信（实测会多出 100+ 条历史噪声）。
-    # 已知的欠账记在 scripts/tag_floor_debt.json，基线外的新增 = 硬失败。
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
