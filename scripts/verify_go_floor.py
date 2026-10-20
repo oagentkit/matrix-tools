@@ -157,19 +157,23 @@ EXEMPTIONS: dict[str, dict] = {
 _GO_VER_RE = re.compile(r"^go\s+(\S+)\s*$", re.M)
 _TOOLCHAIN_RE = re.compile(r"^toolchain\s+go(\S+)\s*$", re.M)
 _CI_GO_VERSION_RE = re.compile(r"go-version:\s*['\"]?([^'\"\s]+)['\"]?")
-_REQUIRE_RE = re.compile(r"^\s*([a-z0-9][^\s]*\.[^\s]*/[^\s]+)\s+(v[^\s]+)", re.M)
+# require 行的两种形态：
+#   单行： require github.com/oekit/pkg v0.16.0
+#   块内： \tgithub.com/oekit/pkg v0.16.1 // indirect
+# 两者的共同点是「行内第一个 token 是模块路径、第二个是版本」，
+# 且块内的行以空白开头、单行 require 以 "require " 开头。
+_REQUIRE_LINE_RE = re.compile(
+    r"^(?:require\s+|\s+)([a-z0-9][^\s]*\.[^\s]*/[^\s]+)\s+(v[^\s]+)", re.M)
 
 
 def parse_requires(gomod_text: str) -> dict[str, str]:
-    """go.mod 的 require 段 → {模块路径: 版本}。
+    """go.mod 的 require → {模块路径: 版本}。
 
-    只认 require 块里的直接依赖行；`// indirect` 注释行也计入
-    （间接依赖同样参与 MVS，同样有 go 指令要求）。
+    覆盖两种形态：单行 `require X vY` 与 require 块内的 `\tX vY // indirect`。
+    块内的 indirect 依赖同样参与 MVS、同样有 go 指令要求，必须计入。
     """
     out: dict[str, str] = {}
-    for mod, ver in _REQUIRE_RE.findall(gomod_text):
-        if mod.startswith("module "):
-            continue
+    for mod, ver in _REQUIRE_LINE_RE.findall(gomod_text):
         out[mod] = ver
     return out
 
@@ -426,11 +430,13 @@ def remote_dep_go_versions(org: str, repo: str,
 
 def remote_module_go_version(org: str, mod: str, ver: str) -> str | None:
     """某依赖模块声明的 go 指令。读不到返回 None。"""
-    # 第一方仓（oagentkit / oekit）：直接抓它的 go.mod
-    for prefix in ("github.com/oagentkit/", "github.com/oekit/"):
+    # 第一方仓：直接抓它的 go.mod。
+    # ⚠️ 基座 org 是 oekit（不是当前 org）——不能拿 org 去拼它的仓名。
+    for prefix, dep_org in (("github.com/oagentkit/", org),
+                             ("github.com/oekit/", "oekit")):
         if mod.startswith(prefix):
             name = mod[len(prefix):]
-            text = repo_meta.fetch_file(org, name, "go.mod")
+            text = repo_meta.fetch_file(dep_org, name, "go.mod")
             if text:
                 go, _ = parse_go_directive(text)
                 return go
@@ -619,6 +625,18 @@ def selftest() -> int:
           parse_requires("module x\n\nrequire (\n\tgithub.com/oekit/pkg v0.15.1\n"
                          "\tgithub.com/oagentkit/textx v0.6.0 // indirect\n)\n"),
           {"github.com/oekit/pkg": "v0.15.1", "github.com/oagentkit/textx": "v0.6.0"})
+    # 单行 require 形态（无缩进）——guardx / runtime / textx 就是这种
+    check("解析单行 require",
+          parse_requires("module github.com/oagentkit/guardx\n\ngo 1.24.0\n\n"
+                         "require github.com/oekit/pkg v0.16.0\n"),
+          {"github.com/oekit/pkg": "v0.16.0"})
+    # 单行 + 块内混合
+    check("解析混合 require",
+          parse_requires("module x\n\nrequire github.com/oekit/logx v0.7.1\n\n"
+                         "require (\n\tgithub.com/oekit/pkg v0.15.1\n"
+                         "\tgolang.org/x/time v0.14.0 // indirect\n)\n"),
+          {"github.com/oekit/logx": "v0.7.1", "github.com/oekit/pkg": "v0.15.1",
+           "golang.org/x/time": "v0.14.0"})
     check("最高依赖 go 版本",
           max_dep_go({"a": "1.24.0", "b": "1.25.5", "c": "1.18"}), ("b", "1.25.5"))
 
