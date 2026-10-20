@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """门面仓依赖守卫：禁止下游 import 已退役的单仓 module 与门面仓。
 
-背景：门面仓 `github.com/oagentkit/agentkit` 的退役计划是「v1.x 后转 archive」。
-但退役这件事**只有文档约束、没有机器约束**——半年后有人写一个新 import
-`agentkit/textutil` 不会有任何人收到通知，archive 之后就直接构建断裂。
+背景：门面仓 `github.com/oagentkit/agentkit` **已废弃**——README 首行「门面仓 · 已废弃」，
+「**v1.x 退役条件已满足**。本仓不接受任何新功能，只做别名转发与安全修复」。
+但它**还没 archive**，所以「不许再引」这件事**仍然只有文档约束、没有机器约束**——
+半年后有人写一个新 import `agentkit/textutil` 不会有任何人收到通知，
+archive 之后就直接构建断裂。
 
 本脚本把「不许再引」变成 CI 里的一条红灯。
+**门面活着期间这条守卫必须继续跑**：它保护的是**存量下游**——已经引了门面的代码
+不能突然编译不过，新代码也不能接着引一个已废弃的仓。
 
 用法:
     check_facade_imports.py --roots ~/my_project/lacus/argus ~/my_project/lacus/heimdallr
@@ -37,9 +41,9 @@ FORBIDDEN = [
 EXEMPT = [
     "/.git/", "/node_modules/", "/vendor/", "/_tmp/", "/.worktrees/",
     "/.gomodcache", "/.superpowers/", "/.cache/", "/dist/", "/site/",
-    # agentkit 本体就是要退役的那一坨，它当然引自己
+    # agentkit 本体就是那个**已废弃**的门面仓，它当然引自己
     "/lacus/agentkit/", "/agentkit-bisect/",
-    # oagentkit 下面只有「门面仓自己」需要豁免：它 45 个包全是 re-export，
+    # oagentkit 下面只有「门面仓自己」需要豁免：它 48 个包全是 re-export，
     # 必须 import 各能力仓。精确到仓目录，不要退回到整个矩阵目录。
     "/oagentkit/agentkit/", "/oagentkit/.github/",
 ]

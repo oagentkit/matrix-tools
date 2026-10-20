@@ -19,6 +19,16 @@
     main 上已经修好了（go.mod 跟着每轮发 tag 跟进），但只要**没有重新发 tag**，
     线上流传的 v1.2.0 就一直是个陷阱。所以这条门禁守的是「tag」，不是 main。
 
+## 门面已废弃，但这条守卫必须继续跑
+
+门面仓 `oagentkit/agentkit` 已废弃（v1.x 退役条件**已满足**，
+README：「本仓不接受任何新功能，只做别名转发与安全修复」）。
+**已废弃 ≠ 可以烂**：存量下游装走的是**已发布的 tag 快照**，而门面的每个 tag
+都是一份对外承诺——go.mod 里钉的依赖地板必须是各模块仓当时的最新，
+否则 `go get github.com/oagentkit/agentkit@vX` 装走的是拆分初期的旧实现
+（上面 v1.2.0 那 13 条 v0.1.0 就是活样本）。
+门面活着一天，这条守卫就得跑一天。
+
 用法:
     verify_facade_release.py --org oagentkit            # 联网读 tag（CI 用）
     verify_facade_release.py --tags-json t.json --facade-gomod go.mod   # 离线

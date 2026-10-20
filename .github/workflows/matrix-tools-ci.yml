@@ -106,6 +106,17 @@ jobs:
       - name: 门面仓退役守卫自测
         run: python3 scripts/check_facade_imports.py --selftest
 
+      - name: 门面包冻结守卫自测（门面已废弃，不得再长出新包）
+        # 门面仓 README 明写「v1.x 退役条件**已满足**，本仓不接受任何新功能」。
+        # 「不许再引门面」有机器约束（check_facade_imports.py），
+        # 但「门面不得继续长出新包」此前**一条机器约束都没有**——有人加一个新包目录
+        # + 一批别名，CI 全绿。这条守卫把那句文档承诺变成红灯。
+        #
+        # 自测覆盖（离线、真实逻辑，不 mock 判定函数）：
+        # 与基线一致→绿 / 新增包→红 / 删包（上游删除场景）→绿 / 新增转发目标→红 /
+        # 数量相同但集合不同→红（负向样本）/ 门面自研包→红 / 空门面→判不了。
+        run: python3 scripts/verify_facade_frozen.py --selftest
+
       - name: 门面仓发布地板守卫自测
         # 判据里含「门面接 v0.1.0」这个样本 —— 那是线上真实发生过的形态
         # （agentkit@v1.2.0 的 go.mod 把 13 个内部依赖全钉在 v0.1.0）。
@@ -377,6 +388,45 @@ jobs:
       - name: 门面符号级转发完整性
         # 取不到即红：守卫最危险的形态是「一直绿，但从没生效过」。
         run: python3 scripts/verify_facade_symbols.py --org oagentkit
+
+  facade-frozen:
+    name: Facade frozen (不得长新包)
+    # 门面仓 agentkit 已废弃：README 首行「门面仓 · 已废弃」，
+    # 「v1.x 退役条件**已满足**。本仓不接受任何新功能，只做别名转发与安全修复」。
+    #
+    # 为什么值得单独一个 job：已废弃的语义是「只保留既有兼容面、不接受新功能」，
+    # 而「新增包」正是门面继续长胖的主要形态。此前这一半**只有文档约束**：
+    #   - 「不许再引门面」有机器约束（check_facade_imports.py）；
+    #   - 「门面不得再长出新包」**一条机器约束都没有**——有人往门面加一个新包目录
+    #     + 一批别名，CI 全绿，只有 48 个 alias.go 的 diff 可见性。
+    # 本 job 就是后一条的红灯。
+    #
+    # 判据是**单向**的：门面的实际包集合 ⊆ 冻结基线
+    # （scripts/facade_package_baseline.json，2026-10-20 的人工快照）。
+    # 反向不查——上游模块真删包时，门面跟着删是对的（否则 alias.go 编译不过）。
+    #
+    # ⚠️ 顺序依赖（与 facade-symbols 同理）：本 job 读的是**门面仓 main** 的快照，
+    # 不是本仓 PR 的内容。基线与门面当前是对齐的（48 = 48），所以装这条门禁时本仓 PR 是绿的。
+    #
+    # 「取不到」的处理是分开的：**网络失败/状态判不了 ⇒ 判红**（判不了不能当成「没问题」）；
+    # **门面仓确实不存在 ⇒ 判绿**（门面不在 ⇒「门面继续生长」物理上不可能发生）。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 门面包冻结（不得新增）
+        # 取不到即红：守卫最危险的形态是「一直绿，但从没生效过」。
+        run: python3 scripts/verify_facade_frozen.py --org oagentkit
 
   dep-floors:
     name: Dep floors (report)
