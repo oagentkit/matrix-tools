@@ -292,6 +292,34 @@ def render_entry(c: dict) -> tuple[str, str, list[str]]:
     return ctype, head, body
 
 
+def pending_version(repo_dir: Path, repo: str) -> str | None:
+    """提交版 CHANGELOG 的**待发版段**版本号（若有）。
+
+    发版流程是「预写 → 提交 → 打 tag」：预写段先落到 main，tag 是**之后**才打的。
+    于是从预写到打 tag 之间，CHANGELOG 的首段版本号 **高于** 最高 tag。
+
+    判据：首段版本号 > 最高 tag（按 semver 比较）。
+    —— 只认**最高**的那一段，且必须严格高于最高 tag（已发布段不可能高于 tag）。
+
+    为什么需要它：`--check` 用「按 tag 切段重生成」的结果与提交版逐字节比对，
+    而重生成**只认已存在的 tag** ⇒ 预写段在重生成结果里不存在 ⇒ 门禁必红。
+    且这个红是**必然**的（发版流程本身要求的），不是缺陷。
+    """
+    out = Path(repo_dir) / "CHANGELOG.md"
+    if not out.exists():
+        return None
+    secs = re.findall(r"^## \[(v\d+\.\d+\.\d+)\]", out.read_text(encoding="utf-8"),
+                       re.M)
+    if not secs:
+        return None
+    tags = tags_in_order(repo_dir)
+    if not tags:
+        return None
+    top = max(secs, key=semver_key)
+    if semver_key(top) > semver_key(tags[0]):
+        return top
+    return None
+
 def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
     # 区间必须**升序**计算：tag 区间的定义是「上一个更旧的 tag .. 这个 tag」。
     # 若从最新 tag 倒着算，prev=None 会退化成「该 tag 的全部可达历史」，
@@ -531,6 +559,53 @@ def selftest() -> int:
                 _git(repo, "reset", "-q", "--hard", "HEAD~1")
                 _git(repo, "branch", "-D", "chore/pre")
 
+            # ── F3 反证：待发版段（预写了但没打 tag）必须被识别 ──
+            # 发版流程是「预写 → 提交 → 打 tag」⇒ 从预写到打 tag 之间，
+            # CHANGELOG 首段版本号 **高于** 最高 tag。--check 若不识别它，
+            # 重生成结果里就没有那一段 ⇒ 门禁**必然红**（实测七仓同时红）。
+            #
+            # ⚠️ 必须在「还没打 v0.2.0 tag」的**那一刻**测：
+            # tag 一旦存在，它就是已发布段（不再算待发版段）。
+            _git(repo, "reset", "-q", "--hard", "HEAD")
+            pre_only = render(repo, "demo", "v0.2.0")
+            (repo / "CHANGELOG.md").write_text(pre_only)
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "docs(changelog): 预写 v0.2.0 段")
+            # 此时 v0.2.0 tag 尚未创建（下面才打）⇒ 预写段就是「待发版段」
+            _git(repo, "tag", "-d", "v0.2.0")
+            pv = pending_version(repo, "demo")
+            check("待发版段: pending_version 识别出未打 tag 的预写段", pv, "v0.2.0")
+            with_pending = render(repo, "demo", pv)
+            check("待发版段: 带 pending 重生成后含该段",
+                  "## [v0.2.0]" in with_pending, True)
+            without_pending = render(repo, "demo")
+            check("待发版段: 不带 pending 重生成后不含该段（证明判据有效）",
+                  "## [v0.2.0]" in without_pending, False)
+            # ⚠️ 端到端：--check **必须真的用上** pending_version，
+            # 否则「预写段必然红」这个缺陷还在（只测函数不算数）。
+            # 判据：--check 在有预写段时必须**通过**（exit 0）。
+            import io as _io
+            import contextlib as _ctx
+            saved = sys.argv
+            sys.argv = ["gen_changelogs.py", "--repo", "demo", "--root", str(repo.parent),
+                        "--check"]
+            buf = _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(buf):
+                    rc = main()
+            finally:
+                sys.argv = saved
+            check("待发版段: --check 在有预写段时通过（不因预写段而红）", rc, 0)
+            # ⚠️ 反证3b：首段**已发布**（有 tag）时，pending 必须是 None——
+            # 否则会把已发布段误当待发版段，掩盖真问题。
+            # 这一条能区分「判据正确」与「判据恒真」两种实现。
+            _git(repo, "tag", "-a", "v0.2.0", "-m", "v0.2.0", "HEAD")
+            pv2 = pending_version(repo, "demo")
+            check("待发版段: 首段已发布时 pending 为 None", pv2, None)
+            _git(repo, "tag", "-d", "v0.2.0")
+            # 恢复：把 v0.2.0 tag 打回去（后续流程依赖它）
+            _git(repo, "tag", "-a", "v0.2.0", "-m", "v0.2.0", "HEAD")
+
             # 复位到 v0.1.0，重跑下一个场景
             _git(repo, "tag", "-d", "v0.2.0")
             _git(repo, "reset", "-q", "--hard", base)
@@ -581,8 +656,15 @@ def main() -> int:
               "若是浅克隆（--depth 1）请改用完整克隆；若是全新仓则应先发版。")
         return 1
 
-    content = render(repo_dir, args.repo, args.next_version)
     out = Path(args.out) if args.out else repo_dir / "CHANGELOG.md"
+    next_version = args.next_version
+    if args.check and not next_version:
+        # check 模式：自动识别「待发版段」（预写了但还没打 tag 的那一段）。
+        # 不带上它 ⇒ 预写段在重生成结果里不存在 ⇒ 门禁在「预写→打 tag」之间
+        # **必然红**（实测 2026-10-20：agent / mcpkit / obs / promptx / queue /
+        # rag / skillkit 七仓同时红）。这不是缺陷，是发版流程本身的要求。
+        next_version = pending_version(repo_dir, args.repo)
+    content = render(repo_dir, args.repo, next_version)
 
     if args.check:
         if not out.exists():
