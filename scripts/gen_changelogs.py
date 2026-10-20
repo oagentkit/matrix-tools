@@ -51,6 +51,29 @@ CC_RE = re.compile(
     r"^(?P<type>[a-z]+)(?P<bang1>!)?(?:\((?P<scope>[^)]*)\))?(?P<bang2>!)?:\s*(?P<subject>.+)$"
 )
 
+# 本矩阵的**派单流程**强制要求 PR 标题带 `[round-N] ` 前缀（round 账本靠它记账），
+# 于是几乎每个 commit 的 subject 都长这样：`[round-2] feat(mcp): 自检原语`。
+#
+# ⚠️ 这个前缀会让 CC_RE **匹配失败** → render_entry 走 other 分支 → 返回空 body
+# → **整个 commit body 静默丢失**（实测：body_lines=[]，而去掉前缀后是
+# ['正文第一行','正文第二行']）。同时 type 退化成 other → 标题失去小节层级。
+#
+# 所以解析前**只剥离前缀**，再走 conventional commit 解析。body 照常保留。
+#
+# 为什么要「只剥离」而不是放宽 CC_RE：`[round-2] feat(mcp): x` 里 type 是 `feat`、
+# scope 是 `mcp`、subject 是 `x` —— 与 `feat(mcp): x` 完全同构。前缀是**编排标记**，
+# 不属于 conventional commit 本身，剥离它才是符合语义的解析。
+ROUND_PREFIX_RE = re.compile(r"^\s*\[round-[^\]]*\]\s*")
+
+# 剥离 round 前缀后仍不匹配 conventional commit 的 subject —— 这类提交要**保留 body**。
+#
+# 旧实现在这里直接 `return "other", subject, []`：body 被丢弃 ⇒ 发布说明的正文
+# （迁移步骤、代码块、判据锚点）整段消失，而**没有任何门禁能发现**——
+# 门禁比的正是「丢 body 之后的结果」。
+#
+# 现在：解析不出 type 时，body 照常渲染（other 桶渲染时带上 body）。
+OTHER_BODY_RENDERED = True
+
 # 哪些类型值得单独起小标题（其余压成一行要点）
 HEADING_TYPES = {"feat", "fix", "perf", "refactor", "security"}
 
@@ -182,6 +205,40 @@ def dedent_body(body: str) -> list[str]:
     return lines
 
 
+def drop_subject_echo(lines: list[str], subject: str) -> list[str]:
+    """去掉 body 开头与 subject 重复的那一行。
+
+    本矩阵的 commit 写法常见是「subject + 空行 + `* subject` + 空行 + 正文」
+    ——body 的第一行是 subject 的 markdown 复述。渲染时若不去掉，
+    版本段里会出现同一句话两遍（标题一次、正文一次）。
+
+    判据是**去掉 markdown 列表符后与 subject 文字相同**，不看具体写法
+    （`* feat(x): y` / `- feat(x): y` / `feat(x): y` 都算）。
+    """
+    if not lines or not subject:
+        return lines
+    first = lines[0].strip()
+    for mark in ("* ", "- ", "+ "):
+        if first.startswith(mark):
+            first = first[len(mark):].strip()
+            break
+    # body 的 echo 是**完整 conventional commit 格式**（`feat(mcp): xxx`），
+    # 而 subject 是**剥离后**的文字（`xxx`）——两者不可直接比较。
+    # 判据：把 body 首行按 conventional commit 解析，取其 subject 部分再比。
+    head_subject = first
+    m2 = CC_RE.match(ROUND_PREFIX_RE.sub("", first))
+    if m2:
+        head_subject = strip_pr_suffix(m2.group("subject").strip())
+    # 比较时两边都去掉 PR 号后缀——body 里那句是**合并前**写的，
+    # 可能还没有 GitHub 强加的「(#N)」。
+    if (first == subject.strip()
+            or strip_pr_suffix(first) == strip_pr_suffix(subject)
+            or head_subject == subject.strip()
+            or strip_pr_suffix(head_subject) == strip_pr_suffix(subject)):
+        return lines[1:]
+    return lines
+
+
 PR_SUFFIX_RE = re.compile(r"\s*\(#\d+\)\s*$")
 
 
@@ -215,16 +272,23 @@ def render_entry(c: dict) -> tuple[str, str, list[str]]:
     body **原样保留**，不逐行加 "- " 前缀——commit body 本身已是 markdown
     （列表、表格、代码块），再套一层 "- " 会把表格和代码块拆坏。
     """
-    m = CC_RE.match(c["subject"])
+    raw = c["subject"]
+    # 剥离派单流程的 `[round-N] ` 编排前缀（只剥前缀，body 与 subject 其余部分不动）
+    raw = ROUND_PREFIX_RE.sub("", raw)
+    m = CC_RE.match(raw)
     if not m:
-        return "other", strip_pr_suffix(c["subject"]), []
+        # 解析不出 conventional commit 时**仍要保留 body**——
+        # 旧实现在这里返回空 body，正文（迁移步骤/代码块/判据锚点）整段消失，
+        # 而没有任何门禁能发现（门禁比的正是丢 body 后的结果）。
+        return ("other", strip_pr_suffix(raw),
+                drop_subject_echo(dedent_body(c["body"]), strip_pr_suffix(raw)))
     ctype = m.group("type")
     scope = m.group("scope") or ""
     bang = "!" if (m.group("bang1") or m.group("bang2")) else ""
     subject = strip_pr_suffix(m.group("subject").strip())
     label = TYPE_LABEL.get(ctype, ctype)
     head = f"{label}({scope}){bang}：{subject}" if scope else f"{label}：{subject}"
-    body = dedent_body(c["body"])
+    body = drop_subject_echo(dedent_body(c["body"]), subject)
     return ctype, head, body
 
 
@@ -286,8 +350,16 @@ def render(repo_dir: Path, repo: str, next_version: str | None = None) -> str:
                     lines.append("")
             else:
                 for c in groups[ctype]:
-                    _, head, _ = render_entry(c)
+                    _, head, body = render_entry(c)
                     lines.append(f"- {head}")
+                    # 非 heading 类型（docs/chore/ci 等）也要落 body——
+                    # 迁移步骤、代码块、判据锚点都在 body 里，
+                    # 丢了正文等于发布说明残缺，而**没有任何门禁能发现**
+                    # （门禁比的正是丢 body 后的结果）。
+                    if body:
+                        lines.append("")
+                        lines.extend(body)
+                        lines.append("")
                 lines.append("")
     while lines and not lines[-1]:
         lines.pop()
@@ -368,6 +440,41 @@ def selftest() -> int:
             # 预写段里不能出现「补 CHANGELOG」这个零信息量条目
             check(f"{scenario}: 段内剔除「补 CHANGELOG」条目",
                   "补 CHANGELOG.md（从 git 历史生成）" in pre, False)
+
+            # ⚠️ 反证：[round-N] 前缀必须被剥离，且 body 必须保留。
+            #
+            # 实测 2026-10-20（本仓的派单流程强制要求 PR 标题带这个前缀）：
+            #   旧实现 → CC_RE 匹配失败 → type=other、body_lines=[] ⇒
+            #           **整个 commit body 静默丢失**（正文、代码块、迁移步骤全没）。
+            #           而没有任何门禁能发现——门禁比的正是「丢 body 之后的结果」。
+            (repo / "e.go").write_text("package e\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m",
+                  "[round-9] feat(round): 圆前缀下的功能\n\n"
+                  "* feat(round): 圆前缀下的功能\n\n"
+                  "正文第一行\n正文第二行")
+            pre_round = render(repo, "demo", "v0.8.0")
+            check(f"{scenario}: [round-N] 前缀被剥离（type 正确）",
+                  "### 新增(round)：圆前缀下的功能" in pre_round, True)
+            check(f"{scenario}: [round-N] 前缀的 body 保留",
+                  "正文第一行" in pre_round and "正文第二行" in pre_round, True)
+            check(f"{scenario}: body 首行的 subject 回声被去掉",
+                  "* feat(round): 圆前缀下的功能" in pre_round, False)
+
+            # ⚠️ 反证：**解析不出 conventional commit 时 body 也必须保留**。
+            # 旧实现在这里 `return "other", subject, []` —— body 被丢弃 ⇒
+            # 发布说明的正文（迁移步骤/代码块/判据锚点）整段消失，
+            # 而**没有任何门禁能发现**（门禁比的正是丢 body 后的结果）。
+            (repo / "f.go").write_text("package f\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "没有类型的提交\n\n非 conventional 的正文")
+            pre_other = render(repo, "demo", "v0.7.0")
+            check(f"{scenario}: 非 conventional 提交也保留 body",
+                  "非 conventional 的正文" in pre_other, True)
+            _git(repo, "reset", "-q", "--hard", "HEAD~1")
+            (repo / "f.go").unlink(missing_ok=True)
+            _git(repo, "reset", "-q", "--hard", "HEAD~1")
+            (repo / "e.go").unlink(missing_ok=True)
 
             # ⚠️ 反证：squash merge 的 subject 后缀「(#N)」必须被去掉。
             # 实测 2026-10-20：预写时看到 PR head 的 subject（无后缀），
