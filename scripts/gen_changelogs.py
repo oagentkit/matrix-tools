@@ -24,13 +24,31 @@ CONTRIBUTING 的「矩阵卫生」要求各仓 `CHANGELOG.md` 在场且不过期
 - **不解析 issue 链接**：commit 里的 `(#13)` 原样带出，不去猜 issue URL。
 - **首次生成会覆盖已有文件**：用 `--out` 指定路径；`--check` 只比对不写。
 
+## `--check` 的判据：两级覆盖（不是逐字节相等）
+
+逐字节相等会**逼人删掉手写发布说明**——手写的迁移步骤、补充说明在重生成结果里没有
+对应行，于是「不一致」⇒ 人只能把手写内容删掉，或者干脆不写。而发布说明的价值恰恰
+常常在这些**生成器写不出来**的内容上（issue matrix-tools#41）。
+
+所以 `--check` 默认判「**覆盖**」：
+
+- 提交版**可以更丰富**（多出来的手写内容不算问题）；
+- **缺内容仍然是红的**（漏版本段 / 漏条目 / 漏正文都红）；
+- **顺序仍然守**（按顺序做子序列匹配）⇒「段落张冠李戴」「条目顺序错乱」仍会被发现。
+
+`--check --strict` 保留**逐字节相等**模式（守住格式一致性），默认不启用。
+
+⚠️ 这道门禁只看「内容在不在」，**生成器自己算错**它看不见——那正是独立 oracle
+`verify_changelog_coverage.py`（直接扫原始 git 历史）存在的理由。
+
 用法:
     gen_changelogs.py --repo agent --root /path/to/oagentkit
     gen_changelogs.py --repo agent --root ... --next-version v0.6.1   # 预写待发版段
     gen_changelogs.py --repo agent --root ... --out /tmp/CHANGELOG.md
-    gen_changelogs.py --repo agent --root ... --check   # 报告是否过期，不写
+    gen_changelogs.py --repo agent --root ... --check   # 覆盖判据，不写
+    gen_changelogs.py --repo agent --root ... --check --strict   # 逐字节相等
 
-退出码: 0 = 成功 / --check 通过；1 = --check 发现过期或出错。
+退出码: 0 = 成功 / --check 通过；1 = --check 发现缺失或出错。
 """
 
 from __future__ import annotations
@@ -679,6 +697,75 @@ def selftest() -> int:
             _git(repo, "tag", "-d", "v0.2.0")
             _git(repo, "reset", "-q", "--hard", base)
             (repo / "CHANGELOG.md").unlink(missing_ok=True)
+
+        # ── F4：两级覆盖判据（issue matrix-tools#41） ──
+        #
+        # 逐字节相等会**逼人删掉手写发布说明**（手写内容在重生成结果里没有对应行，
+        # 于是「不一致」⇒ 人只能把手写内容删掉，或者干脆不写）。放宽到「覆盖」之后，
+        # 三件事必须同时成立：
+        #   ① 提交版**多出**手写内容 → 绿（不逼人删）；
+        #   ② 提交版**少了**生成结果里的内容 → 红（缺内容仍然是红的）；
+        #   ③ --strict（逐字节）仍然可用 → 守住格式一致性。
+        #
+        # 用独立的小仓做：上面的场景仓已被 reset 成 v0.1.0 的状态，段里没有正文行，
+        # 测不出「正文级」覆盖。
+        repo2 = tmp / "cover"
+        repo2.mkdir()
+        _git(repo2, "init", "-q", "-b", "main")
+        _git(repo2, "config", "user.email", "t@example.com")
+        _git(repo2, "config", "user.name", "T")
+        (repo2 / "a.go").write_text("package a\n")
+        _git(repo2, "add", "-A")
+        _git(repo2, "commit", "-q", "-m", "feat(x): 第一个功能\n\n正文甲\n正文乙")
+        _git(repo2, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+        _git(repo2, "commit", "-q", "--allow-empty", "-m",
+             "chore(y): 第二个提交\n\n正文丙")
+        saved_cl3 = render(repo2, "cover", "v0.2.0")
+        (repo2 / "CHANGELOG.md").write_text(saved_cl3)
+
+        def run_check2(extra: list[str]) -> tuple[int, str]:
+            import io as _io3
+            import contextlib as _ctx3
+            sv = sys.argv
+            sys.argv = ["gen_changelogs.py", "--repo", "cover",
+                        "--root", str(tmp), "--check"] + extra
+            b = _io3.StringIO()
+            try:
+                with _ctx3.redirect_stdout(b):
+                    r = main()
+            finally:
+                sys.argv = sv
+            return r, b.getvalue()
+
+        rc3, _ = run_check2([])
+        check("两级覆盖: 基线 --check 通过", rc3, 0)
+
+        # ① 提交版多出手写内容 → 必须绿（不逼人删手写发布说明）
+        (repo2 / "CHANGELOG.md").write_text(
+            saved_cl3 + "\n手写补充：这版还有一段迁移说明。\n")
+        rc4, _ = run_check2([])
+        check("两级覆盖: 提交版多出手写内容时 --check 通过", rc4, 0)
+        # ③ 同一份文件用 --strict → 必须红（逐字节相等守格式）
+        rc4s, _ = run_check2(["--strict"])
+        check("两级覆盖: --strict 对同一份文件判红（逐字节相等）", rc4s != 0, True)
+
+        # ② 少了正文 → 必须红，且报错要指出缺的是哪一行
+        (repo2 / "CHANGELOG.md").write_text(saved_cl3.replace("正文甲\n", "", 1))
+        rc5, out5 = run_check2([])
+        check("两级覆盖: 提交版少了正文时 --check 判红", rc5 != 0, True)
+        check("两级覆盖: 报错指出缺的是哪一行", "正文甲" in out5, True)
+
+        # ② 少了条目 → 必须红
+        (repo2 / "CHANGELOG.md").write_text(
+            saved_cl3.replace("### 新增(x)：第一个功能\n", "", 1))
+        rc6, out6 = run_check2([])
+        check("两级覆盖: 提交版少了条目时 --check 判红", rc6 != 0, True)
+        check("两级覆盖: 报错指出缺的是哪条条目", "第一个功能" in out6, True)
+
+        # 恢复后必须绿
+        (repo2 / "CHANGELOG.md").write_text(saved_cl3)
+        rc7, _ = run_check2([])
+        check("两级覆盖: 恢复后 --check 通过", rc7, 0)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -690,6 +777,87 @@ def selftest() -> int:
     print("✅ gen_changelogs 自测通过（预写→提交→打 tag 端到端自洽，"
           "两种发版打法产出一致）")
     return 0
+
+
+def _sections(text: str) -> dict[str, list[str]]:
+    """CHANGELOG 文本 → {版本段: 段内行}。
+
+    **段标题行不入段**：标题里的日期会随「预写那天」变，拿它做比对会造出
+    与内容无关的假红（预写与事后重生成可能隔天）。
+    """
+    out: dict[str, list[str]] = {}
+    cur: str | None = None
+    for ln in (text or "").splitlines():
+        m = re.match(r"^## \[(v[0-9.]+)\]", ln)
+        if m:
+            cur = m.group(1)
+            out[cur] = []
+        elif cur is not None:
+            out[cur].append(ln)
+    return out
+
+
+def _norm_line(s: str) -> str:
+    """行归一化：折叠内部空白 + 去首尾空白（容忍手改时的缩进差异）。"""
+    return " ".join((s or "").split())
+
+
+def _coverage_gaps(expected: str, committed: str) -> list[str]:
+    """提交版是否覆盖了重生成结果里的**全部内容** → 缺失清单（空 = 覆盖完整）。
+
+    ## 判据：两级覆盖（issue matrix-tools#41）
+
+    ① **条目级**：重生成结果里的每个版本段，提交版必须有；段内每条**条目行**
+       （`### ` / `- ` 开头）必须都在。
+    ② **正文级**：段内每一行**正文**（commit body 的行）必须都在。
+
+    ## 为什么不再逐字节相等
+
+    逐字节相等会**逼人删掉手写发布说明**——手写的迁移步骤、补充说明在重生成结果里
+    没有对应行，于是「不一致」⇒ 人只能把手写内容删掉，或者干脆不写。
+    发布说明的价值恰恰常常在这些**生成器写不出来**的内容上。
+
+    放宽到「覆盖」之后：
+    - **提交版可以更丰富**（多出来的手写内容不算问题）；
+    - **但缺内容仍然是红的**（漏条目 / 漏正文 / 缺版本段都红）。
+
+    ## 顺序也守
+
+    提交版必须保持重生成结果的**相对顺序**（按顺序做子序列匹配），
+    所以「段落张冠李戴」「条目顺序错乱」仍然会被发现
+    （issue #41 评论里的裁决 3 关心的正是这两点）。
+
+    ⚠️ 这道门禁只保证「内容在」；**生成器自己算错**它看不见——那正是
+    `verify_changelog_coverage.py`（独立 oracle，直接扫原始 git 历史）存在的理由。
+    """
+    exp = _sections(expected)
+    com = _sections(committed)
+    gaps: list[str] = []
+    for v, exp_lines in exp.items():
+        if v not in com:
+            gaps.append(f"[{v}] 整个版本段缺失")
+            continue
+        com_lines = com[v]
+        pos = 0
+        for ln in exp_lines:
+            if not ln.strip():
+                continue          # 空行是排版，不参与覆盖判定
+            want = _norm_line(ln)
+            hit = -1
+            for i in range(pos, len(com_lines)):
+                if _norm_line(com_lines[i]) == want:
+                    hit = i
+                    break
+            if hit < 0:
+                gaps.append(f"[{v}] {ln.strip()}")
+            else:
+                pos = hit + 1
+    # 版本段的顺序也守（提交版应按版本倒序）
+    exp_order = list(exp)
+    com_order = [v for v in com if v in exp]
+    if com_order != [v for v in exp_order if v in com]:
+        gaps.append(f"版本段顺序不一致：提交版 {com_order}，重生成 {exp_order}")
+    return gaps
 
 
 def _print_diff(cur: str, content: str, limit: int = 20) -> None:
@@ -706,16 +874,7 @@ def _print_diff(cur: str, content: str, limit: int = 20) -> None:
     import difflib
 
     def secs(text: str) -> dict[str, list[str]]:
-        out: dict[str, list[str]] = {}
-        cur_v = None
-        for ln in text.splitlines():
-            m = re.match(r"^## \[(v[0-9.]+)\]", ln)
-            if m:
-                cur_v = m.group(1)
-                out[cur_v] = []
-            elif cur_v is not None:
-                out[cur_v].append(ln)
-        return out
+        return _sections(text)
 
     a, b = secs(cur), secs(content)
     only_cur = sorted(set(a) - set(b), key=semver_key)
@@ -749,6 +908,10 @@ def main() -> int:
     ap.add_argument("--root", default="/Users/zhangyi/oagentkit")
     ap.add_argument("--out", help="输出路径；默认写 <root>/<repo>/CHANGELOG.md")
     ap.add_argument("--check", action="store_true", help="只比对不写；不一致则 exit 1")
+    ap.add_argument("--strict", action="store_true",
+                    help="配合 --check：改用**逐字节相等**判据（守住格式一致性）。"
+                         "默认是两级覆盖判据——提交版可以更丰富（手写发布说明留着），"
+                         "但缺条目/缺正文仍然是红的（issue matrix-tools#41）")
     ap.add_argument("--selftest", action="store_true",
                     help="自测：验证「预写→提交→打 tag」流程端到端自洽")
     ap.add_argument("--next-version", metavar="vX.Y.Z",
@@ -791,11 +954,31 @@ def main() -> int:
             print(f"❌ {args.repo} 缺 CHANGELOG.md")
             return 1
         cur = out.read_text(encoding="utf-8")
-        if cur != content:
-            print(f"❌ {args.repo} 的 CHANGELOG.md 与 git 历史不一致（已过期）")
+        if args.strict:
+            # --strict：逐字节相等（守住**格式**一致性）。
+            # ⚠️ 逐字节相等会逼人删掉手写发布说明（手写内容在重生成结果里没有对应行），
+            # 所以默认**不**用它；保留这个模式给「格式必须与生成器完全一致」的场合。
+            if cur != content:
+                print(f"❌ {args.repo} 的 CHANGELOG.md 与 git 历史不一致（已过期）")
+                _print_diff(cur, content)
+                return 1
+            print(f"✅ {args.repo} 的 CHANGELOG.md 是最新的（逐字节一致）")
+            return 0
+        # 默认：两级覆盖（issue matrix-tools#41）。
+        # 提交版可以更丰富（手写发布说明留着），但**缺内容仍然是红的**。
+        gaps = _coverage_gaps(content, cur)
+        if gaps:
+            print(f"❌ {args.repo} 的 CHANGELOG.md 未覆盖 git 历史里的全部内容"
+                  f"（缺 {len(gaps)} 处）")
+            print()
+            print("   缺失清单：")
+            for g in gaps[:30]:
+                print(f"     - {g}")
+            if len(gaps) > 30:
+                print(f"     …（共 {len(gaps)} 处）")
             _print_diff(cur, content)
             return 1
-        print(f"✅ {args.repo} 的 CHANGELOG.md 是最新的")
+        print(f"✅ {args.repo} 的 CHANGELOG.md 覆盖完整（内容不缺，允许有手写补充）")
         return 0
 
     out.write_text(content, encoding="utf-8")
