@@ -73,6 +73,9 @@ SHARED_LAYER = {
 GENERATOR_STEMS = {
     "gen_changelogs", "gen_versions", "gen_llms_txt", "gen_docs",
     "breaking_index", "rewrite_imports",
+    # floorBumps 的抽取规则本体：判据是「相邻两 tag 的 go.mod 差异」，
+    # 独立 oracle（verify_floor_bumps.py）必须自己判——它一 import 就共享了判定。
+    "gen_floor_bumps",
 }
 
 _IMPORT_RE = re.compile(r"^\s*(?:from\s+([A-Za-z_][\w]*)\s+import|import\s+([A-Za-z_][\w]*))",

@@ -3,6 +3,7 @@
   "$pathRule": "import 路径 = github.com/oagentkit/<仓名>/<包名末段>；旧路径 git.enjoye.top/enjoydream/agentkit/<包> 的中间层目录会被丢弃。每个包的 fromLegacy 给出该包在旧单仓里的路径。权威输出：rewrite_imports.py --print-rules",
   "$breakingIndexRule": "由各仓 CHANGELOG.md 自动抽取（判定规则见 scripts/breaking_index.py）。对账门禁：scripts/verify_breaking_index.py。",
   "$depFloorRule": "每仓的重量级第三方直接依赖（Go 的依赖面按 module 结算：import 本仓任一包，本仓的整条 require 就进消费方的模块图）。tier0/tier1 必须为空 —— 门禁：scripts/verify_dep_floor.py。",
+  "$floorBumpsRule": "「依赖地板抬高」= 相邻两个 tag 之间 go.mod 的 require 版本抬高（或新增依赖）。对下游是**隐式破坏性变更**：不跑 go mod tidy 就构建红（go: updates to go.mod needed）。判据是结构性的（go.mod 差异），与提交说明的措辞无关——不并进 breakingIndex：那里存的是迁移说明，而地板抬高的修法是「跑个 tidy」，不是迁移。生成器：scripts/gen_floor_bumps.py；对账门禁：scripts/verify_floor_bumps.py。",
   "org": "oagentkit",
   "orgUrl": "https://github.com/oagentkit",
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
@@ -57,7 +58,31 @@
           "detail": "AGENTS.md 的「能力 → 包」映射表把审计日志指向 github.com/oagentkit/guardx/audit，\n但该包已于 guardx v0.7.0 迁出（现为 github.com/oagentkit/obs/audit），不存在。\nAGENTS.md 是 AI Agent 最常读的指引文件，照着 import 会 module not found。\n本仓代码并未 import guardx/audit（go.mod 无 guardx 依赖），是纯文档错误归属。\n按同表既有用法补注迁出说明（原 runtime/breaker 行同款写法）。\n发现途径：oagentkit/.github 的 Matrix docs drift 门禁\n(scan_stale_refs.py) —— 它同时抓出了这条真 bug 与三处误报，\n误报部分已在 oagentkit/matrix-tools#(下一 PR) 修掉。"
         }
       ],
-      "depFloor": []
+      "depFloor": [],
+      "floorBumps": [
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.20.0"
+            }
+          ]
+        }
+      ]
     },
     {
       "repo": "runtime",
@@ -101,7 +126,42 @@
           "detail": "三态状态机、代绑定、冷却期、探测时限、计数型触发全部改用上游\n（WithConsecutiveFailures / WithCooldown / WithProbeTimeout）。\n同时升级 oekit/concurrency v0.9.0 -> v0.12.0。\nBREAKING：github.com/oagentkit/runtime/breaker 不再存在。迁移方\n  import github.com/oagentkit/runtime/breaker\n    -> github.com/oekit/concurrency/breaker\n注意语义差异：上游三态由「窗口丢弃概率>0 或连续失败达阈值」触发，\n而本仓原实现是纯计数型；且 Breakers 多实例注册表改为按 name 取 NewBreaker/GetBreaker。\n已知上游缺口：计数型触发只切状态、切不了放行决策\n（https://github.com/oekit/concurrency/issues/25），由 llm 仓的准入适配层兜底。\n门禁：go build / go vet / go test -race 5 包全绿，gofmt 干净。\n\n- 杂务(deps)：oekit 依赖升级\n\nconcurrency v0.13.1→v0.16.0\n姊妹矩阵 oekit 的依赖地板此前被漏掉（上一轮只扫了 oagentkit 内部依赖），本次一并对齐到最新。\n升级前已确认 oekit/concurrency v0.13.1..v0.16.0 的 8 个提交全是 feat/docs/chore，\n无 breaking/remove 标记。其中 #28 订正了 `WithCooldown(0)` 的语义——\n即 llms.txt 里警告过的那个陷阱，升上去正好拿到修正后的行为。\ngo.sum 的 h1 取自 sumdb，仅就地替换目标 mod 的两行、其余行不动。\n\n- 杂务(deps)：oekit/concurrency v0.12.0 -> v0.13.1\n\n本仓不使用上游 breaker（熔断只在 llm 仓），v0.13.0 的 #25 修复与\nv0.13.1 的 #26（RetryableWithHeaders 头值 OWS 修剪）对本仓无直接影响，\n本次为矩阵内版本对齐。\n门禁：go mod tidy -diff / build / vet /\ntest -race / gofmt 全绿。\n\n- 杂务(deps)：oekit/concurrency v0.6.0 -> v0.9.0\n\n拿到上游显式三态状态机（#17）与 singleflight 可观测折叠（#18），并为本次\nbreaker 替换评估了语义差异。\n用到的子包只有 async / singleflight / syncx —— 上游 breaker 包我们并未引用\n（runtime/breaker 是本仓自己的三态实现），所以本次升级零 breaking。\n关于 breaker 替换的现状：#17 已落地（closed/open/half-open + 代绑定 + 探测时限 +\n开放期失败不延长冷却），但两侧的触发语义仍不对齐，已在上游补两个需求：\n- #19 冷却期与探测失联时限共用 probeTimeout，无法独立配置\n- #20 缺「连续失败 N 次即熔断」（trip）触发\n因此本包暂不删除 —— llm.TestResilientBreakerTrips 钉的是 trip 语义，\n上游 v0.9.0 只有速率型触发（dropRatio > 0），现在换会让该测试失败。\n\n\n- CI：接入 org 共享门禁（规则本体在 oagentkit/.github）"
         }
       ],
-      "depFloor": []
+      "depFloor": [],
+      "floorBumps": [
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.19.0"
+            }
+          ]
+        }
+      ]
     },
     {
       "repo": "guardx",
@@ -172,7 +232,53 @@
           "detail": "修 #3。\n一、规则表公开且可组合\n- Rule 公开（Name/Re/Repl/Style/Keep/Group），Rules() 给内置表副本\n- RedactWith(s, extra) / NewRedactor(extra)：下游可追加自己的凭据形态\n- 应用顺序明确：**先内置、后扩展**（内置更精确，先跑它扩展才拿不到原始凭据）\n- 扩展表里 Re=nil 的规则跳过而不是 panic\n二、补「保定位线索的不可逆掩码」档\n- MaskHint / MaskHintWith：保留首尾各 Keep 字符，中间恒为固定长度星号\n- 保留位**封顶**、输出长度**固定** → 不随原值长度泄露信息\n- 长度不足 keep*4 时全量打码（留 8 藏 1 等于没藏）\n- Rule.Style=MaskStyleHint + Group 圈出凭据本体，保留额度才花在凭据上\n- 与全量打码是**不同档**：前者认不出是哪一条，后者认得出但还原不了\n三、依赖面收干净（主模块零外部依赖）\n- audit → 嵌套模块 github.com/oagentkit/guardx/audit（依赖 oekit/logx）\n- bashguard → 嵌套模块 github.com/oagentkit/guardx/bashguard（依赖 mvdan.cc/sh）\n- import 路径**不变**（github.com/oagentkit/guardx/audit 等），下游代码不用改\n- 主模块 go list -m all 只剩自己一行：import logredact 不再把 logx / sh 拖进\n  下游的模块图（下游的「核心零依赖」纪律不必再靠豁免名单放行）"
         }
       ],
-      "depFloor": []
+      "depFloor": [],
+      "floorBumps": [
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": null,
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.16.0",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.13.1",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        }
+      ]
     },
     {
       "repo": "queue",
@@ -196,6 +302,46 @@
       "depFloor": [
         "github.com/lib/pq",
         "github.com/oekit/logx"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.3",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.19.0"
+            }
+          ]
+        }
       ]
     },
     {
@@ -231,7 +377,110 @@
         }
       ],
       "breakingIndex": [],
-      "depFloor": []
+      "depFloor": [],
+      "floorBumps": [
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.1",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.3",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            }
+          ]
+        }
+      ]
     },
     {
       "repo": "obs",
@@ -274,6 +523,110 @@
       ],
       "depFloor": [
         "github.com/oekit/logx"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": null,
+              "to": "v0.7.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.2",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.7.0",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.3",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.16.0",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.2",
+              "to": "v0.13.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        }
       ]
     },
     {
@@ -313,6 +666,110 @@
         "github.com/Masterminds/semver/v3",
         "github.com/cloudwego/eino",
         "gopkg.in/yaml.v3"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.6.1",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.3.0",
+              "to": "v0.4.1"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.1",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.5.0",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.2",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.16.0",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.3",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.2",
+              "to": "v0.13.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -338,6 +795,94 @@
         "github.com/cloudwego/eino",
         "github.com/eino-contrib/jsonschema",
         "github.com/mark3labs/mcp-go"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.3",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": null,
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.5",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -371,6 +916,110 @@
         "github.com/cloudwego/eino",
         "github.com/milvus-io/milvus-sdk-go/v2",
         "github.com/oekit/logx"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.2",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.3",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.5",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -433,6 +1082,130 @@
         "github.com/meguminnnnnnnnn/go-openai",
         "github.com/oekit/logx",
         "golang.org/x/time"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.4.0",
+              "to": "v0.4.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.11.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.5.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.13.1",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.2",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.17.0",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.15.0",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.15.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -479,6 +1252,140 @@
       "depFloor": [
         "github.com/cloudwego/eino",
         "gopkg.in/yaml.v3"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.5.0",
+              "to": "v0.5.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.5.1",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.11.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.6.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.0",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": null,
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.1",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.0",
+              "to": "v0.13.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.0",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.16.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.3",
+              "to": "v0.8.4"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.4",
+              "to": "v0.8.5"
+            }
+          ]
+        }
       ]
     },
     {
@@ -540,6 +1447,171 @@
         "github.com/cloudwego/eino",
         "github.com/oekit/logx",
         "mvdan.cc/sh/v3"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.1",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.3.0",
+              "to": "v0.4.1"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.5.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "golang.org/x/sys",
+              "from": "v0.29.0",
+              "to": "v0.47.0"
+            },
+            {
+              "dep": "mvdan.cc/sh/v3",
+              "from": null,
+              "to": "v3.14.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.1",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.7.0",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.2",
+              "to": "v0.13.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.3",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            }
+          ]
+        }
       ]
     },
     {
@@ -602,6 +1674,167 @@
         "github.com/cloudwego/eino",
         "github.com/cloudwego/eino-ext/components/model/openai",
         "gopkg.in/yaml.v3"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.7.0",
+              "to": "v0.7.2"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.4.0",
+              "to": "v0.4.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.7.2",
+              "to": "v0.9.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.1",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.9.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.5.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.1",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.11.0",
+              "to": "v0.14.2"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.14.2",
+              "to": "v0.15.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.3",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.15.0",
+              "to": "v0.15.2"
+            }
+          ]
+        }
       ]
     }
   ],
@@ -641,7 +1874,754 @@
           "detail": "BREAKING CHANGE: 上游三个仓本轮为破坏性发布（包上移至 module 根），门面的\nre-export 必须指向新版本，否则消费方从门面仓装走的是旧实现。\n- llm/alias.go、rag/alias.go 的 upstream import 指向新路径\n- go.mod 地板：agent v0.7.0→v0.8.0、llm v0.8.0→v0.9.0、rag v0.5.0→v0.6.0\n- MIGRATION.md / README.md 的映射表同步\nverify_facade_release.py 守的是 tag 不是 main，本次随 tag 一并发布。"
         }
       ],
-      "depFloor": []
+      "depFloor": [],
+      "floorBumps": [
+        {
+          "version": "v1.5.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.7.0",
+              "to": "v0.8.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.6.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.6.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.5.0",
+              "to": "v0.5.1"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.4.0",
+              "to": "v0.4.1"
+            },
+            {
+              "dep": "github.com/oagentkit/promptx",
+              "from": "v0.5.0",
+              "to": "v0.5.1"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.4.0",
+              "to": "v0.4.1"
+            },
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.5.0",
+              "to": "v0.5.1"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.6.0",
+              "to": "v0.6.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.7.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.6.1",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.7.1",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.5.1",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/promptx",
+              "from": "v0.5.1",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/queue",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.5.1",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.3.0",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.8.0",
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.6.1",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.7.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.8.0",
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.1",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.4.0",
+              "to": "v0.4.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.2",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.6.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.3",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.8.0",
+              "to": "v0.9.1"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.9.0",
+              "to": "v0.10.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.4",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.9.1",
+              "to": "v0.10.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.9.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.6.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.5.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/promptx",
+              "from": "v0.6.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/queue",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.6.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.6.1",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.10.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.7.1",
+              "to": "v0.9.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.5",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx/audit",
+              "from": null,
+              "to": "v0.1.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx/bashguard",
+              "from": null,
+              "to": "v0.1.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.6",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.7",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.7.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.9.0",
+              "to": "v0.10.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.8",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.7.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.9",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.8.0",
+              "to": "v0.9.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.12",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.0",
+              "to": "v0.8.1"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.12.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.0",
+              "to": "v0.8.1"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.0",
+              "to": "v0.9.1"
+            },
+            {
+              "dep": "github.com/oagentkit/queue",
+              "from": "v0.6.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.8.0",
+              "to": "v0.8.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.14",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.12.1",
+              "to": "v0.13.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.15",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.16",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.1",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.0",
+              "to": "v0.6.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.17",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.13.0",
+              "to": "v0.14.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.18",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.1",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.1",
+              "to": "v0.9.3"
+            },
+            {
+              "dep": "github.com/oagentkit/promptx",
+              "from": "v0.8.0",
+              "to": "v0.8.1"
+            },
+            {
+              "dep": "github.com/oagentkit/queue",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.8.1",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.8.0",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.10.0",
+              "to": "v0.10.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.17.0",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.20",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.14.1",
+              "to": "v0.14.2"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.22",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.0",
+              "to": "v0.10.1"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.2",
+              "to": "v0.9.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.23",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.9.0",
+              "to": "v0.10.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.24",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.10.0",
+              "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.25",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.11.0",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.26",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.13.0",
+              "to": "v0.13.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.27",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.14.2",
+              "to": "v0.15.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.28",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.1",
+              "to": "v0.10.2"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.3",
+              "to": "v0.8.4"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.3",
+              "to": "v0.9.4"
+            },
+            {
+              "dep": "github.com/oagentkit/promptx",
+              "from": "v0.8.1",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/queue",
+              "from": "v0.6.2",
+              "to": "v0.6.3"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.8.3",
+              "to": "v0.8.4"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            },
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.8.2",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.10.1",
+              "to": "v0.10.2"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.29",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.2",
+              "to": "v0.10.3"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.4",
+              "to": "v0.9.5"
+            },
+            {
+              "dep": "github.com/oagentkit/promptx",
+              "from": "v0.8.2",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.8.4",
+              "to": "v0.8.5"
+            },
+            {
+              "dep": "github.com/oagentkit/skillkit",
+              "from": "v0.8.3",
+              "to": "v0.8.4"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.1",
+              "to": "v0.12.2"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.10.2",
+              "to": "v0.10.3"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.30",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.2",
+              "to": "v0.12.3"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.31",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.3",
+              "to": "v0.10.4"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.15.0",
+              "to": "v0.15.2"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.4",
+              "to": "v0.8.5"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.3",
+              "to": "v0.12.4"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

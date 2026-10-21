@@ -40,6 +40,7 @@ from matrix_paths import (  # noqa: E402  import 路径构造规则与 rewrite_i
     short_legacy,
 )
 import breaking_index  # noqa: E402  breakingIndex 的抽取规则本体
+import gen_floor_bumps  # noqa: E402  floorBumps 的抽取规则本体（生成器层内部复用）
 import repo_meta  # noqa: E402  远端取数（latest tag / CHANGELOG）
 import verify_dep_floor  # noqa: E402  地板口径与白名单的唯一实现
 
@@ -89,12 +90,59 @@ def build_breaking_index(root: str | None, org: str | None, repo: str) -> list[d
     return breaking_index.extract(text)
 
 
+def floor_bumps_map(args, data: dict) -> tuple[dict[str, list[dict]], str]:
+    """floorBumps 的来源：**能算就算**，算不出就**搬运**既有值。
+
+    为什么要有「搬运」这一路：floorBumps 要读各仓的 **tag 历史**
+    （相邻两个 tag 处的 go.mod 差异），而 gen_versions.py 的常规调用（`--org`）
+    只读各仓的当前文件——算不出历史。此时若直接不写这个字段，
+    `release.py sync-matrix` 重生成 versions.json 时就会**把它抹掉**
+    （那是一条「矩阵源刷新」路径，抹掉即等于删登记）。
+
+    所以：算得出就算；算不出就把既有值原样搬过去。
+    真正的对账由 scripts/verify_floor_bumps.py 守着——它**独立重算事实**
+    再与登记比对，搬运出来的陈旧值照样会被它抓出来。
+
+    返回 (映射, 来源说明)。
+    """
+    repos = gen_floor_bumps.repo_list(data)
+    if args.root:
+        try:
+            computed = gen_floor_bumps.compute_all(Path(args.root), None, repos)
+            return computed, f"现算（--root {args.root}）"
+        except Exception as e:  # 取不到就退回去搬，不静默
+            note = f"现算失败（{e}），改为搬运既有值"
+    else:
+        note = "无 --root（算 tag 历史需要各仓克隆），搬运既有值"
+
+    carried: dict[str, list[dict]] = {}
+    src = Path(args.preserve_from) if args.preserve_from else None
+    if args.no_preserve:
+        note += "（--no-preserve：不搬运）"
+        src = None
+    if src and src.is_file():
+        try:
+            doc = json.loads(src.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            doc = {}
+        for section in ("modules", "facades"):
+            for entry in doc.get(section, []):
+                repo = entry.get("repo")
+                if repo and "floorBumps" in entry:
+                    carried[repo] = entry["floorBumps"]
+    return carried, note
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--matrix", default=str(DEFAULT_MATRIX))
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--org", help="给了就联网读各仓最新 tag")
     ap.add_argument("--root", help="各仓本地目录的父目录（用于读 CHANGELOG 抽 breakingIndex）")
+    ap.add_argument("--preserve-from", default=str(DEFAULT_OUT),
+                    help="搬运 floorBumps 的来源文件（默认：同目录的 versions.json）")
+    ap.add_argument("--no-preserve", action="store_true",
+                    help="不搬运既有 floorBumps（只保留现算结果）")
     args = ap.parse_args()
 
     data = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
@@ -111,6 +159,14 @@ def main() -> int:
         "$depFloorRule": "每仓的重量级第三方直接依赖（Go 的依赖面按 module 结算：import 本仓任一包，"
                          "本仓的整条 require 就进消费方的模块图）。"
                          "tier0/tier1 必须为空 —— 门禁：scripts/verify_dep_floor.py。",
+        "$floorBumpsRule": "「依赖地板抬高」= 相邻两个 tag 之间 go.mod 的 require 版本抬高"
+                           "（或新增依赖）。对下游是**隐式破坏性变更**：不跑 go mod tidy "
+                           "就构建红（go: updates to go.mod needed）。"
+                           "判据是结构性的（go.mod 差异），与提交说明的措辞无关——"
+                           "不并进 breakingIndex：那里存的是迁移说明，"
+                           "而地板抬高的修法是「跑个 tidy」，不是迁移。"
+                           "生成器：scripts/gen_floor_bumps.py；"
+                           "对账门禁：scripts/verify_floor_bumps.py。",
         "org": org,
         "orgUrl": f"https://github.com/{org}" if org else None,
         "sourceMatrix": data.get("sourceModule"),
@@ -193,12 +249,23 @@ def main() -> int:
     if facades:
         out["facades"] = facades
 
+    # floorBumps：能算就算，算不出就搬运既有值（见 floor_bumps_map 的说明）
+    bumps, bumps_note = floor_bumps_map(args, data)
+    n_bump_versions = 0
+    for section in ("modules", "facades"):
+        for entry in out.get(section, []):
+            repo = entry.get("repo")
+            if repo in bumps:
+                entry["floorBumps"] = bumps[repo]
+                n_bump_versions += len(bumps[repo])
+
     Path(args.out).write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n",
                               encoding="utf-8")
     n_break = sum(len(m["breakingIndex"]) for m in out["modules"])
     n_break += sum(len(f["breakingIndex"]) for f in facades)
     print(f"# 生成 {args.out}：{out['moduleCount']} 模块 / {out['packageCount']} 包 / "
           f"tier0-{out['tierCount']-1} / breakingIndex {n_break} 条")
+    print(f"# floorBumps {n_bump_versions} 个版本有抬地板（来源：{bumps_note}）")
     if missing_changelog:
         print(f"# ⚠️ {len(missing_changelog)} 个模块没读到 CHANGELOG（breakingIndex 只能是空的）："
               f"{', '.join(missing_changelog)}")

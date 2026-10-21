@@ -173,6 +173,17 @@ jobs:
       - name: 发版时刻地板时效门禁自测
         run: python3 scripts/verify_tag_floor.py --selftest
 
+      - name: 依赖地板抬高抽取器自测
+        # floorBumps 的抽取规则本体。判据错了整条登记就是摆设：
+        # 漏判 → 矩阵继续说「这一版不会让你的构建红」；
+        # 误判 → 登记里塞满假的「要 tidy」。
+        run: python3 scripts/gen_floor_bumps.py --selftest
+
+      - name: 依赖地板抬高对账门禁自测（独立 oracle）
+        # 反证：自测里把 oracle 的「新增依赖」那一路阉割后，
+        # 结论必须变——否则自测没有区分力，门禁是「一直绿、从没生效过」。
+        run: python3 scripts/verify_floor_bumps.py --selftest
+
       - name: CHANGELOG 生成器自测（预写→提交→打 tag 端到端自洽）
         # 生成器最危险的失效形态是「看起来生成了正确的文件，但与事后重生成
         # 的结果不一致」——不跑完整流程发现不了，而后果是 .github 的
@@ -364,6 +375,58 @@ jobs:
         # 不复用任何生成器的推导（共享判断逻辑 = 共同盲区）。
         # tier1 及以上**不设 1.24 约束**——业务层 1.24/1.25/1.26 都合法。
         run: python3 scripts/verify_go_floor.py --org oagentkit
+
+  floor-bumps:
+    name: Floor bumps (依赖地板抬高的登记对账)
+    # `floorBumps` 登记每一版**抬了依赖地板**的事实。它对下游的意义是：
+    # 「这一版会让你的构建红，除非你跑 go mod tidy」。
+    # 实测机制（零网络合成样本）：消费方 go.mod 锁 depB v1.0.0、上游 depA v1 → 构建绿；
+    # 上游换成 depA v2（地板抬到 v1.1.0 且新增 depC）→
+    #   go: updates to go.mod needed, disabled by -mod=readonly; to update it: go mod tidy
+    #
+    # 判据是**结构性**的：相邻两个 tag 处的 go.mod 差异，与提交说明的措辞无关。
+    # （issue matrix-tools#68：此前「地板追平」既不进 breakingIndex，
+    #   又被 oracle 的标记行判据误伤——写「隐式 breaking：」判红，写「隐式破坏性变更」没事，
+    #   索引内容取决于作者怎么措辞，不是事实。）
+    #
+    # ⚠️ 需要**完整 tag 历史**：浅克隆只有部分 tag，「相邻 tag」是假的
+    #    （看上去没抬地板，其实是没看到那个 tag）——判不了必须判红，不能当绿灯。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: matrix-tools
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone 矩阵各仓（完整历史）
+        # 清单来自 modules.json（单一数据源），不写死仓名。
+        # 必须完整克隆：浅克隆的 tag 历史不全，算出来的「相邻 tag」是假的。
+        run: |
+          set -euo pipefail
+          while IFS= read -r repo; do
+            [ "$repo" = "matrix-tools" ] && continue
+            [ "$repo" = "oagentkit.github.io" ] && continue
+            [ "$repo" = ".github" ] && continue
+            git clone -q "https://github.com/oagentkit/${repo}.git" "${repo}"
+          done < <(python3 -c "
+          import json, pathlib
+          d = json.loads(pathlib.Path('matrix-tools/modules.json').read_text())
+          print('\n'.join(m['repo'] for m in d['modules']))
+          ")
+          # 门面仓不在 modules 里（它不是矩阵模块，是兼容层），单独克隆
+          git clone -q "https://github.com/oagentkit/agentkit.git" agentkit
+
+      - name: floorBumps 登记 ↔ 各仓 tag 历史的 go.mod 差异
+        # 独立 oracle：自己取 tag、自己解析 go.mod、自己比版本号，
+        # **不 import 生成器**（生成器漏收时它跟着一起漏 ⇒ 共同盲区）。
+        run: python3 matrix-tools/scripts/verify_floor_bumps.py --root . --versions matrix-tools/versions.json
 
   release-floor:
     name: Release floor (发版时刻的地板时效)
