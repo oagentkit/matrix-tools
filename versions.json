@@ -107,7 +107,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.8.2",
+      "latest": "v0.9.0",
       "packages": [
         {
           "pkg": "fence",
@@ -553,7 +553,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.10.0",
+      "latest": "v0.10.1",
       "packages": [
         {
           "pkg": "agentrun",

@@ -609,6 +609,44 @@ def ci_scope(versions_path: Path = DEFAULT_VERSIONS) -> tuple[list[str], str | N
 # 取仓：本地目录 / 联网克隆
 # --------------------------------------------------------------------------
 
+def _git_run(target: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(target), *args],
+                          capture_output=True, text=True)
+
+
+def _fast_forward_worktree(target: Path) -> bool:
+    """把工作树推进到远端默认分支的**当前**状态。
+
+    ## 为什么必须这一步（实测过的真实故障）
+
+    缓存命中时旧实现只跑 `git fetch --tags`——**tag 更新了，工作树没动**。
+    于是门禁拿**新 tag** 去比**旧工作树里的 CHANGELOG.md**，报出
+    「缺版本段 v0.9.3 / v0.8.2 / v0.8.3 / v0.14.2 …」这类**根本不存在的**漂移。
+
+    本地实跑同一脚本却是全绿的 —— 假红的来源就在这里。
+    而 CI 的缓存键是 `run_id`（每轮一个）+ `restore-keys` 前缀 + 7 天淘汰，
+    意味着**首次克隆之后工作树被永久冻结**，门禁会持续假红约 7 天，
+    把真实漂移的信号彻底淹没。
+
+    所以：**取 tag 与取工作树内容必须是同一个时点**。tag 用 fetch 拿，
+    内容必须跟着 reset 走。
+
+    推不动就返回 False —— 调用方据此判「判不了」，不能当成「内容没变」。
+    """
+    # origin/HEAD 是 clone 时写下的默认分支指针；老 clone 可能没有，退回 origin/main
+    candidates = []
+    head = _git_run(target, "rev-parse", "--verify", "--quiet", "origin/HEAD")
+    if head.returncode == 0 and head.stdout.strip():
+        candidates.append("origin/HEAD")
+    candidates.append("origin/main")
+    candidates.append("origin/master")
+    for ref in candidates:
+        r = _git_run(target, "reset", "--quiet", "--hard", ref)
+        if r.returncode == 0:
+            return True
+    return False
+
+
 def ensure_clone(org: str, repo: str, dest: Path, ref: str | None) -> Path | None:
     """把仓克隆/更新到 dest/repo，并 checkout 到 ref（给了的话）。取不到返回 None。"""
     target = dest / repo
@@ -622,6 +660,8 @@ def ensure_clone(org: str, repo: str, dest: Path, ref: str | None) -> Path | Non
     else:
         subprocess.run(["git", "-C", str(target), "fetch", "--quiet", "--tags", "origin"],
                        capture_output=True, text=True)
+        # 缓存命中：**必须推进工作树**，否则拿新 tag 比旧内容 → 假红。
+        _fast_forward_worktree(target)
     if ref:
         r = subprocess.run(["git", "-C", str(target), "fetch", "--quiet", "origin",
                             f"+{ref}:pr-head"], capture_output=True, text=True)

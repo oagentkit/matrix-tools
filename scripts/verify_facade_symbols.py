@@ -8,7 +8,7 @@
 
 | 守卫 | 查什么 | 查不到什么 |
 |---|---|---|
-| `verify_facade_packages.py` | 包名（47/47 通过） | 包内的**符号** |
+| `verify_facade_packages.py` | 包名（48/48 通过）+ 迁移映射表 | 包内的**符号** |
 | `check_facade_imports.py` | 禁用的 import 前缀 | 转发内容 |
 | `verify_facade_release.py` | 版本地板 | 转发内容 |
 

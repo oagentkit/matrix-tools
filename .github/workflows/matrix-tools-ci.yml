@@ -194,6 +194,43 @@ jobs:
         # 同时带**不误报**样本——tier1/tier2/tier3 用 1.26 是合法的，不能报成漂移。
         run: python3 scripts/verify_go_floor.py --selftest
 
+      - name: 事实层与报告层自测
+        # matrix_facts 是所有新守卫共用的**取数层**，judge_report 是共用**渲染层**。
+        # 它们一旦坏了，所有新守卫会一起错——所以必须单独自测。
+        run: |
+          set -euo pipefail
+          python3 scripts/matrix_facts.py --selftest
+          python3 scripts/judge_report.py --selftest
+
+      - name: 第一方依赖方向门禁自测
+        # 反证样本：tier 倒挂 / 依赖未声明 / 声明陈旧 / 矩阵内消费门面，
+        # 以及**不误报**样本（合规依赖、indirect require 不算直接依赖）。
+        run: python3 scripts/verify_import_direction.py --selftest
+
+      - name: 待发版段可观测性门禁自测
+        # 反证样本：预写段被重生成吞掉的历史必须被检出；补回后必须转绿。
+        run: python3 scripts/verify_pending_release.py --selftest
+
+      - name: latest 字段对账门禁自测
+        # 陈旧 latest 判红；**取不到判黄而不是判绿**（判不了 ≠ 没问题）。
+        run: python3 scripts/verify_latest_field.py --selftest
+
+      - name: 门面不得新增包门禁自测
+        # 规则级判定：废弃声明之后新增的包必须判红；被基线吸收的判黄。
+        run: python3 scripts/verify_facade_no_new_packages.py --selftest
+
+      - name: 门面包覆盖与迁移映射门禁自测
+        # 含迁移映射表的反证样本：门面包缺映射行 / 空映射 / 表与实现漂移。
+        run: python3 scripts/verify_facade_packages.py --selftest
+
+      - name: 不变量登记表门禁自测
+        # 登记表自己的守门人：未登记的守卫 / 未接线的判据 / 未披露的耦合。
+        run: python3 scripts/verify_inventory.py --selftest
+
+      - name: 版本漂移方向判定自测
+        # 源陈旧与副本陈旧要给**不同**的修法——照错方向修会把站点降级。
+        run: python3 scripts/verify_versions_drift.py --selftest
+
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
     # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的
@@ -229,11 +266,22 @@ jobs:
       - name: 缓存各仓克隆
         # 覆盖判据要读**完整历史**（tag 区间 + 每个 commit 的 body），浅克隆不够用。
         # 缓存命中时只需 fetch 增量，省掉每次重新克隆 14 个仓的时间。
+        #
+        # ⚠️ 缓存的正确性**不依赖**这个 cache——`ensure_clone` 在缓存命中路径上
+        # 会把工作树 reset 到远端默认分支的当前状态。
+        # 旧实现只 `git fetch --tags`（tag 更新、工作树不动），
+        # 于是门禁拿新 tag 比旧 CHANGELOG，报出根本不存在的漂移；
+        # 加上缓存键含 run_id（每轮一个新条目）+ 7 天淘汰，
+        # 首次克隆之后工作树被永久冻结 ⇒ **假红持续约 7 天**，真实漂移被淹没。
+        #
+        # 所以键改成**稳定值**（不再每轮存一份新缓存，避免缓存膨胀），
+        # 正确性由工作树 reset 保证。
         uses: actions/cache@v4
         with:
           path: ~/.cache/oagentkit/changelog-coverage
-          key: changelog-coverage-${{ github.run_id }}
+          key: changelog-coverage-clones-v2
           restore-keys: |
+            changelog-coverage-clones-
             changelog-coverage-
 
       - name: CHANGELOG 覆盖（独立 oracle；PR 只查本 PR 触及的仓）
@@ -514,3 +562,188 @@ jobs:
           else
             echo "❌ 两次生成结果不同"; exit 1
           fi
+
+  matrix-local-guards:
+    name: Matrix local guards (层级方向 / 门面规则 / 仓文档)
+    # 需要**各仓源码**才能判定的守卫集中在这里：克隆一次，多条守卫共用。
+    #
+    # 为什么必须读真实源码而不是声明：
+    #   modules.json 的 dependsOn 是**声明**，它会漂（实测 llm 声明依赖 obs/runtime，
+    #   而代码里早已不引）。在一个漂了的声明图上做层级校验，等于什么都没校验。
+    #   旧的 verify_split.py 就是这么做的，而且它没被任何 CI 引用、数据路径也已失效。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: matrix-tools
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Go
+        # 层级方向守卫用 `go list` 取**编译器视角**的真实 import——
+        # 源码正则认不出 build tag 与 import 别名。
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: matrix-tools/go.sum
+
+      - name: Clone 矩阵各仓
+        # 清单来自 modules.json（单一数据源），不写死仓名。
+        # depth 1 即可：层级方向只看源码与 go.mod，不需要历史。
+        run: |
+          set -euo pipefail
+          while IFS= read -r repo; do
+            [ "$repo" = "matrix-tools" ] && continue
+            [ "$repo" = "oagentkit.github.io" ] && continue
+            [ "$repo" = ".github" ] && continue
+            git clone -q --depth 1 "https://github.com/oagentkit/${repo}.git" "${repo}"
+          done < <(python3 -c "
+          import json, pathlib
+          d = json.loads(pathlib.Path('matrix-tools/modules.json').read_text())
+          print('\n'.join(m['repo'] for m in d['modules']))
+          ")
+          # 门面仓不在 modules 里（它不是矩阵模块，是兼容层），单独克隆
+          git clone -q --depth 1 "https://github.com/oagentkit/agentkit.git" agentkit
+
+      - name: 第一方依赖方向（tier 方向 / 依赖声明对账 / 矩阵内不消费门面）
+        run: python3 matrix-tools/scripts/verify_import_direction.py --root .
+
+      - name: 门面不得新增包（规则级）
+        # 判据取自门面自己的 README 废弃声明 + git 历史，**不依赖**冻结快照。
+        run: python3 matrix-tools/scripts/verify_facade_no_new_packages.py --facade agentkit
+
+      - name: 门面包覆盖与迁移映射
+        # 含 MIGRATION.md ↔ alias.go 的对应校验——实测「port 包有转发但迁移表漏行」
+        # 就是靠这条防住的。
+        run: python3 matrix-tools/scripts/verify_facade_packages.py --facade agentkit
+
+      - name: 各仓文档与矩阵声明的差异（报告器）
+        # ⚠️ 这是**报告器**，不是门禁，恒不失败。
+        #
+        # 为什么不能当门禁：13 个仓的 README/AGENTS.md **全部**与 gen_docs.py
+        # 的骨架有差异——因为仓库版本是**手写丰富的那个**（queue 的选主红线、
+        # textx 的包级细节…），而生成器只产骨架。实测 26 个文档无一例外。
+        # 把它当门禁 ⇒ 恒红 ⇒ 与「红了就加豁免」同命。
+        #
+        # 它的价值是「modules.json 更新后，生成器比仓库新」这个方向——
+        # 那才是「该重新生成」的情形。这个方向由人看报告决定。
+        continue-on-error: true
+        run: python3 matrix-tools/scripts/verify_repo_docs.py --mirror .
+
+      - name: 上传文档差异报告
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 matrix-tools/scripts/verify_repo_docs.py --mirror . > repo-docs-drift.txt 2>&1 || true
+          echo "差异行数：$(wc -l < repo-docs-drift.txt)"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repo-docs-drift
+          path: repo-docs-drift.txt
+
+  pending-release:
+    name: Pending release (预写段可观测)
+    # 「预写段被重生成吞掉」这个状态以前**对所有门禁都不可见**：
+    # CHANGELOG 覆盖门禁从提交版里找待发版段，段没了它就无对象可比。
+    #
+    # 只在 push / 定时跑（不挂 PR）：它需要**完整历史**（要读 CHANGELOG.md 的
+    # 提交历史才能判断「曾经有过待发版段」），克隆成本高于 PR 场景值得付的。
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: matrix-tools
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone 矩阵各仓（完整历史）
+        # 必须是完整克隆：浅克隆没有历史，看不到「预写段曾经存在」。
+        run: |
+          set -euo pipefail
+          while IFS= read -r repo; do
+            [ "$repo" = "matrix-tools" ] && continue
+            [ "$repo" = "oagentkit.github.io" ] && continue
+            [ "$repo" = ".github" ] && continue
+            git clone -q "https://github.com/oagentkit/${repo}.git" "${repo}"
+          done < <(python3 -c "
+          import json, pathlib
+          d = json.loads(pathlib.Path('matrix-tools/modules.json').read_text())
+          print('\n'.join(m['repo'] for m in d['modules']))
+          ")
+
+      - name: 待发版段可观测性（黄灯）
+        run: python3 matrix-tools/scripts/verify_pending_release.py --root .
+
+  latest-field:
+    name: Latest field (latest ↔ 远端最新 tag)
+    # versions.json 是机器可读权威源，它的 latest 字段写着每个仓的「当前最新版本」。
+    # 实测：facade 的 latest 停在 v1.8.20，而真实 tag 已是 v1.8.21，
+    # 而 drift 门禁**明确忽略** latest（离线取不到），全 CI 无人在查——
+    # 「忽略 + 补门禁」必须成对，这里就是那一条。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: matrix-tools
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: latest 字段对账
+        # 取不到 ⇒ 黄灯（判不了 ≠ 没问题），不判绿。
+        run: python3 matrix-tools/scripts/verify_latest_field.py --org oagentkit
+
+  inventory:
+    name: Invariant inventory (承诺 ↔ 判据 ↔ 接线)
+    # 每条不变量都必须有：判据脚本 + CI 接线。缺任何一件，这条承诺就是假的。
+    #
+    # 这条门禁守的是**治理本身**：矩阵反复出现的失败形态是
+    # 「文档承诺由脚本强制校验 ≠ 实际有脚本在强制校验」。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: matrix-tools
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone 规则仓（登记表引用了两个 CI 文件）
+        # 登记表里记着两个 CI 文件的路径：matrix-tools 自己的与规则仓的。
+        # 少克隆一个，门禁就会报「登记的 CI 文件找不到」——那是真话：
+        # 在只看得到一个 CI 文件的环境里，跨仓的那几条承诺确实无法验证。
+        run: git clone -q --depth 1 "https://github.com/oagentkit/.github.git" .github
+
+      - name: 不变量登记表核对
+        run: python3 matrix-tools/scripts/verify_inventory.py --root .
