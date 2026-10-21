@@ -213,8 +213,25 @@ def collect(org: str, repo: str, ref: str, prefixes: tuple[str, ...]) -> list[di
 
 
 def matrix_repos(matrix_path: Path) -> list[str]:
+    """矩阵的仓清单 —— **含门面仓**。
+
+    为什么门面也要进扫描：门面（infraRepos 里 topics 含 deprecated 的那个）
+    的 go.mod 同样钉着一整排第一方依赖，而它的每个 tag 都是一份**对外承诺**
+    （MVS 只看被消费版本的 go.mod）。门面地板落后时，
+    `go get github.com/oagentkit/agentkit@vX` 装走的就是旧实现。
+
+    此前门面不在扫描范围里 ⇒ 它的地板漂移没有任何报告器兜底
+    （而 `verify_dep_floor.py` 的注释明写「门面仓也要进对账」——
+    两个脚本覆盖面不一致，是个真缺口）。
+    """
     data = json.loads(matrix_path.read_text(encoding="utf-8"))
-    return [m["repo"] for m in data.get("modules", [])]
+    repos = [m["repo"] for m in data.get("modules", [])]
+    for infra in data.get("infraRepos", []):
+        topics = infra.get("topics") or []
+        name = infra.get("repo")
+        if name and ("deprecated" in topics or "facade" in topics) and name not in repos:
+            repos.append(name)
+    return repos
 
 
 # ---------------------------------------------------------------- 自测
