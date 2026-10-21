@@ -37,6 +37,11 @@ from pathlib import Path
 # 主模块版本线的 tag：v1.2.3（不含嵌套模块的 audit/v1.2.3 形态）
 MAIN_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
 
+# CHANGELOG 的版本段标题行：`## [v1.2.3] — 2026-01-01` / `## v1.2.3`。
+# 只认标题行**以版本号开头**——仓里的 `## 下游要做什么` 这类二级标题是
+# 版本段内部的小节，不是版本段（否则「某段里提到了 v0.15.0」会被当成版本段）。
+CHANGELOG_VERSION_HEADING = re.compile(r"^##\s*\[?(?P<v>v\d+\.\d+\.\d+)\]?")
+
 # 嵌套模块的 tag：<子目录>/v1.2.3
 NESTED_TAG_RE = re.compile(r"^(?P<prefix>[^/]+/[\w.\-/]*?)v\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
 
@@ -152,6 +157,39 @@ def list_closed_issues(org: str, repo: str, limit: int = 100) -> list[dict] | No
     except ValueError:
         return None
     return payload if isinstance(payload, list) else None
+
+
+def changelog_version_sections(text: str) -> set[str]:
+    """CHANGELOG 里的**版本段集合**（结构信号，与措辞无关）。
+
+    判据只看版本段标题行：`## [v1.2.3] — 2026-01-01` / `## v1.2.3`。
+    仓里的其他二级标题（`## 下游要做什么` / `## 为什么抬`）**不是**版本段——
+    它们是某个版本段内部的正文小节，所以标题行必须以版本号开头才算。
+
+    为什么放在**事实层**：「某份 CHANGELOG 里有哪些版本段」是事实，
+    「缺了某段算不算违规」才是判定。事实可以共享，判定不能共享
+    （见 AGENTS.md 三层架构）。
+    """
+    out: set[str] = set()
+    for line in (text or "").splitlines():
+        m = CHANGELOG_VERSION_HEADING.match(line)
+        if m:
+            out.add(m.group("v"))
+    return out
+
+
+def fetch_changelog_sections(org: str, repo: str,
+                             ref: str = "main") -> tuple[set[str] | None, str]:
+    """取某 ref 处 CHANGELOG 的版本段集合；→ (集合, 状态)。
+
+    状态 ∈ {ok, not_found, error}：
+    - not_found = 该 ref 下确实没有 CHANGELOG.md（事实如此）
+    - error     = **判不了**（取不到、解析失败）——不能当成「没有版本段」
+    """
+    text, status = fetch_file_status(org, repo, "CHANGELOG.md", ref=ref)
+    if status != "ok" or text is None:
+        return None, status
+    return changelog_version_sections(text), "ok"
 
 
 def fetch_repo_snapshot(org: str, repo: str, dest: "Path", ref: str = "main") -> "Path | None":
@@ -306,12 +344,33 @@ def selftest() -> int:
     check("包目录集合", package_dirs(paths), {"logredact", "fence", "audit", "bashguard"})
     check("仓根是包", package_dirs(["main.go"]), {"."})
 
+    # changelog_version_sections：只认版本段标题行
+    cl = ("# llm CHANGELOG\n"
+          "\n"
+          "## [v0.15.2] — 2026-10-21\n"
+          "\n"
+          "## 下游要做什么\n"
+          "\n"
+          "跑 go mod tidy。\n"
+          "\n"
+          "## [v0.15.1] — 2026-10-20\n")
+    check("版本段集合", changelog_version_sections(cl), {"v0.15.2", "v0.15.1"})
+    check("非版本段的二级标题不算版本段",
+          "v0.15.2" in changelog_version_sections("## 下游要做什么 v0.15.2\n"), False)
+    check("三级标题不算版本段",
+          changelog_version_sections("### v0.15.2\n"), set())
+    check("无方括号的标题行也算",
+          changelog_version_sections("## v1.0.0 — 2026-01-01\n"), {"v1.0.0"})
+    check("空文本", changelog_version_sections(""), set())
+    check("None 也不炸", changelog_version_sections(None), set())
+
     if fails:
         print("❌ repo_meta 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ repo_meta 自测通过（tag 过滤 / semver / module 路径 / 包目录）")
+    print("✅ repo_meta 自测通过"
+          "（tag 过滤 / semver / module 路径 / 包目录 / CHANGELOG 版本段解析）")
     return 0
 
 

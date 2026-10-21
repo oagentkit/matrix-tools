@@ -164,6 +164,14 @@ jobs:
         # 双向一一对应 / 待发版段豁免 / 存量欠账基线 / 快照里没有 CHANGELOG 豁免。
         run: python3 scripts/verify_changelog_at_tag.py --selftest
 
+      - name: 欠账基线缓解门禁自测
+        # 这条门禁要防的失效形态是「基线文件自己变成可写的豁免」：
+        # 写一行 "mitigated" 就能让欠账变绿。
+        # 所以自测必须证明**台账字段无论怎么写都改不动判定**——
+        # 反证 A（换事实 ⇒ 结论变）/ B（台账全写已缓解 ⇒ 危害那条仍红）/
+        # C（判不了的那条不因台账而转绿）。
+        run: python3 scripts/verify_debt_mitigation.py --selftest
+
       - name: CHANGELOG 覆盖门禁自测（独立 oracle）
         # 两级覆盖判据（issue matrix-tools#41）：条目级 + body 级。
         # 自测含五组：漏条目 / 正文缺失 / 零信息量提交不误报 /
@@ -364,6 +372,22 @@ jobs:
         # ② 每个已发布 tag 的**快照**里必须有它自己的版本段——下游 go get 拿到的
         #    是 tag 快照，缺段 = 发布说明残缺（issue matrix-tools#17）。
         run: python3 scripts/verify_changelog_at_tag.py --org oagentkit
+
+      - name: 欠账基线的缓解状态（独立重算，不采信基线文件）
+        # issue matrix-tools#72：changelog_tag_debt.json 的条目因 protect-tags
+        # 不可退休（tag 快照不可变）⇒ 它是**永久豁免清单**；而基线内 stale 只警告
+        # 不挡 ⇒ 谁往基线里加一条新欠账，它就变成「已知」而只留一行警告 ⇒
+        # **新增欠账被基线吸收、无人可见**。
+        #
+        # 本条把「条目」与「危害」分开：
+        #   条目 = 已发布 tag 的快照里缺自己那段（永远不可退休）；
+        #   危害 = 下游读到的**最新 CHANGELOG** 里缺那个版本的段（**可以**消除）。
+        # 判据 = 该仓 main 的 CHANGELOG 是否含该版本段。
+        #
+        # ⚠️ 判定**只用重算结果**：基线文件里的 mitigation.entries 只是账本，
+        #    不参与判定——文件声称「已缓解」而重算为「未缓解」⇒ 判红（企图豁免）。
+        #    共享判定 = 共同盲区：那个字段自己就会变成新的可写豁免。
+        run: python3 scripts/verify_debt_mitigation.py --org oagentkit
 
       - name: 依赖地板（tier0/tier1 必须无重量级第三方）+ depFloor 对账
         # 一条脚本两件事：① 层位判定（tier0/tier1 地板必须为空）；

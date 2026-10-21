@@ -31,6 +31,20 @@ issue #17 报告 7 个模块全中；实测（2026-10-20）**13 个模块 + 门�
 
 这就是「欠账可见、增量归零」：门禁不会因为存量而永远红，也不会因为存量而永远绿。
 
+## 存量欠账的两件事要分开（issue matrix-tools#72）
+
+- **条目**（本门禁管）：已发布 tag 的快照里缺自己那段。tag 受 `protect-tags` 保护、
+  不可改不可删 ⇒ 那条快照**永远**缺自己那段 ⇒ 这条欠账**永远不可退休**。
+- **危害**（另一个门禁管）：下游读到的**最新 CHANGELOG** 里缺那个版本的段。
+  它**可以**消除（后续发版重生成 CHANGELOG 就会补上）。
+
+⇒ 「补发补丁 tag」消除的是**危害**，不是**条目**。把它写成「根治办法」会让人
+以为这批欠账可还，实际它永远清不掉。
+
+危害是否已消由 `scripts/verify_debt_mitigation.py` **独立重算**判定
+（判据 = 该仓最新 CHANGELOG 是否含该版本段），本门禁不重复判定——
+事实可以共享，判定不能共享（见 matrix-tools/AGENTS.md 三层架构）。
+
 ## 性能：tag 快照的持久缓存
 
 T2 要读**每个已发布 tag 的 CHANGELOG.md 快照**。org 有 `protect-tags` ruleset
@@ -90,7 +104,6 @@ DEBT_FILE = HERE / "changelog_tag_debt.json"
 # tag 快照的持久缓存目录（tag 在 protect-tags 下不可变 ⇒ 内容可缓存）。
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "oagentkit" / "changelog-at-tag"
 
-VERSION_HEADING = re.compile(r"^##\s*\[?(?P<v>v\d+\.\d+\.\d+)\]?")
 ROOT_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
@@ -104,13 +117,13 @@ def load_json(path: Path) -> dict:
 
 
 def sections(text: str) -> set[str]:
-    """CHANGELOG 里的版本段集合。"""
-    out = set()
-    for line in (text or "").splitlines():
-        m = VERSION_HEADING.match(line)
-        if m:
-            out.add(m.group("v"))
-    return out
+    """CHANGELOG 里的版本段集合。
+
+    解析规则本体在**事实层** `repo_meta.changelog_version_sections`——
+    「某份 CHANGELOG 里有哪些版本段」是事实，「缺了某段算不算违规」才是判定。
+    事实可以共享，判定不能共享（见 matrix-tools/AGENTS.md 三层架构）。
+    """
+    return repo_meta.changelog_version_sections(text)
 
 
 # --------------------------------------------------------------------------
@@ -466,8 +479,12 @@ def main() -> int:
         print(f"ℹ️  存量欠账 {len(all_known_stale)} 个 tag（已发布、tag 受 ruleset 保护不能重打）：")
         for k in sorted(all_known_stale):
             print(f"    - {k}")
-        print("   根治办法：按 CHANGELOG-at-tag 的顺序补发补丁 tag"
-              "（gen_changelogs.py --next-version → 提交 → 打 tag）。\n")
+        print("   ⚠️ 这些条目**永远不可退休**：tag 不可改不可删 ⇒ 该 tag 处的 CHANGELOG.md\n"
+              "      内容不可变 ⇒ 那条快照永远缺自己那一段 ⇒ 本基线只增不减。\n"
+              "   补发补丁 tag 能**消除危害**（下游读到的最新 CHANGELOG 补上该版本段），\n"
+              "      但**不退休条目**——这是两件事，别把它读成「这批欠账可还」。\n"
+              "   危害是否已消由 scripts/verify_debt_mitigation.py 独立重算判定\n"
+              "      （判据：该仓最新 CHANGELOG 是否含该版本段；基线文件里写的状态不采信）。\n")
 
     if problems:
         print(f"❌ tag ↔ CHANGELOG 对账失败：{len(problems)} 处\n")
