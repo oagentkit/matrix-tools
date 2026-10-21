@@ -169,16 +169,45 @@ def matrix_index(versions_path: Path) -> dict[str, dict]:
 # ---------------------------------------------------------------- 本地模式
 
 def local_inputs(root: Path, facade_dir: Path, index: dict) -> tuple[list, list, list]:
-    """构造 symdump 的 manifest（本地模式）。→ (manifest, 门面元信息, 问题)"""
+    """构造 symdump 的 manifest（本地模式）。→ (manifest, 门面元信息, 问题)
+
+    # 枚举基准：门面**实际转发**的包，不是矩阵的全部包
+
+    这条门禁的立论是「**已冻结的那张脸**有没有长歪」——门面转发了什么，就核对什么。
+    枚举基准若取「矩阵的全部包」，矩阵每新增一个包，这条门禁就要求门面跟着长一张新脸；
+    而门面早已废弃（「不接受任何新功能，只做别名转发」），**矩阵新增包时门面不该跟**。
+
+    两条门禁各管一面、互不重叠：
+    - 本门禁（符号级）：门面**已经转发**的包，符号集是否与上游对得上；
+    - `verify_facade_frozen.py`（包级）：门面的**实际包集合**是否 ⊆ 冻结基线，
+      即「门面有没有长出新包」。门面若多转发了 `toolfail`，冻结门禁会报红。
+
+    所以「门面没转发某个矩阵包」**不是这条门禁的问题**——那是正常状态，不是缺陷。
+    把它报红会让矩阵每次新增包都撞红，而修法（给门面补转发）恰恰是门面不该做的事。
+
+    漏转发怎么仍然被抓住：门面的 alias.go 若转发了一个上游**已不存在的符号**，
+    那是「幽灵转发」，由 `check_package` 报红；门面的 alias.go 若**漏了上游的某个符号**，
+    那是「漏转发」，同样由 `check_package` 报红——两者都发生在「门面确实转发了的包」上，
+    与枚举基准无关。
+    """
     manifest = {"upstream": [], "facade": []}
     facade_meta = []
     problems: list[str] = []
-    for pkg, info in sorted(index.items()):
+    # 门面实际转发的包：门面仓下一层含 alias.go 的目录。
+    facade_pkgs = sorted(
+        child.name for child in facade_dir.iterdir()
+        if child.is_dir() and not child.name.startswith(".")
+        and (child / "alias.go").is_file()
+    )
+    for pkg in facade_pkgs:
+        info = index.get(pkg)
+        if info is None:
+            # 门面转发的包不在矩阵登记里：矩阵漏登记，由幽灵包门禁负责；
+            # 本门禁无从核对上游（拿不到 importPath），跳过而不误报。
+            problems.append(f"{pkg}: 门面转发了它，但矩阵未登记该包（判不了上游符号）")
+            continue
         up_dir = root / info["repo"] / info["subdir"] if info["subdir"] else root / info["repo"]
         alias = facade_dir / pkg / "alias.go"
-        if not alias.is_file():
-            problems.append(f"{pkg}: 门面没有 {pkg}/alias.go，判不了")
-            continue
         if not up_dir.is_dir():
             problems.append(f"{pkg}: 上游包目录不存在（{up_dir}），判不了")
             continue
