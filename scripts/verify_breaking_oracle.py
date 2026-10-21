@@ -87,8 +87,27 @@ SUB_LINE = re.compile(r"^###(?!#)\s")
 # 信号 A：显式破坏性标记（宽口径）
 EXPLICIT: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\*\*\s*breaking\b", re.I), "粗体 **BREAKING**"),
-    (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)?\s*[:：]", re.I),
-     "BREAKING: / BREAKING CHANGE: / BREAKING-CHANGE:"),
+    # 「BREAKING: / BREAKING CHANGE: / BREAKING-CHANGE:」——**必须锚到行首**。
+    #
+    # 为什么收窄（实测 2026-10-21）：不锚行首时，它会把**散文里描述**「隐式破坏性」
+    # 的句子当成标记行：
+    #   「地板抬高对下游是隐式 breaking：不跑 go mod tidy 就红」
+    # 这句话描述的是「地板追平对下游是隐式破坏性变更」——**事实陈述，不是标记**。
+    # 而矩阵对「什么算破坏性变更」有既定口径：breakingIndex 记的是
+    # **import 路径 / API 断裂**（机器按它写 import 直接编译不过），
+    # 「地板抬高」不在其中——11 个仓的整段历史里没有一次地板追平进过索引。
+    #
+    # 收窄后仍能收得到本 oracle 的核心盲区形态（都在行首）：
+    #   **BREAKING**: …        （粗体，顶格独立成行）
+    #   - BREAKING CHANGE: …   （项目符号）
+    #   breaking change: …     （小写，行首）
+    #   ⚠️ BREAKING CHANGE: … （⚠️ + 关键词同现，由下面第 4 条收）
+    #
+    # 反过来说：**散文形态的 API 断裂仍由信号 B（包搬家，结构性）兜住**——
+    # llm v0.12.0 那类「import 路径真的变了但没有标记行」的形态靠的是结构判定，
+    # 不依赖这条措辞匹配。收窄不损失该类召回。
+    (re.compile(r"(?im)^[\s>*\-•]*\**\s*breaking\b[\s\-_]*(?:change|changes)?\**\s*[:：]"),
+     "行首 BREAKING: / BREAKING CHANGE: / BREAKING-CHANGE:"),
     (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)\b", re.I), "BREAKING CHANGE 短语"),
     # ⚠️ 必须**同一行内**还有英文 breaking 关键词才算——裸 ⚠ 不算。
     #
@@ -338,11 +357,21 @@ breaking change: 小写的 breaking change 标记。
 
 ⚠️ 这条改动是被某个门禁逼出来的。
 
-## [v0.8.0] — 2026-10-20
+## [v0.8.0] — 2026-10-21
 
 ### 修复：⚠️ 与破坏性标记同现
 
 ⚠️ BREAKING CHANGE: 这一行同时有警告标记和破坏性关键词。
+
+## [v0.7.0] — 2026-10-21
+
+### 杂务(deps)：依赖地板追平
+
+地板抬高对下游是隐式 breaking：不跑 go mod tidy 就红，报 updates to go.mod needed。
+
+这**不是**破坏性变更标记行——是散文里描述「地板追平对下游是隐式破坏性变更」
+的事实陈述。矩阵的 breakingIndex 记的是 import 路径 / API 断裂，
+地板追平不在其中（11 个仓的整段历史里没有一次地板追平进过索引）。
 """
 
 # 生成器（breaking_index.py）**至今仍收不到**的形态——反证就拿这些当样本：
@@ -366,6 +395,8 @@ def selftest() -> int:
     check("普通小节不误判", "v0.10.0" in got, False)
     check("裸 ⚠️ 注意标记不误判", "v0.9.0" in got, False)
     check("⚠️ + 破坏性关键词同现被收", "v0.8.0" in got, True)
+    check("散文里的「隐式 breaking：」不算标记行（2026-10-21 收窄）",
+          "v0.7.0" in got, False)
 
     # 反证：拿**生成器**（breaking_index.py）跑同一份样本，确认它对某些形态
     # 仍然漏收 —— oracle 收得到、生成器收不到，才证明两者不在同一处盲区。
