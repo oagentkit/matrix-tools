@@ -14,7 +14,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.6.1",
+      "latest": "v0.6.2",
       "packages": [
         {
           "pkg": "textutil",
@@ -63,7 +63,7 @@
       "repo": "runtime",
       "url": "https://github.com/oagentkit/runtime",
       "tier": 0,
-      "latest": "v0.7.1",
+      "latest": "v0.7.2",
       "packages": [
         {
           "pkg": "pacer",
@@ -178,7 +178,7 @@
       "repo": "queue",
       "url": "https://github.com/oagentkit/queue",
       "tier": 2,
-      "latest": "v0.6.2",
+      "latest": "v0.6.3",
       "packages": [
         {
           "pkg": "worker",
@@ -202,7 +202,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.8.1",
+      "latest": "v0.8.2",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -237,7 +237,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.3",
+      "latest": "v0.9.4",
       "packages": [
         {
           "pkg": "langfuse",
@@ -280,7 +280,7 @@
       "repo": "skillkit",
       "url": "https://github.com/oagentkit/skillkit",
       "tier": 2,
-      "latest": "v0.8.2",
+      "latest": "v0.8.3",
       "packages": [
         {
           "pkg": "skill",
@@ -319,7 +319,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.8.3",
+      "latest": "v0.8.4",
       "packages": [
         {
           "pkg": "mcp",
@@ -344,7 +344,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.8.3",
+      "latest": "v0.8.4",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -439,7 +439,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.12.0",
+      "latest": "v0.12.1",
       "packages": [
         {
           "pkg": "toolprior",
@@ -485,7 +485,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.10.1",
+      "latest": "v0.10.2",
       "packages": [
         {
           "pkg": "acpx",
@@ -546,7 +546,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.10.1",
+      "latest": "v0.10.2",
       "packages": [
         {
           "pkg": "agentrun",
@@ -609,7 +609,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.27",
+      "latest": "v1.8.28",
       "retiring": true,
       "breakingIndex": [
         {
