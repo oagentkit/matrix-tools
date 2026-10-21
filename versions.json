@@ -8,7 +8,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 48,
+  "packageCount": 50,
   "modules": [
     {
       "repo": "textx",
@@ -138,6 +138,16 @@
           "pkg": "invoke",
           "importPath": "github.com/oagentkit/guardx/invoke",
           "fromLegacy": "agentkit/invoke"
+        },
+        {
+          "pkg": "toolfail",
+          "importPath": "github.com/oagentkit/guardx/toolfail",
+          "fromLegacy": "agentkit/toolfail"
+        },
+        {
+          "pkg": "sandbox",
+          "importPath": "github.com/oagentkit/guardx/sandbox",
+          "fromLegacy": "agentkit/sandbox"
         }
       ],
       "matrixDeps": [],
@@ -606,7 +616,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.20",
+      "latest": "v1.8.21",
       "retiring": true,
       "breakingIndex": [
         {
