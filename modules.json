@@ -184,8 +184,7 @@
         "github.com/cloudwego/eino"
       ],
       "dependsOn": [
-        "guardx",
-        "textx"
+        "guardx"
       ],
       "ghDescription": "观测与审计——Langfuse 追踪客户端/敏感操作结构化审计（不引 eino 框架）",
       "topics": [
@@ -312,9 +311,7 @@
         "golang.org/x/time"
       ],
       "dependsOn": [
-        "textx",
-        "obs",
-        "runtime"
+        "textx"
       ],
       "externalNote": "breaker 退役后改依赖 github.com/oekit/concurrency/breaker",
       "ghDescription": "模型客户端——多模型降级链/任务级预算/成本记账/分阶段路由/LLM 调用观测",
