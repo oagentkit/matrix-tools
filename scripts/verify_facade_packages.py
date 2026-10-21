@@ -93,6 +93,26 @@ def matrix_packages(matrix_path: Path) -> dict[str, set[str]]:
     return out
 
 
+def baseline_packages(baseline_path: Path | None) -> set[str]:
+    """冻结基线 → {门面承诺过的包名}。
+
+    用途：区分「矩阵有、门面没有」的两种情形——
+    基线里的包缺失 = 真缺口（红）；基线之后矩阵新增的包 = 按废弃承诺不转发（黄）。
+    """
+    if baseline_path is None or not baseline_path.is_file():
+        return set()
+    data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    names = set()
+    for item in data.get("packages", []):
+        if isinstance(item, dict):
+            name = item.get("package") or item.get("name") or item.get("pkg")
+            if name:
+                names.add(name)
+        elif isinstance(item, str):
+            names.add(item)
+    return names
+
+
 def facade_packages(facade_path: Path) -> dict[str, str]:
     """门面仓 → {包名: upstream import 路径}（只认含 alias.go 的目录）。"""
     found: dict[str, str] = {}
@@ -183,9 +203,24 @@ def check_migration_map(facade: dict[str, str], migration: dict[str, dict]) -> l
     return problems
 
 
-def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str]) -> list[dict]:
-    """返回问题列表；空列表 = 覆盖完整。"""
+def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str],
+          baseline: set[str] | None = None) -> list[dict]:
+    """返回问题列表；空列表 = 覆盖完整。
+
+    ## 「矩阵有、门面没有」为什么要分两种
+
+    门面**已废弃且冻结**：它承诺过的是**冻结那一刻**的包集合
+    （`facade_package_baseline.json`）。矩阵此后新增的包
+    （实测 2026-10-21：guardx 的 `toolfail` 与 `sandbox`），
+    门面**本来就不该转发**——转发它就是「门面又长出一张新脸」，
+    恰恰违反门面自己的废弃承诺。
+
+    所以：
+    - 缺的是**基线里的包** ⇒ **红**（门面承诺过却没转发，存量下游会编译失败）
+    - 缺的是**基线之后矩阵新增的包** ⇒ **黄**（按废弃承诺不该转发，提示即可）
+    """
     problems: list[dict] = []
+    baseline = baseline if baseline is not None else set()
 
     all_matrix: dict[str, str] = {}          # 包名 → 所属仓
     for repo, names in matrix_pkgs.items():
@@ -198,7 +233,14 @@ def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str]) -> list[dict
     for name, repo in sorted(all_matrix.items()):
         if name in retired_all:
             continue
-        if name not in facade:
+        if name in facade:
+            continue
+        if baseline and name not in baseline:
+            problems.append({"kind": "post-freeze", "package": name, "repo": repo,
+                             "detail": f"矩阵新增的包 {repo}/{name} 不在门面冻结基线里——"
+                                       "门面按废弃承诺不转发它（正确），"
+                                       "但存量下游若需要它，得直接依赖真实模块"})
+        else:
             problems.append({"kind": "missing", "package": name, "repo": repo,
                              "detail": f"矩阵有 {repo}/{name}，门面没有对应目录"})
 
@@ -228,12 +270,18 @@ def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str]) -> list[dict
                              "detail": f"门面 {name} 转发到矩阵外的仓 {org}/{repo}（{path}）"})
 
     # 4. 数量交叉校验
-    #    期望值 = 矩阵包数 **减去仍在矩阵里的退役包数**。
-    #    退役包早已从矩阵移除（如 breaker），不在 all_matrix 里，减它就减多了。
-    expected = len([n for n in all_matrix if n not in retired_all])
+    #    期望值 = **基线里仍属矩阵**的包数 —— 不是矩阵包数。
+    #    矩阵冻结后新增的包不在基线里，门面不转发它们（正确），
+    #    若拿矩阵包数当期望值，会在每次矩阵新增包时误报「门面包数不对」。
+    if baseline:
+        expected = len([n for n in baseline if n in all_matrix and n not in retired_all])
+        baseline_missing = [n for n in baseline if n not in facade]
+    else:
+        expected = len([n for n in all_matrix if n not in retired_all])
+        baseline_missing = []
     if len(facade) != expected:
         problems.append({"kind": "count", "package": "-", "repo": "-",
-                         "detail": f"门面包数 {len(facade)} != 矩阵应覆盖 {expected}"})
+                         "detail": f"门面包数 {len(facade)} != 冻结基线应覆盖 {expected}"})
 
     return problems
 
@@ -311,8 +359,7 @@ def _selftest() -> int:
              any(p["kind"] == "missing" and p["package"] == "invoke" for p in probs), True)
 
     # 7. 迁移映射表 ↔ 实际转发的一致性
-    full_map = {
-        "textutil": {"module": "textx", "path": "github.com/oagentkit/textx/textutil", "retired": False},
+    full_map = {        "textutil": {"module": "textx", "path": "github.com/oagentkit/textx/textutil", "retired": False},
         "diffx": {"module": "textx", "path": "github.com/oagentkit/textx/diffx", "retired": False},
         "llm": {"module": "llm", "path": "github.com/oagentkit/llm", "retired": False},
         "llmtest": {"module": "llm", "path": "github.com/oagentkit/llm/llmtest", "retired": False},
@@ -350,6 +397,25 @@ def _selftest() -> int:
     kinds = {(p["kind"], p["package"]) for p in check_migration_map(facade_full, with_retired)}
     check_ok("退役行不误报", any(k[0] in ("map-orphan", "map-missing") for k in kinds), False)
 
+    # 8. 冻结后矩阵新增的包：门面**不该**转发它（按废弃承诺）——不得报红
+    #
+    # 实测形态（2026-10-21）：另一条工作线给 guardx 加了 toolfail 与 sandbox 两个包
+    # 并登记进 modules.json。门面是冻结的兼容层，转发它们就是「又长出一张新脸」。
+    # 若判据仍按「矩阵有、门面没有 ⇒ 红」，矩阵每新增一个包就会误报一次。
+    matrix_new = dict(matrix)
+    matrix_new["guardx"] = set(matrix["guardx"]) | {"toolfail", "sandbox"}
+    baseline = set().union(*matrix.values()) - {"invoke"}   # 假装 invoke 不在基线
+    kinds = {(p["kind"], p["package"]) for p in check(matrix_new, facade_full, baseline)}
+    check_ok("冻结后新增的包不报红",
+             any(k[0] == "missing" and k[1] in ("toolfail", "sandbox") for k in kinds), False)
+    check_ok("冻结后新增的包记为 post-freeze",
+             any(k[0] == "post-freeze" and k[1] == "toolfail" for k in kinds), True)
+    # 但基线里的包缺失仍然是红
+    facade_missing_base = dict(facade_full)
+    del facade_missing_base["fence"]
+    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_missing_base, baseline)}
+    check_ok("基线里的包缺失仍报红", ("missing", "fence") in kinds, True)
+
     if failures:
         print("❌ verify_facade_packages 自测失败：")
         for f in failures:
@@ -365,6 +431,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="校验门面仓的 re-export 覆盖率")
     ap.add_argument("--matrix", default=str(HERE.parent / "modules.json"))
     ap.add_argument("--facade", help="门面仓本地路径")
+    ap.add_argument("--baseline", default=str(HERE / "facade_package_baseline.json"),
+                    help="门面冻结基线 JSON（用来区分「真缺口」与「冻结后矩阵新增的包」）")
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -387,7 +455,8 @@ def main() -> int:
 
     matrix_pkgs = matrix_packages(matrix_path)
     facade = facade_packages(facade_path)
-    problems = check(matrix_pkgs, facade)
+    baseline = baseline_packages(Path(args.baseline) if args.baseline else None)
+    problems = check(matrix_pkgs, facade, baseline)
     # 迁移映射表的一致性：下游唯一的迁移指引，必须与实际转发一一对应
     problems += check_migration_map(facade, migration_map(facade_path))
 
