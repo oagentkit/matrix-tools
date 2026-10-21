@@ -242,6 +242,12 @@ jobs:
         # 源陈旧与副本陈旧要给**不同**的修法——照错方向修会把站点降级。
         run: python3 scripts/verify_versions_drift.py --selftest
 
+      - name: issue 回执落地门禁自测
+        # 反证样本：把「被 PR 自动关闭」这一路掐掉后，llm#29 形态的缺口必须检不出；
+        # 反过来把「回执识别」掐掉后，有回执的必须变成报红。
+        # 自测没有区分力 ⇒ 门禁是「一直绿、从没生效过」。
+        run: python3 scripts/verify_receipts.py --selftest
+
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
     # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的
@@ -810,3 +816,53 @@ jobs:
 
       - name: 不变量登记表核对
         run: python3 matrix-tools/scripts/verify_inventory.py --root .
+
+  receipts:
+    name: Receipts (issue 回执落地)
+    # issue 被 **PR 正文 `Closes #N` 在合入时自动关闭**时，回执评论可能**一条都没留下**。
+    #
+    # 机制上的原因：`gh issue close --comment` 对**已关闭**的 issue 会**静默不贴评论**
+    # （打印 `! Issue ... is already closed` 并以 0 退出）——退出码仍是 0，
+    # 按退出码判成功的收尾脚本会误报「已回执」。
+    # 实测（issue matrix-tools#71）：llm#29 被 PR#32 自动关闭、0 条评论，
+    # 而 PR CI 全绿、修复随 llm v0.15.0 发布 ⇒ **关单成功、CI 绿、tag 已打，
+    # 没有任何地方会报错**。
+    #
+    # 判据只取**产物**（issue 上真的有没有回执型评论），不看任何命令的退出码。
+    # 范围收敛到「被 PR 自动关闭」这一形态：人工 gh issue close 关掉的 issue
+    # 本来就不该有回执，算进来就是上线即一片红。
+    #
+    # ⚠️ **报告级**（continue-on-error）：判据刚上线、豁免名单还不全，
+    #    一上来就硬失败会恒红 ⇒ 与「红了就加豁免」同命。判据跑稳后再转硬失败。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: matrix-tools
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: issue 回执落地对账
+        # 「判不了 ≠ 没问题」：取数失败判**黄灯**而不是绿灯——
+        # 否则门禁会在网络故障时静默放行，而故障恰好是最需要它的时候。
+        continue-on-error: true
+        shell: bash
+        run: python3 matrix-tools/scripts/verify_receipts.py --org oagentkit --json-out receipts-report.json
+
+      - name: 上传回执缺口报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receipts-report
+          path: receipts-report.json
+          # 脚本崩在写文件之前时不该再红一次——那会把「门禁自己坏了」
+          # 伪装成「门禁报了缺口」。
+          if-no-files-found: ignore

@@ -671,6 +671,30 @@
       "since": "2026-10-21",
       "note": "本表自己的守门人。它同时强制「独立 oracle 不得悄悄 import 生成器」——耦合必须显式登记并说明理由。",
       "kind": "gate"
+    },
+    {
+      "id": "receipt-landing",
+      "claim": "被 PR 自动关闭的 issue 必须留下一条事实型回执（PR 链接 / 版本号 / 验收结论）",
+      "judges": [
+        "verify_receipts.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "GitHub issue 的 closedByPullRequestsReferences（被哪些 PR 自动关闭）与评论正文——**只取产物，不看任何命令的退出码**",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "receipts",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-22",
+      "note": "issue matrix-tools#71：issue 被 PR 正文 `Closes #N` 在合入时自动关闭时，回执评论可能一条都没留下（实测 llm#29：关单成功、CI 绿、tag 已打，却没有任何地方会报错）——因为 `gh issue close --comment` 对已关闭 issue 静默不贴评论、退出码仍是 0。范围收敛到「被 PR 自动关闭」这一形态（人工关闭的本来就不该有回执，算进来就是上线即一片红）；豁免走显式名单 receipt_exemptions.json，且名单会过期（该 issue 后来有了回执 ⇒ 判黄要求删掉）。⚠️ 目前是**报告级**（CI 里 continue-on-error）：判据刚上线，豁免名单还不全，一上来就硬失败会恒红 ⇒ 与「红了就加豁免」同命。判据跑稳后再转硬失败。",
+      "kind": "report"
     }
   ],
   "retired": [
