@@ -202,7 +202,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.8.2",
+      "latest": "v0.8.3",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -237,7 +237,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.4",
+      "latest": "v0.9.5",
       "packages": [
         {
           "pkg": "langfuse",
@@ -280,7 +280,7 @@
       "repo": "skillkit",
       "url": "https://github.com/oagentkit/skillkit",
       "tier": 2,
-      "latest": "v0.8.3",
+      "latest": "v0.8.4",
       "packages": [
         {
           "pkg": "skill",
@@ -344,7 +344,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.8.4",
+      "latest": "v0.8.5",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -377,7 +377,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.15.0",
+      "latest": "v0.15.2",
       "packages": [
         {
           "pkg": "llm",
@@ -439,7 +439,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.12.1",
+      "latest": "v0.12.3",
       "packages": [
         {
           "pkg": "toolprior",
@@ -485,7 +485,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.10.2",
+      "latest": "v0.10.3",
       "packages": [
         {
           "pkg": "acpx",
@@ -546,7 +546,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.10.2",
+      "latest": "v0.10.3",
       "packages": [
         {
           "pkg": "agentrun",
@@ -609,7 +609,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.28",
+      "latest": "v1.8.30",
       "retiring": true,
       "breakingIndex": [
         {
