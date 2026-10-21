@@ -377,7 +377,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.15.1",
+      "latest": "v0.15.2",
       "packages": [
         {
           "pkg": "llm",
