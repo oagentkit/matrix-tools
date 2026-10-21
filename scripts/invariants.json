@@ -379,6 +379,30 @@
       "kind": "gate"
     },
     {
+      "id": "debt-mitigation",
+      "claim": "欠账基线条目的「危害是否已消」必须由脚本独立重算得出；基线文件声称的状态不得被采信",
+      "judges": [
+        "verify_debt_mitigation.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 main 的 CHANGELOG.md 里的版本段集合",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-22",
+      "note": "issue matrix-tools#72：changelog_tag_debt.json 的条目因 protect-tags 不可退休（tag 快照不可变）⇒ 它是永久豁免清单，且基线内 stale 只警告不挡 ⇒ 谁往基线里加一条新欠账，它就变成「已知」而只留一行警告 ⇒ 新增欠账被基线吸收、无人可见。本门禁按「该仓最新 CHANGELOG 是否含该版本段」重算危害是否已消：未缓解 ⇒ 判红（危害仍在），已缓解 ⇒ 只记账，判不了 ⇒ 判黄。基线文件里的 mitigation.entries 只作账本、**不参与判定**——文件声称「已缓解」而重算为「未缓解」⇒ 判红（企图豁免），否则那个字段自己就成了新的可写豁免（共享判定 = 共同盲区）。",
+      "kind": "gate"
+    },
+    {
       "id": "latest-field",
       "claim": "versions.json 的 latest 字段必须等于远端真实最新 tag",
       "judges": [

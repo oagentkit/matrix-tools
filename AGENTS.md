@@ -140,6 +140,31 @@ oracle 类门禁的自测，拿**有盲区的旧产物**跑一遍必须报出缺
 就会**把它抹掉**（抹掉即等于删登记）。对账由 `verify_floor_bumps.py`
 独立重算事实完成——它与生成器判据完全解耦。
 
+### 10. 欠账台账：「条目不可退休」≠「危害仍在」
+
+`scripts/changelog_tag_debt.json` 记的是「已发布 tag 的 CHANGELOG **快照**里缺该 tag
+自己的版本段」。两件事必须分开：
+
+- **条目**（永远不可退休）：org 有 `protect-tags` ruleset ⇒ tag 不可改不可删
+  ⇒ 该 tag 处的 CHANGELOG.md 内容不可变 ⇒ 那条快照永远缺自己那一段
+  ⇒ 基线里的每一条都永远判 stale、**永远不能移出基线**。
+- **危害**（可以消除）：下游读到的**最新 CHANGELOG** 里缺那个版本的段。
+  后续任何一次重生成 CHANGELOG 的发版都会把它补上。
+
+⇒ 所以「补发补丁 tag」**消除的是危害、不是条目**。把它写成「根治办法」会让人
+以为这批欠账可还——实际它永远清不掉。报告里也**不要**把它写成「待修」。
+
+危害是否已消由 `scripts/verify_debt_mitigation.py` **独立重算**：
+判据 = 该仓 main 的 CHANGELOG 是否含该版本段（结构信号，与措辞无关）。
+
+⚠️ **判定不采信基线文件里写的状态**（`mitigation.entries` 只是给人读的账本）：
+文件声称「已缓解」而重算为「未缓解」⇒ **判红**（那是企图豁免）——
+共享判定 = 共同盲区，那个字段自己就会变成新的可写豁免。
+
+基线内 stale 只警告不挡 ⇒ 谁往基线里加一条新欠账，它就变成「已知」而只留一行警告
+⇒ **新增欠账被基线吸收、无人可见**。这条洞由上面那条门禁兜住：
+新增的、未缓解的欠账一律判红。
+
 ## 发版
 
 发版动作已脚本化（`scripts/release.py`），顺序依赖由代码保证：
@@ -177,7 +202,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 | `Scripts` | 语法 + `--help` 冒烟 + 路径规则自洽 |
 | `Guards self-test` | 每条守卫的自测（带反证样本） |
 | `changelog-coverage` | CHANGELOG 覆盖（独立 oracle，PR 只查本 PR 触及的仓） |
-| `matrix-truth` | breakingIndex / import 路径 / dep 地板 / Go 地板（联网对账） |
+| `matrix-truth` | breakingIndex / import 路径 / dep 地板 / Go 地板 / 欠账基线缓解状态（联网对账） |
 | `floor-bumps` | floorBumps 登记 ↔ 各仓 tag 历史的 go.mod 差异（需完整克隆） |
 | `release-floor` | 打 tag 时刻的地板时效 |
 | `facade-symbols` | 门面符号级转发完整性 |
