@@ -125,6 +125,35 @@ def fetch_tree_paths(org: str, repo: str, ref: str = "main") -> list[str] | None
     return [e.get("path", "") for e in payload.get("tree", []) if e.get("type") == "blob"]
 
 
+def list_closed_issues(org: str, repo: str, limit: int = 100) -> list[dict] | None:
+    """列出仓里**已关闭**的 issue（含「被哪些 PR 自动关闭」与评论正文）。
+
+    → list[dict]；取不到返回 None（**判不了 ≠ 没有**）。
+
+    为什么不用 `gh api`：REST 的 issue 列表**没有** `closedByPullRequestsReferences`
+    字段，也不带评论正文——「哪个 PR 关掉了它」与「评论说了什么」这两个事实
+    只在 GraphQL 里有（`gh issue list --json` 走的就是 GraphQL）。
+    所以这里必须调 `gh issue list`，而不是 `gh api repos/.../issues`。
+
+    返回的每条是 `gh issue list --json` 的原样 dict，键集固定为：
+    number / title / closedAt / comments / closedByPullRequestsReferences / labels。
+    """
+    cmd = ["gh", "issue", "list", "--repo", f"{org}/{repo}", "--state", "closed",
+           "--limit", str(limit),
+           "--json", "number,title,closedAt,comments,closedByPullRequestsReferences,labels"]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_API_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if p.returncode != 0:
+        return None
+    try:
+        payload = json.loads(p.stdout or "[]")
+    except ValueError:
+        return None
+    return payload if isinstance(payload, list) else None
+
+
 def fetch_repo_snapshot(org: str, repo: str, dest: "Path", ref: str = "main") -> "Path | None":
     """把某仓的源码快照（tarball）下载并解到 dest 下，返回解出来的仓根目录。
 

@@ -1,0 +1,32 @@
+{
+  "_note": "历史快照：**2026-10-21T08:48:08Z llm#29 被 PR#32 自动关闭、且一条评论都没留下**的那个形态。这是 issue matrix-tools#71 的实测样本。",
+  "_why": "该 issue 的回执已于 2026-10-22 01:40 补上 ⇒ 现在实时扫描跑出来是 0 条缺口。所以缺口的**形态**用这份快照复现：值形态按 `gh issue list --json` 的真实输出逐字复刻（键集 = closedAt / closedByPullRequestsReferences / comments / labels / number / title），只把 comments 还原成空数组。",
+  "_capturedFrom": "gh issue list --repo oagentkit/llm --state closed --limit 100 --json number,title,closedAt,comments,closedByPullRequestsReferences,labels",
+  "_capturedAt": "2026-10-22T02:30:00+08:00",
+  "repos": {
+    "llm": [
+      {
+        "closedAt": "2026-10-21T08:48:08Z",
+        "closedByPullRequestsReferences": [
+          {
+            "id": "PR_kwDOVNnBQs8AAAABJvnyBw",
+            "number": 32,
+            "repository": {
+              "id": "R_kgDOVNnBQg",
+              "name": "llm",
+              "owner": {
+                "id": "O_kgDOFIGPUw",
+                "login": "oagentkit"
+              }
+            },
+            "url": "https://github.com/oagentkit/llm/pull/32"
+          }
+        ],
+        "comments": [],
+        "labels": [],
+        "number": 29,
+        "title": "OpenAIProviderConfig 缺 HTTPClient 注入点：宿主无法把出站守卫（拨号层）接到 LLM 请求上"
+      }
+    ]
+  }
+}
