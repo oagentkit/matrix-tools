@@ -8,7 +8,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 50,
+  "packageCount": 51,
   "modules": [
     {
       "repo": "textx",
@@ -107,7 +107,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.10.0",
+      "latest": "v0.12.0",
       "packages": [
         {
           "pkg": "fence",
@@ -148,6 +148,11 @@
           "pkg": "sandbox",
           "importPath": "github.com/oagentkit/guardx/sandbox",
           "fromLegacy": "agentkit/sandbox"
+        },
+        {
+          "pkg": "wire",
+          "importPath": "github.com/oagentkit/guardx/wire",
+          "fromLegacy": "agentkit/wire"
         }
       ],
       "matrixDeps": [],
@@ -604,7 +609,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.23",
+      "latest": "v1.8.24",
       "retiring": true,
       "breakingIndex": [
         {
