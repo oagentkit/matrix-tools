@@ -220,6 +220,7 @@ def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str],
     - 缺的是**基线之后矩阵新增的包** ⇒ **黄**（按废弃承诺不该转发，提示即可）
     """
     problems: list[dict] = []
+    notes: list[dict] = []
     baseline = baseline if baseline is not None else set()
 
     all_matrix: dict[str, str] = {}          # 包名 → 所属仓
@@ -236,10 +237,10 @@ def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str],
         if name in facade:
             continue
         if baseline and name not in baseline:
-            problems.append({"kind": "post-freeze", "package": name, "repo": repo,
-                             "detail": f"矩阵新增的包 {repo}/{name} 不在门面冻结基线里——"
-                                       "门面按废弃承诺不转发它（正确），"
-                                       "但存量下游若需要它，得直接依赖真实模块"})
+            notes.append({"kind": "post-freeze", "package": name, "repo": repo,
+                          "detail": f"矩阵新增的包 {repo}/{name} 不在门面冻结基线里——"
+                                    "门面按废弃承诺不转发它（正确），"
+                                    "但存量下游若需要它，得直接依赖真实模块"})
         else:
             problems.append({"kind": "missing", "package": name, "repo": repo,
                              "detail": f"矩阵有 {repo}/{name}，门面没有对应目录"})
@@ -283,7 +284,7 @@ def check(matrix_pkgs: dict[str, set[str]], facade: dict[str, str],
         problems.append({"kind": "count", "package": "-", "repo": "-",
                          "detail": f"门面包数 {len(facade)} != 冻结基线应覆盖 {expected}"})
 
-    return problems
+    return problems, notes
 
 
 # ---------------------------------------------------------------- 自测
@@ -316,13 +317,13 @@ def _selftest() -> int:
         "invoke": "github.com/oagentkit/toolgate/invoke",
         "policy": "github.com/oagentkit/toolgate/policy",
     }
-    check_ok("完整覆盖无问题", check(matrix, facade_full), [])
+    check_ok("完整覆盖无问题", check(matrix, facade_full)[0], [])
 
     # 2. **线上真实形态**：缺 invoke 与 injectband（2026-10-19 实测）
     facade_gap = dict(facade_full)
     del facade_gap["invoke"]
     del facade_gap["injectband"]
-    probs = check(matrix, facade_gap)
+    probs, _notes = check(matrix, facade_gap)
     kinds = {(p["kind"], p["package"]) for p in probs}
     check_ok("缺包被判出", ("missing", "invoke") in kinds, True)
     check_ok("缺包被判出2", ("missing", "injectband") in kinds, True)
@@ -332,21 +333,21 @@ def _selftest() -> int:
     # 3. 陈旧转发：门面有、矩阵没有
     facade_stale = dict(facade_full)
     facade_stale["breaker"] = "github.com/oagentkit/runtime/breaker"
-    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_stale)}
+    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_stale)[0]}
     check_ok("陈旧转发被判出", ("stale", "breaker") in kinds, True)
 
     # 4. 转发到矩阵外的仓（幽灵包引回门面）
     facade_off = dict(facade_full)
     facade_off["textutil"] = "github.com/someone-else/textx/textutil"
-    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_off)}
+    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_off)[0]}
     check_ok("矩阵外转发被判出", ("off-matrix", "textutil") in kinds, True)
 
     # 5. 退役豁免：breaker 已从矩阵移除 → **不要求**门面有它（缺失方向豁免）
     check_ok("退役包不报缺失",
              any(p["kind"] == "missing" and p["package"] == "breaker"
-                 for p in check(matrix, facade_stale)), False)
+                 for p in check(matrix, facade_stale)[0]), False)
     #    但门面若还留着它 → 陈旧转发，必须报（豁免只作用于缺失方向）
-    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_stale)}
+    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_stale)[0]}
     check_ok("退役包残留被判陈旧", ("stale", "breaker") in kinds, True)
 
     # 6. 负向样本：把「缺包」判据写反的实现（比如只比数量不比集合）应当红
@@ -354,7 +355,7 @@ def _selftest() -> int:
     facade_same_count = dict(facade_full)
     facade_same_count.pop("invoke")
     facade_same_count["policy"] = "github.com/oagentkit/toolgate/policy"  # 数量不变
-    probs = check(matrix, facade_same_count)
+    probs, _notes = check(matrix, facade_same_count)
     check_ok("数量相同但集合缺也要报",
              any(p["kind"] == "missing" and p["package"] == "invoke" for p in probs), True)
 
@@ -405,15 +406,18 @@ def _selftest() -> int:
     matrix_new = dict(matrix)
     matrix_new["guardx"] = set(matrix["guardx"]) | {"toolfail", "sandbox"}
     baseline = set().union(*matrix.values()) - {"invoke"}   # 假装 invoke 不在基线
-    kinds = {(p["kind"], p["package"]) for p in check(matrix_new, facade_full, baseline)}
+    probs_new, notes_new = check(matrix_new, facade_full, baseline)
+    kinds = {(p["kind"], p["package"]) for p in probs_new}
+    notes_kinds = {(n["kind"], n["package"]) for n in notes_new}
     check_ok("冻结后新增的包不报红",
              any(k[0] == "missing" and k[1] in ("toolfail", "sandbox") for k in kinds), False)
     check_ok("冻结后新增的包记为 post-freeze",
-             any(k[0] == "post-freeze" and k[1] == "toolfail" for k in kinds), True)
+             any(k[0] == "post-freeze" and k[1] == "toolfail" for k in notes_kinds), True)
     # 但基线里的包缺失仍然是红
     facade_missing_base = dict(facade_full)
     del facade_missing_base["fence"]
-    kinds = {(p["kind"], p["package"]) for p in check(matrix, facade_missing_base, baseline)}
+    probs_base, _n = check(matrix, facade_missing_base, baseline)
+    kinds = {(p["kind"], p["package"]) for p in probs_base}
     check_ok("基线里的包缺失仍报红", ("missing", "fence") in kinds, True)
 
     if failures:
@@ -456,7 +460,7 @@ def main() -> int:
     matrix_pkgs = matrix_packages(matrix_path)
     facade = facade_packages(facade_path)
     baseline = baseline_packages(Path(args.baseline) if args.baseline else None)
-    problems = check(matrix_pkgs, facade, baseline)
+    problems, notes = check(matrix_pkgs, facade, baseline)
     # 迁移映射表的一致性：下游唯一的迁移指引，必须与实际转发一一对应
     problems += check_migration_map(facade, migration_map(facade_path))
 
@@ -467,10 +471,19 @@ def main() -> int:
     else:
         all_names = {n for names in matrix_pkgs.values() for n in names}
         retired_all = {n for names in RETIRED.values() for n in names}
-        # 期望值 = 矩阵包数减去**仍在矩阵里的**退役包数。
-        # 退役包早已从矩阵移除（breaker），不在 all_names 里，减它就减多了。
-        expected = len([n for n in all_names if n not in retired_all])
-        print(f"门面包数 {len(facade)}，矩阵应覆盖 {expected}")
+        # 期望值 = **冻结基线**里仍属矩阵的包数（不是矩阵包数——矩阵冻结后新增的包
+        # 门面按废弃承诺不转发它们，那是正确的，不该算进期望值）。
+        if baseline:
+            expected = len([n for n in baseline if n in all_names and n not in retired_all])
+            scope = "冻结基线应覆盖"
+        else:
+            expected = len([n for n in all_names if n not in retired_all])
+            scope = "矩阵应覆盖"
+        print(f"门面包数 {len(facade)}，{scope} {expected}")
+        if notes:
+            print(f"\nℹ️  {len(notes)} 条提示（不构成失败）：\n")
+            for n in notes:
+                print(f"   [{n['kind']:<9}] {n['package']:<14} {n['detail']}")
         if not problems:
             print("✅ 门面的 re-export 覆盖完整，无缺口、无陈旧转发")
         else:
