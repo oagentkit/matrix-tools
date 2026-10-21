@@ -609,7 +609,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.25",
+      "latest": "v1.8.26",
       "retiring": true,
       "breakingIndex": [
         {
