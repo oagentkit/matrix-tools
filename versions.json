@@ -377,7 +377,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.14.2",
+      "latest": "v0.15.0",
       "packages": [
         {
           "pkg": "llm",
@@ -609,7 +609,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.26",
+      "latest": "v1.8.27",
       "retiring": true,
       "breakingIndex": [
         {
