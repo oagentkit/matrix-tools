@@ -39,7 +39,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "取代 verify_split.py 的分层方向判定：旧脚本只校验 modules.json 里**声明**的 dependsOn 图，而声明本身已漂（llm/obs）。"
+      "note": "取代 verify_split.py 的分层方向判定：旧脚本只校验 modules.json 里**声明**的 dependsOn 图，而声明本身已漂（llm/obs）。",
+      "kind": "gate"
     },
     {
       "id": "dependency-declaration",
@@ -62,7 +63,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "与 tier-direction 同一脚本（同一族事实、两种判定），不另开脚本是为了避免两个脚本各取一次数。"
+      "note": "与 tier-direction 同一脚本（同一族事实、两种判定），不另开脚本是为了避免两个脚本各取一次数。",
+      "kind": "gate"
     },
     {
       "id": "facade-not-consumed-internally",
@@ -84,7 +86,8 @@
           ]
         }
       ],
-      "since": "2026-10-21"
+      "since": "2026-10-21",
+      "kind": "gate"
     },
     {
       "id": "facade-no-new-packages",
@@ -107,7 +110,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "冻结基线（facade_package_baseline.json）只回答「违规是否已被吸收」，不作为「什么算违规」的判据；判据取自门面自己的 README 承诺 + git 历史。"
+      "note": "冻结基线（facade_package_baseline.json）只回答「违规是否已被吸收」，不作为「什么算违规」的判据；判据取自门面自己的 README 承诺 + git 历史。",
+      "kind": "gate"
     },
     {
       "id": "facade-package-coverage",
@@ -130,7 +134,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "2026-10-21 实测：门面的 port 包（转发 llm/port 的 51 个符号）在 MIGRATION.md 里没有映射行，而当时没有任何门禁读 MIGRATION.md。"
+      "note": "2026-10-21 实测：门面的 port 包（转发 llm/port 的 51 个符号）在 MIGRATION.md 里没有映射行，而当时没有任何门禁读 MIGRATION.md。",
+      "kind": "gate"
     },
     {
       "id": "facade-frozen",
@@ -152,7 +157,8 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "facade-symbol-coverage",
@@ -174,7 +180,8 @@
           ]
         }
       ],
-      "since": "2026-10-20"
+      "since": "2026-10-20",
+      "kind": "gate"
     },
     {
       "id": "facade-release-floor",
@@ -196,7 +203,8 @@
           ]
         }
       ],
-      "since": "2026-10-20"
+      "since": "2026-10-20",
+      "kind": "gate"
     },
     {
       "id": "no-facade-import",
@@ -227,7 +235,8 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "breaking-index",
@@ -257,7 +266,8 @@
         }
       ],
       "since": "2026-10-19",
-      "note": "双线设计：生成器线快但会跟着生成器一起漏，独立 oracle 线用自己的正则、与生成器完全解耦。"
+      "note": "双线设计：生成器线快但会跟着生成器一起漏，独立 oracle 线用自己的正则、与生成器完全解耦。",
+      "kind": "gate"
     },
     {
       "id": "changelog-coverage",
@@ -289,7 +299,8 @@
         }
       ],
       "since": "2026-10-20",
-      "note": "必须独立于生成器——否则生成器丢 body 时门禁跟着一起丢（实测 7 仓 773 处正文缺失，逐字节门禁一条没报出来）。"
+      "note": "必须独立于生成器——否则生成器丢 body 时门禁跟着一起丢（实测 7 仓 773 处正文缺失，逐字节门禁一条没报出来）。",
+      "kind": "gate"
     },
     {
       "id": "pending-section-visible",
@@ -317,7 +328,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "覆盖门禁从提交版里找待发版段，段被吞掉时它就无对象可比——这条是那个盲区的补充观测。"
+      "note": "覆盖门禁从提交版里找待发版段，段被吞掉时它就无对象可比——这条是那个盲区的补充观测。",
+      "kind": "gate"
     },
     {
       "id": "changelog-at-tag",
@@ -339,7 +351,8 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "latest-field",
@@ -362,7 +375,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "drift 门禁明确忽略 latest（离线取不到），所以必须另配一条联网对账——「忽略 + 补门禁」必须成对。"
+      "note": "drift 门禁明确忽略 latest（离线取不到），所以必须另配一条联网对账——「忽略 + 补门禁」必须成对。",
+      "kind": "gate"
     },
     {
       "id": "versions-drift",
@@ -399,7 +413,8 @@
           ]
         }
       ],
-      "since": "2026-10-20"
+      "since": "2026-10-20",
+      "kind": "gate"
     },
     {
       "id": "import-paths",
@@ -421,7 +436,8 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "dep-floor",
@@ -443,7 +459,8 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "dep-floor-freshness",
@@ -465,7 +482,8 @@
         }
       ],
       "since": "2026-10-20",
-      "note": "刻意**不挂 PR**：任何子仓发版都会让下游全部变落后，硬门禁等于发版跑步机，训练出「红了就加豁免」的习惯。"
+      "note": "刻意**不挂 PR**：任何子仓发版都会让下游全部变落后，硬门禁等于发版跑步机，训练出「红了就加豁免」的习惯。",
+      "kind": "gate"
     },
     {
       "id": "tag-floor-freshness",
@@ -487,7 +505,8 @@
           ]
         }
       ],
-      "since": "2026-10-20"
+      "since": "2026-10-20",
+      "kind": "gate"
     },
     {
       "id": "go-floor",
@@ -509,7 +528,8 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "ghost-packages",
@@ -531,7 +551,8 @@
           ]
         }
       ],
-      "since": "2026-10-20"
+      "since": "2026-10-20",
+      "kind": "gate"
     },
     {
       "id": "stale-refs",
@@ -553,7 +574,8 @@
           ]
         }
       ],
-      "since": "2026-10-20"
+      "since": "2026-10-20",
+      "kind": "gate"
     },
     {
       "id": "llms-txt-consistency",
@@ -575,11 +597,12 @@
           ]
         }
       ],
-      "since": "2026-10-19"
+      "since": "2026-10-19",
+      "kind": "gate"
     },
     {
       "id": "repo-docs",
-      "claim": "各仓的文档必须与矩阵声明一致（包清单、层位等）",
+      "claim": "各仓文档与矩阵声明的差异**可见**（报告器，不硬拦）",
       "judges": [
         "verify_repo_docs.py"
       ],
@@ -598,7 +621,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "2026-10-21 接入：此前脚本存在但从未被任何 CI 调用——「写了没接线」的死代码。"
+      "note": "2026-10-21 接入时实测：13 个仓的 README/AGENTS.md **全部**与 gen_docs.py 的骨架有差异——仓库版本是手写丰富的那个（queue 的选主红线、textx 的包级细节…），生成器只产骨架。把它当门禁会恒红，所以按 dep-floors 的既有惯例做成**报告器**：恒不失败，产物留档。它真正有用的是反方向——「modules.json 更新后生成器比仓库新」，那是该重新生成的情形。",
+      "kind": "report"
     },
     {
       "id": "invariant-inventory",
@@ -621,7 +645,8 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "本表自己的守门人。它同时强制「独立 oracle 不得悄悄 import 生成器」——耦合必须显式登记并说明理由。"
+      "note": "本表自己的守门人。它同时强制「独立 oracle 不得悄悄 import 生成器」——耦合必须显式登记并说明理由。",
+      "kind": "gate"
     }
   ],
   "retired": [
