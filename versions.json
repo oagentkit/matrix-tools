@@ -319,7 +319,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.8.4",
+      "latest": "v0.8.5",
       "packages": [
         {
           "pkg": "mcp",
@@ -439,7 +439,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.12.3",
+      "latest": "v0.12.4",
       "packages": [
         {
           "pkg": "toolprior",
@@ -546,7 +546,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.10.3",
+      "latest": "v0.10.4",
       "packages": [
         {
           "pkg": "agentrun",
@@ -609,7 +609,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.30",
+      "latest": "v1.8.31",
       "retiring": true,
       "breakingIndex": [
         {
