@@ -40,6 +40,9 @@ scripts/             工具链（见下）
 必须在 `scripts/invariants.json` 的对应不变量的 `sharedWith` 里登记并写明理由。
 `verify_inventory.py` 会把未披露的耦合判红。
 
+（`gen_floor_bumps` 也在这个名单里——floorBumps 的判据是「相邻两 tag 的 go.mod 差异」，
+独立 oracle 必须自己判，一 import 就共享了判定。）
+
 披露是最低限度的防线——自动判定「这次 import 是否影响了判定」要读代码语义，
 不可靠。所以由人 review 理由。
 
@@ -115,6 +118,28 @@ oracle 类门禁的自测，拿**有盲区的旧产物**跑一遍必须报出缺
 混入别的文件会被 squash 合成一个提交，生成器按「实际改了哪些文件」
 剔除零信息量提交的判据就失效了。
 
+### 9. floorBumps：「地板追平」是下游的隐式破坏性变更
+
+`versions.json` 的 `floorBumps` 登记每一版**抬了依赖地板**的事实。
+判据是**结构性**的：相邻两个 root tag 处的 go.mod `require` 差异
+（版本抬高或依赖新增）——**与提交说明的措辞无关**。
+
+它对下游的意义是「这一版会让你的构建红，除非你跑 `go mod tidy`」。
+实测报错是 `go: updates to go.mod needed`——**不提真正原因**。
+
+**为什么不并进 `breakingIndex`**：那里存的是**迁移说明**（「import 路径从 X 改为 Y」），
+而地板抬高的修法是「跑个 tidy」——那是构建卫生，不是迁移。混进去之后，
+下游读它就分不出「改哪行 import」与「跑个 tidy」。
+（issue matrix-tools#68：此前「地板追平」既不进索引、又被 oracle 的标记行判据误伤，
+索引内容取决于作者怎么措辞——不是事实。）
+
+**谁刷新它**：`gen_floor_bumps.py`，需要各仓的**完整 tag 历史**
+（浅克隆会算出假的「没抬地板」——门禁把它判红，不当绿灯）。
+`gen_versions.py` 在没有 `--root` 时只**搬运**既有值：它算不出 tag 历史，
+若直接不写这个字段，`release.py sync-matrix` 重生成 versions.json 时
+就会**把它抹掉**（抹掉即等于删登记）。对账由 `verify_floor_bumps.py`
+独立重算事实完成——它与生成器判据完全解耦。
+
 ## 发版
 
 发版动作已脚本化（`scripts/release.py`），顺序依赖由代码保证：
@@ -128,6 +153,13 @@ python3 scripts/release.py --root <矩阵根> tag --repo agent --version v0.10.1
 
 # 3. 刷新矩阵源并同步站点副本（过去这一步不在任何 runbook 里）
 python3 scripts/release.py --root <矩阵根> sync-matrix
+
+# 4. 刷新 floorBumps（**每个仓发版后都要做**）
+#    它登记「这一版抬了依赖地板」——下游据此知道要跑 go mod tidy。
+#    需要各仓的完整克隆（<各仓克隆父目录> 下应有 14 个 Go 仓）。
+cd <矩阵根>/matrix-tools
+python3 scripts/gen_floor_bumps.py --root <各仓克隆父目录> \
+        --versions versions.json --write
 ```
 
 发版前体检（只读）：
@@ -146,6 +178,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 | `Guards self-test` | 每条守卫的自测（带反证样本） |
 | `changelog-coverage` | CHANGELOG 覆盖（独立 oracle，PR 只查本 PR 触及的仓） |
 | `matrix-truth` | breakingIndex / import 路径 / dep 地板 / Go 地板（联网对账） |
+| `floor-bumps` | floorBumps 登记 ↔ 各仓 tag 历史的 go.mod 差异（需完整克隆） |
 | `release-floor` | 打 tag 时刻的地板时效 |
 | `facade-symbols` | 门面符号级转发完整性 |
 | `facade-frozen` | 门面包集合冻结 |

@@ -270,6 +270,30 @@
       "kind": "gate"
     },
     {
+      "id": "floor-bumps-registry",
+      "claim": "矩阵登记的「依赖地板抬高」必须与各仓 tag 历史里相邻两 tag 的 go.mod 差异一致（结构性判据，与提交说明的措辞无关）",
+      "judges": [
+        "verify_floor_bumps.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 root tag 处的 go.mod 原文（相邻两 tag 的 require 版本差异）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "floor-bumps",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-21",
+      "note": "issue matrix-tools#68：地板追平对下游是**隐式破坏性变更**（不跑 go mod tidy 就构建红，报错 go: updates to go.mod needed），但此前两头不落——既不进 breakingIndex，又被独立 oracle 的标记行判据误伤（提交说明写「隐式 breaking：」判红，写「隐式破坏性变更」没事 ⇒ 索引内容取决于作者措辞，不是事实）。落位单列 floorBumps（不与「import/API 断裂」混在一处：breakingIndex 的 detail 存的是迁移说明，而地板抬高的修法是「跑个 tidy」，不是迁移），判据取 go.mod 差异（结构）。",
+      "kind": "gate"
+    },
+    {
       "id": "changelog-coverage",
       "claim": "各仓 CHANGELOG 必须覆盖 tag 之后的全部提交与正文（两级覆盖）",
       "judges": [
@@ -670,6 +694,7 @@
       "matrix_paths.py",
       "gen_changelogs.py",
       "gen_versions.py",
+      "gen_floor_bumps.py",
       "gen_llms_txt.py",
       "gen_docs.py",
       "rewrite_imports.py",
