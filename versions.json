@@ -1629,7 +1629,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.10.4",
+      "latest": "v0.10.5",
       "packages": [
         {
           "pkg": "agentrun",
@@ -1845,6 +1845,22 @@
               "to": "v0.15.2"
             }
           ]
+        },
+        {
+          "version": "v0.10.5",
+          "date": "2026-10-22",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.19.0",
+              "to": "v0.20.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.20.0",
+              "to": "v0.21.0"
+            }
+          ]
         }
       ]
     }
@@ -1853,7 +1869,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.33",
+      "latest": "v1.8.34",
       "retiring": true,
       "breakingIndex": [
         {
@@ -2656,6 +2672,17 @@
               "dep": "github.com/oagentkit/obs",
               "from": "v0.9.5",
               "to": "v0.9.6"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.34",
+          "date": "2026-10-22",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.4",
+              "to": "v0.10.5"
             }
           ]
         }
