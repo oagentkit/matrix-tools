@@ -33,6 +33,20 @@
 4. 地板 < 该版本 → **红**，并报出：哪个仓、哪个依赖、地板多少、当时最新多少、
    那个版本是什么时候发布的。
 
+### 时间比较按「时刻」，不按字符串（2026-10-23 修）
+
+T 与依赖 tag 的发布日期**来自两套格式**：
+
+| | 格式 | 取自 |
+|---|---|---|
+| T | `2026-10-21T19:56:34+08:00`（带偏移） | 本地 git `%cI` / `iso-strict` |
+| 依赖发布日期 | `2026-10-21T18:10:39Z`（UTC） | GraphQL `committedDate` |
+
+ISO-8601 按字典序比大小 = **无视偏移** ⇒ 两个方向都会判错（既误伤也漏报）。
+且依赖日期取自本地克隆还是 API **取决于本机某个目录新不新**
+（陈旧克隆过滤后为空 ⇒ 回落联网）⇒ 同一个 ref 能得出两个相反的结论。
+所以两侧都归一化成**带时区的 UTC 时刻**再比（见 `_instant`）。
+
 第一方 = `github.com/oagentkit/*` 与 `github.com/oekit/*`（与 verify_dep_floors.py 同口径：
 oagentkit 的模块大量以 oekit/pkg、oekit/concurrency 为基座）。
 
@@ -61,6 +75,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -286,9 +301,54 @@ def floors_from_go_mod(text: str) -> dict[str, str]:
     return out
 
 
+def _instant(s: str | None) -> datetime | None:
+    """ISO-8601 时间戳 → **带时区的 UTC 时刻**；解析不了返回 None。
+
+    为什么必须归一化到时刻、不能比字符串：本脚本的时间口径混着**两套格式**——
+    本地 git 的 `%cI` / `iso-strict` 带 `+08:00` 偏移，GitHub API 的
+    `committedDate` 是 UTC 的 `Z`。ISO-8601 按字典序比大小 = **无视偏移**：
+    '2026-10-21T18:10:39Z' <= '2026-10-21T19:56:34+08:00' 字符串成立，
+    但两者代表的时刻相差 6 小时——真实顺序是反的（真实时刻 18:10Z 晚于 11:56Z）。
+
+    归一化之后，结论不再取决于「依赖日期取自本地克隆还是 API」——
+    那取决于本机某个目录新不新（陈旧克隆过滤后为空 ⇒ 回落联网 ⇒ 拿到另一种格式），
+    同一个 ref 因此能得出两个相反的结论。
+
+    ⚠️ 本机 Python 3.9.6：``datetime.fromisoformat`` **不认** ``Z``，必须先 replace。
+    """
+    if not s:
+        return None
+    raw = s.strip()
+    if raw[-1:] in ("Z", "z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        # 没写偏移 ⇒ 按 UTC 解释（而不是当作本地时间）
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def latest_at(tags: list[tuple[str, str]], when: str) -> tuple[str, str] | None:
-    """发布日期 ≤ when 的 tag 里版本号最大的一个 → (tag, 日期)。"""
-    cands = [(t, d) for t, d in tags if d and d <= when]
+    """发布日期 ≤ when 的 tag 里版本号最大的一个 → (tag, 日期)。
+
+    时间比较按**时刻**做（见 :func:`_instant`），不按字符串——两侧格式可能不同
+    （本地 git 带 +08:00 偏移、API 是 UTC 的 Z），比字符串等于无视偏移。
+    """
+    w = _instant(when)
+    if w is None:
+        return None
+    cands = []
+    for t, d in tags:
+        if not d:
+            continue
+        dt = _instant(d)
+        if dt is None:
+            continue
+        if dt <= w:
+            cands.append((t, d))
     if not cands:
         return None
     best = None
@@ -305,6 +365,12 @@ def check_ref(repo: str, ref: str, when: str, floors: dict[str, str],
               tags_of) -> list[dict]:
     """→ [{dep, floor, should_be, released_at}]"""
     problems = []
+    if _instant(when) is None:
+        # 发版时刻解析不了 ⇒ 这一整个 ref 判不了（硬规则 3：判不了 ≠ 没问题）
+        problems.append({"dep": "*", "floor": "", "should_be": None,
+                         "released_at": None,
+                         "note": f"发版时刻 {when!r} 解析不了（判不了）"})
+        return problems
     for dep, floor in sorted(floors.items()):
         parsed = owner_repo(dep)
         if parsed is None:
@@ -314,6 +380,15 @@ def check_ref(repo: str, ref: str, when: str, floors: dict[str, str],
         if not tags:
             problems.append({"dep": dep, "floor": floor, "should_be": None,
                              "released_at": None, "note": "取不到该依赖的 tag（判不了）"})
+            continue
+        # 日期解析不了 ⇒ 这个依赖的时效**判不了**，不能当成「没落后」
+        # （硬规则 3）。也不能静默跳过——那等于把「没查」当成「没问题」。
+        unparsed = [t for t, d in tags if d and _instant(d) is None]
+        if unparsed:
+            problems.append({"dep": dep, "floor": floor, "should_be": None,
+                             "released_at": None,
+                             "note": "依赖 tag 的发布日期解析不了（判不了）："
+                                     + "、".join(unparsed[:3])})
             continue
         hit = latest_at(tags, when)
         if hit is None:
@@ -685,6 +760,56 @@ def selftest() -> int:
                       {"github.com/oagentkit/textx": "v0.5.0"},
                       lambda o, r, mv=None: [("v0.6.0", "2026-10-21T09:00:00+08:00")])
     check("后发布的依赖不算落后", later, [])
+
+    # ── 时区混排（2026-10-23 的真实回归）──────────────────────────────
+    # 本脚本的时间口径混着两套格式：`when` 取自本地 git `%cI`（带 +08:00 偏移），
+    # 依赖 tag 的发布日期取自 GitHub API 的 `committedDate`（UTC 的 `Z`）。
+    # 旧实现按**字符串**比大小 = 无视偏移 ⇒ 两个方向都会判错。
+    # 反证样本必须覆盖两个方向：只在同偏移下测过，字典序恰好等价于时刻比较，
+    # 于是混排形态一次都没被覆盖（真实回归就是这么漏过去的）。
+    #
+    # ① 误伤：依赖其实在 T **之后**才发布，却被判成「发版时刻就落后」。
+    #    真实时刻：aea9fd1 = 2026-10-21T11:56:34Z，concurrency v0.20.0 = 2026-10-21T18:10:39Z
+    #    ⇒ 依赖晚 6 小时 14 分，不该算落后。
+    tz_no_false_red = check_ref(
+        "mcpkit", "aea9fd1", "2026-10-21T19:56:34+08:00",
+        {"github.com/oekit/concurrency": "v0.19.0"},
+        lambda o, r, mv=None: [("v0.20.0", "2026-10-21T18:10:39Z")])
+    check("时区混排不误伤（依赖实际在 T 之后才发布）", tz_no_false_red, [])
+
+    # ② 漏报：依赖其实在 T **之前**就发布了，却被判成「还没发布」→ 真落后被放过。
+    #    真实时刻：dep = 2026-10-21T18:10:39+08:00 = 10:10:39Z，早于 when = 11:56:34Z。
+    tz_no_false_green = check_ref(
+        "x", "v1.0.0", "2026-10-21T11:56:34Z",
+        {"github.com/oekit/pkg": "v0.19.0"},
+        lambda o, r, mv=None: [("v0.22.0", "2026-10-21T18:10:39+08:00")])
+    check("时区混排不漏报（依赖实际在 T 之前就发布）", len(tz_no_false_green), 1)
+    if tz_no_false_green:
+        check("混排漏报报出应接的版本", tz_no_false_green[0]["should_be"], "v0.22.0")
+
+    # ③ 同偏移的老形态不许被改坏（回归护栏）
+    same_offset = check_ref(
+        "x", "v1.0.0", "2026-10-21T19:56:34+08:00",
+        {"github.com/oekit/pkg": "v0.19.0"},
+        lambda o, r, mv=None: [("v0.22.0", "2026-10-21T18:10:39+08:00")])
+    check("同偏移形态判定不变（依赖早于 T ⇒ 算落后）", len(same_offset), 1)
+
+    # ④ 日期解析不了 ⇒ 判不了，不能当成「没落后」（硬规则 3）
+    unparsed_when = check_ref(
+        "x", "v1.0.0", "not-a-timestamp",
+        {"github.com/oekit/pkg": "v0.19.0"},
+        lambda o, r, mv=None: [("v0.22.0", "2026-10-21T18:10:39Z")])
+    check("发版时刻解析不了即判不了", len(unparsed_when), 1)
+    if unparsed_when:
+        check("判不了要带 note", bool(unparsed_when[0]["note"]), True)
+
+    unparsed_dep = check_ref(
+        "x", "v1.0.0", "2026-10-21T19:56:34+08:00",
+        {"github.com/oekit/pkg": "v0.19.0"},
+        lambda o, r, mv=None: [("v0.22.0", "not-a-timestamp")])
+    check("依赖日期解析不了即判不了", len(unparsed_dep), 1)
+    if unparsed_dep:
+        check("判不了要带 note", bool(unparsed_dep[0]["note"]), True)
 
     # 取不到 tag → 判不了，必须报出来（不许当成「没落后」）
     unknown = check_ref("x", "v1.0.0", "2026-10-20T00:00:00+08:00",
