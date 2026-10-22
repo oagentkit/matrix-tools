@@ -50,6 +50,28 @@ ISO-8601 按字典序比大小 = **无视偏移** ⇒ 两个方向都会判错�
 第一方 = `github.com/oagentkit/*` 与 `github.com/oekit/*`（与 verify_dep_floors.py 同口径：
 oagentkit 的模块大量以 oekit/pkg、oekit/concurrency 为基座）。
 
+## 两个模式必须等价（2026-10-23 修，#94）
+
+`--root`（本地目录）与 `--org`（联网）**必须对同一份事实给出同一个结论**。
+此前它们是两个独立实现，于是同一件事能得出两个相反结论：
+
+| 缺陷 | 现象 |
+|---|---|
+| **假绿** | `--root` 模式直接返回本地依赖克隆的 tag 清单，而该清单带 `min_version` 过滤 ⇒ **陈旧克隆只留下「地板那个版本」，过滤后不为空** ⇒ 被当成「全部候选」⇒ 报「无落后」。实测同一 ref（mcpkit HEAD）：远端 API 红 2，陈旧克隆**绿**（rc=0） |
+| **假红** | `--root` 模式只排除了 `.github` ⇒ `matrix-tools`（工具仓）与 `oagentkit.github.io`（文档站）被当 Go 仓读 go.mod ⇒「判不了」硬失败。`--org` 模式用 modules.json 过滤（`go_module_repos`）——当年只修了这一侧 |
+| **机器依赖** | `--deps-root` 默认值写死个人目录 ⇒ 结论取决于跑它的人本机某个目录新不新 |
+
+现在：
+
+- **版本清单一律以远端为准**，本地克隆**只贡献「发布日期精度」**
+  （annotated tag 的 tagger 时间比 API 的提交日期准，见 `deps_tags`）。
+  ⇒ 陈旧缓存可以削弱门禁，**绝不能关掉**门禁。
+- **两个模式共用同一个 `tags_of`**（`deps_tags`）与同一个仓集合判据
+  （`go_module_repos()`，modules.json 单一数据源）。
+  差异只剩第一方侧：`commit_date` / `go_mod` 从本地克隆还是 API 取。
+- `--deps-root` 默认 `None`——**不给个人路径**。
+- 扫到 0 个仓 ⇒ **判不了**，不是「没问题」（空集合 ≠ 事实为空）。
+
 ## 怎么用
 
     # 发版前（还没打 tag）：拿将要打 tag 的那个 commit 自检
@@ -244,6 +266,51 @@ def api_tags_with_dates(org: str, repo: str,
     return full
 
 
+def deps_tags(owner: str, repo: str, min_version: str | None = None,
+              local_bases: tuple = (), remote=None) -> list[tuple[str, str]]:
+    """→ [(tag, ISO 日期)]；**空列表 = 判不了**（由 check_ref 判黄，不当成「没落后」）。
+
+    **版本清单一律以远端为准**；本地克隆**只贡献「发布日期精度」**
+    （annotated tag 的 tagger 时间 vs API 的提交日期——口径差异见
+    `api_tags_with_dates` 的说明）。
+
+    ## 为什么不能反过来（拿本地清单当候选集）
+
+    本地克隆可能陈旧，而 `check_ref` 调用时带 `min_version=floor` 过滤它
+    ⇒ 陈旧克隆只留下「地板那个版本」，过滤后**不为空** ⇒ 被当成「这就是全部候选」
+    ⇒ `latest_at()` 取到旧版本 ⇒ `version_lt(floor, should_be)` 为假
+    ⇒ **报「无落后」**，而事实是落后。
+
+    实测 2026-10-23（同一个 ref = `mcpkit` HEAD，commit 时刻 2026-10-22T15:31:09Z）：
+
+    | 依赖来源 | 结论 |
+    |---|---|
+    | 远端 API | **红 2**（concurrency v0.19.0→v0.20.1、pkg v0.20.0→v0.22.0） |
+    | 新鲜的本地克隆 | 红 2（与远端一致） |
+    | **陈旧但非空的本地克隆** | **绿（rc=0）——同一份事实，两个相反结论** |
+
+    ⇒ 本地克隆**再陈旧也只能提供日期，不能藏版本**：陈旧缓存可以削弱门禁，
+    绝不能**关掉**门禁。远端取不到 ⇒ 返回空 ⇒ 走 `check_ref` 的
+    「取不到该依赖的 tag（判不了）」路径（硬规则 3：判不了 ≠ 没问题），
+    **不拿本地清单冒充事实**。
+
+    `remote` 参数只为自测注入（离线复现上面的形态），生产路径不传。
+    """
+    fetch = remote if remote is not None else api_tags_with_dates
+    remote_tags = fetch(owner, repo, min_version)
+    if not remote_tags:
+        # 远端取不到 ⇒ 判不了。不能回落本地清单当事实（那正是假绿的成因）。
+        return []
+    local_dates: dict[str, str] = {}
+    for base in local_bases:
+        if base and (Path(base) / repo / ".git").exists():
+            local_dates = dict(local_tags_with_dates(base, owner, repo, min_version))
+            if local_dates:
+                break
+    # 远端清单为准，本地只补日期（同一个 tag 的 tagger 时间比提交日期更准）
+    return [(n, local_dates.get(n, d)) for n, d in remote_tags]
+
+
 def api_commit_date(org: str, repo: str, ref: str) -> str | None:
     raw = repo_meta.gh_api(f"repos/{org}/{repo}/commits/{ref}")
     if not raw:
@@ -406,8 +473,11 @@ def check_ref(repo: str, ref: str, when: str, floors: dict[str, str],
 def main() -> int:
     ap = argparse.ArgumentParser(description="发版时刻的依赖地板时效校验")
     ap.add_argument("--root", help="各仓本地目录的父目录")
-    ap.add_argument("--deps-root", default="/Users/zhangyi/Projects/oekit",
-                    help="依赖仓（oekit/*）的本地克隆父目录；取不到时回落联网取 tag")
+    ap.add_argument("--deps-root", default=None,
+                    help="依赖仓（oekit/*）的本地克隆父目录。"
+                         "**只贡献发布日期精度**（annotated tag 的 tagger 时间），"
+                         "版本清单一律以远端为准——陈旧克隆不会削弱门禁。"
+                         "默认不给：不给个人路径，门禁结论不依赖跑它的人本机目录")
     ap.add_argument("--org", help="联网模式：org 名")
     ap.add_argument("--repo", help="只查这一个仓")
     ap.add_argument("--ref", default="HEAD", help="要校验的 ref（tag / commit），默认 HEAD")
@@ -429,15 +499,15 @@ def main() -> int:
         return 1
 
     if args.root:
+        # 两个模式**共用同一个 tags_of**（deps_tags）：差异只保留在第一方侧
+        # （commit_date / go_mod 从本地克隆还是 API 取）。
+        # ⚠️ 实测 2026-10-23（#94）：此前 `--root` 模式自己实现了一份取数，
+        # 直接返回本地克隆的 tag 清单 ⇒ 陈旧克隆 ⇒ 假绿（rc=0），
+        # 而 `--org` 对同一份事实报红 2 —— 同一个门禁、两个相反结论。
+        local_bases = tuple(b for b in (args.root, args.deps_root) if b)
+
         def tags_of(owner: str, repo: str, min_version: str | None = None):
-            # 先看本仓所在的克隆根，再看依赖仓的克隆根（如 oekit/*），
-            # 都取不到才回落联网——联网慢，但不会因为「本地没克隆」而判不了。
-            for base in (args.root, args.deps_root):
-                if base and (Path(base) / repo / ".git").exists():
-                    t = local_tags_with_dates(base, owner, repo, min_version)
-                    if t:
-                        return t
-            return api_tags_with_dates(owner, repo, min_version)
+            return deps_tags(owner, repo, min_version, local_bases=local_bases)
 
         def commit_date(repo: str, ref: str):
             return local_commit_date(args.root, repo, ref)
@@ -448,7 +518,7 @@ def main() -> int:
         org = args.org
 
         def tags_of(owner: str, repo: str, min_version: str | None = None):
-            return api_tags_with_dates(owner, repo, min_version)
+            return deps_tags(owner, repo, min_version)
 
         def commit_date(repo: str, ref: str):
             return api_commit_date(org, repo, ref)
@@ -463,6 +533,12 @@ def main() -> int:
         return scan_latest(args, tags_of, commit_date, go_mod)
 
     repos = [args.repo] if args.repo else list_repos(args)
+    if not repos:
+        # 扫到 0 个仓 ⇒ **判不了**，不是「没问题」。
+        # 空集合 ≠ 事实为空（--root 指错目录、modules.json 读失败都会到这）。
+        print(f"❌ 扫到 0 个仓（{args.root or args.org}）⇒ 判不了："
+              f"扫不到仓 ≠ 没有问题")
+        return 1
     problems_all: list[dict] = []
     for repo in repos:
         when = commit_date(repo, args.ref)
@@ -495,7 +571,7 @@ def main() -> int:
     return 1
 
 
-def go_module_repos(data_all: str | None = None) -> set[str]:
+def go_module_repos() -> set[str]:
     """org 下**真正是 Go 模块**的仓名集合。
 
     判据来自 modules.json（矩阵的单一数据源）：
@@ -510,13 +586,17 @@ def go_module_repos(data_all: str | None = None) -> set[str]:
     `.github`），两条路径不一致 ⇒ main 上该门禁持续红，且**阻塞所有无关 PR**
     （实测 oagentkit/.github#15 被卡住）。
 
+    ⚠️ 实测 2026-10-23（#94）：**当年只修了 `--org` 那一侧**，`--root` 那一侧
+    留着没修 ⇒ `--root` 模式至今仍会把 `matrix-tools` / 文档站当 Go 仓读 go.mod
+    ⇒「判不了」硬失败 ⇒ 同一个命令换个模式就是另一个结论。
+    ⇒ 现在**两个模式共用这一个判据**（`list_repos`）。
+
     为什么不硬编码仓名黑名单：org 新增非 Go 仓时黑名单会再次漏判。
     用 modules.json 的声明（客观事实）⇒ 新增仓时由数据源自动裁决。
+
+    为什么**不联网**取仓清单：判据完全来自本地 modules.json，
+    联网查 org 仓列表既不增加信息、又让 `--root`（本该能离线跑）依赖网络。
     """
-    raw = data_all
-    if raw is None:
-        raw = repo_meta.gh_api(f"orgs/{org_of_modules()}/repos?per_page=100")
-    # modules.json 是本地文件（真相源在 matrix-tools 仓内）
     import json as _json
     path = HERE.parent / "modules.json"
     try:
@@ -543,7 +623,14 @@ def org_of_modules() -> str:
 def list_repos(args) -> list[str]:
     if args.root:
         d = Path(args.root)
-        return sorted(p.name for p in d.iterdir() if (p / ".git").exists() and p.name != ".github")
+        # ⚠️ `--root` 模式**必须**与 `--org` 模式用同一个「什么是 Go 仓」判据
+        # （modules.json），否则两个模式扫的仓集合不同 ⇒ 同一个命令两个结论。
+        # 实测 2026-10-23（#94）：`--root` 模式只排了 `.github`
+        # ⇒ `matrix-tools`（Python 工具仓）与 `oagentkit.github.io`（文档站）
+        # 被当 Go 仓读 go.mod ⇒「取不到 go.mod（判不了）」⇒ 硬失败。
+        go_repos = go_module_repos()
+        return sorted(p.name for p in d.iterdir()
+                      if (p / ".git").exists() and p.name in go_repos)
     raw = repo_meta.gh_api(f"orgs/{args.org}/repos?per_page=100")
     if not raw:
         return []
@@ -562,7 +649,7 @@ def list_repos(args) -> list[str]:
     # 判据：**该仓有 Go 模块**（modules.json 的 modules + facades 清单），
     # 不用仓名黑名单——黑名单会在 org 新增非 Go 仓时再次漏判。
     return sorted(r["name"] for r in data
-                  if r.get("name") and r["name"] in go_module_repos(raw))
+                  if r.get("name") and r["name"] in go_module_repos())
 
 
 def scan_latest(args, tags_of, commit_date, go_mod) -> int:
@@ -816,6 +903,74 @@ def selftest() -> int:
                         {"github.com/oagentkit/textx": "v0.5.0"},
                         lambda o, r, mv=None: [])
     check("取不到即报", len(unknown), 1)
+
+    # ── 陈旧的本地依赖克隆 ⇒ 假绿（2026-10-23 的真实回归，#94）────────
+    # 形态：本地依赖克隆只留着「地板那个版本」（v0.19.0），缺更新的 v0.20.1
+    # ⇒ 旧实现把它当「全部候选」⇒ latest_at 取到旧版本 ⇒ 报「无落后」。
+    # 实测：同一 ref（mcpkit HEAD）远端 API 报红 2，而陈旧克隆报绿（rc=0）。
+    #
+    # 反证样本：候选集必须**仍以远端为准** ⇒ 判定必须红在**断言**上。
+    # 若把合并逻辑退回「用本地清单」，下面的断言会失败（且判定会变 0 处）。
+    import argparse
+    import contextlib
+    import io
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dep = Path(tmp) / "pkg"
+        dep.mkdir()
+        env = dict(os.environ)
+        # 固定 tag 的 tagger 时间，让本地克隆的日期可复现（不是「现在」）
+        env["GIT_COMMITTER_DATE"] = "2026-10-21T07:24:48+08:00"
+        env["GIT_AUTHOR_DATE"] = "2026-10-21T07:24:48+08:00"
+        subprocess.run(["git", "-C", str(dep), "init", "-q"], check=True, env=env)
+        subprocess.run(["git", "-C", str(dep), "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", str(dep), "config", "user.name", "t"], check=True)
+        (dep / "f.txt").write_text("x", encoding="utf-8")
+        subprocess.run(["git", "-C", str(dep), "add", "."], check=True, env=env)
+        subprocess.run(["git", "-C", str(dep), "commit", "-q", "-m", "c"], check=True, env=env)
+        subprocess.run(["git", "-C", str(dep), "tag", "-a", "v0.19.0", "-m", "t"],
+                       check=True, env=env)
+
+        remote_tags = [("v0.19.0", "2026-10-21T07:24:48+08:00"),
+                       ("v0.20.1", "2026-10-22T17:02:01+08:00")]
+        merged = deps_tags("oekit", "pkg", "v0.19.0",
+                           local_bases=(tmp,),
+                           remote=lambda o, r, mv=None: remote_tags)
+        check("陈旧本地克隆不藏版本（候选集仍以远端为准）",
+              sorted(t for t, _ in merged), ["v0.19.0", "v0.20.1"])
+        stale_problems = check_ref(
+            "mcpkit", "HEAD", "2026-10-22T20:00:00+08:00",
+            {"github.com/oekit/pkg": "v0.19.0"},
+            lambda o, r, mv=None: merged)
+        check("陈旧本地克隆不得导致假绿（必须判红）", len(stale_problems), 1)
+        if stale_problems:
+            check("假绿样本报出应接的版本", stale_problems[0]["should_be"], "v0.20.1")
+
+    # ── --root 的仓集合必须与 --org 一致（#94）────────────────────────
+    # 旧实现只排了 `.github` ⇒ `matrix-tools`（Python 工具仓）与
+    # `oagentkit.github.io`（文档站）被当 Go 仓读 go.mod ⇒「判不了」硬失败。
+    with tempfile.TemporaryDirectory() as tmp:
+        for name in ("mcpkit", "matrix-tools", "oagentkit.github.io"):
+            d = Path(tmp) / name
+            d.mkdir()
+            (d / ".git").mkdir()
+        scope = list_repos(argparse.Namespace(root=tmp, org=None))
+        check("--root 只扫 Go 模块仓（排除工具仓/文档站）", scope, ["mcpkit"])
+
+    # ── 空范围 ⇒ 判不了，不是 ✅（空集合 ≠ 事实为空）───────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        argv = sys.argv
+        buf = io.StringIO()
+        try:
+            sys.argv = ["verify_tag_floor.py", "--root", tmp]
+            with contextlib.redirect_stdout(buf):
+                rc = main()
+        finally:
+            sys.argv = argv
+        check("空范围退出码非 0", rc != 0, True)
+        check("空范围报「判不了」", "判不了" in buf.getvalue(), True)
 
     if fails:
         print("❌ verify_tag_floor 自测失败：")
