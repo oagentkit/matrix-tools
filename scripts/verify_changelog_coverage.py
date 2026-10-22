@@ -51,9 +51,29 @@ AGENTS.md），它就**不再**被剔除，于是它会出现在版本段里 —
     verify_changelog_coverage.py --root ... --repo agent --repo rag    # 只查指定仓
     verify_changelog_coverage.py --org oagentkit                       # 联网（按需克隆）
     verify_changelog_coverage.py --ci --org oagentkit                   # 按 PR 触及范围裁剪
+    verify_changelog_coverage.py --ci --org oagentkit \
+        --scope-mode repo                                              # 非 PR 事件只查本仓
     verify_changelog_coverage.py --selftest                            # 离线自测
 
 退出码: 0 = 覆盖完整；1 = 有缺失（条目 / 正文）或判不了。
+
+## 范围口径（--scope-mode）
+
+| 模式 | PR 事件 | 非 PR 事件（push / 定时 / 手动） |
+|---|---|---|
+| `matrix`（**默认**） | 只查 PR 的 base 仓 | **全矩阵** |
+| `repo` | 只查 PR 的 base 仓 | **只查调用方本仓**（定时事件除外，见下） |
+
+`repo` 模式解决的是 issue matrix-tools#76：**一个仓的欠账不该把 13 个无关仓的
+`main` 一起标红**，而那些红徽章又**永不自愈**（欠账修好后没人重跑那个仓）。
+
+⚠️ 两条口径纪律：
+
+1. **定时（schedule）事件在 `repo` 模式下仍然是全矩阵**——那是**周期性全量审计**，
+   跨仓欠账的唯一硬失败归属地就在这里；把它也收窄成「只查本仓」＝ 跨仓欠账
+   再也没人抓（静默失效）。
+2. **默认必须是 `matrix`**（＝旧行为）——加了开关却默认换口径，等于没加开关，
+   一合并就全 org 变行为。换成 `repo` 要显式传参（调用层传），并先在**单个仓试点**。
 """
 
 from __future__ import annotations
@@ -77,6 +97,17 @@ REC_SEP = "\x1e"
 
 # 主模块版本线的 tag：vX.Y.Z（与 repo_meta.MAIN_TAG_RE 同一形态）
 TAG_RE = re.compile(r"^v\d+\.\d+\.\d+")
+
+# 非 PR 事件的范围口径（--scope-mode）
+#
+#   matrix —— 旧口径：非 PR 事件（push / 定时 / 手动）扫**全矩阵**。
+#   repo  —— 新口径：非 PR 事件只扫**调用方本仓**。
+#
+# ⚠️ 默认必须是 matrix（＝旧行为）：「加了开关却默认换口径」＝ 没加开关——
+# 一合并就全 org 换行为，且没有回退窗口。换成 repo 要**显式传参**，
+# 并先在单个仓试点（见 .github/AGENTS.md 的门禁本体纪律）。
+SCOPE_MODES = ("matrix", "repo")
+DEFAULT_SCOPE_MODE = "matrix"
 
 # conventional commit：type(scope)!: subject
 # ⚠️ 叹号位置有两种写法，都要认（与生成器同源事实）：
@@ -552,8 +583,9 @@ def matrix_repos(versions_path: Path = DEFAULT_VERSIONS) -> list[str]:
     return repos
 
 
-def ci_scope(versions_path: Path = DEFAULT_VERSIONS) -> tuple[list[str], str | None, str]:
-    """按 GitHub 事件上下文判定「本 PR 触及了哪些仓」→ (仓列表, ref, 说明)。
+def ci_scope(versions_path: Path = DEFAULT_VERSIONS,
+             scope_mode: str = DEFAULT_SCOPE_MODE) -> tuple[list[str], str | None, str]:
+    """按 GitHub 事件上下文判定「本次要校验哪些仓」→ (仓列表, ref, 说明)。
 
     ## 判定依据（信息源）
 
@@ -569,8 +601,24 @@ def ci_scope(versions_path: Path = DEFAULT_VERSIONS) -> tuple[list[str], str | N
     改 `agent` 的 PR 只该被 `agent` 的 CHANGELOG 欠账挡住，
     改 `.github` 的 PR 不该被任何模块仓的欠账挡住。
 
-    非 PR 事件（push / schedule / workflow_dispatch）→ 全矩阵
-    （周期性全量审计兜底，**不可省**，否则是漏检）。
+    ## 非 PR 事件的两档口径（--scope-mode）
+
+    - `matrix`（**默认**＝旧行为）：全矩阵（周期性全量审计兜底，**不可省**，
+      否则是漏检）。
+    - `repo`：**只校验调用方本仓**。
+
+    为什么要 `repo` 这一档（issue matrix-tools#76）：跨仓门禁在 push 事件下走全矩阵，
+    于是「哪个仓最后被 push，哪个仓就替别人的欠账背红」——**一个仓的欠账把 13 个
+    无关仓的 `main` 一起标红**；欠账修好后那些仓再没被 push，**红徽章永不自愈**
+    （实测挂了约 13 小时，且没有任何门禁会报「有 8 个仓的徽章是陈旧的」）。
+
+    ⚠️ **`schedule` 事件在 `repo` 模式下仍然是全矩阵**：那是**周期性全量审计**，
+    跨仓欠账的**唯一硬失败归属地**（matrix-tools 的每日 job）。把它一起收窄，
+    等于跨仓欠账再也没人抓——那正是本门禁要防的「静默失效」。
+
+    ⚠️ 调用方**不在**「有 CHANGELOG 要求的仓」清单里（基建仓：.github /
+    matrix-tools / 站点仓）⇒ 范围为空 ⇒ 本次不校验。它们是**审计归属方**
+    （审计全矩阵），不是**被审计方**（不需要 CHANGELOG 覆盖）。
 
     ## 为什么 PR 上要用 **PR head** 而不是各仓 main
 
@@ -596,10 +644,19 @@ def ci_scope(versions_path: Path = DEFAULT_VERSIONS) -> tuple[list[str], str | N
         # PR 落在矩阵外的仓（.github / matrix-tools / 站点仓）⇒ 范围为空 ⇒ 不校验。
         effective = [base_repo] if base_repo in known else []
         note = (f"事件 {event_name}：PR 的 base 仓 = {base_full or '(未知)'}；"
-                f"「PR 触及的仓」= [{base_repo or '(未知)'}]；"
+                f"「PR 触及的仓」= [{base_repo or '(未知)'}];"
                 f"其中有 CHANGELOG 要求的 = {effective or '（无 ⇒ 本次不校验）'}；"
                 f"校验 ref = {ref or '(默认分支)'}")
         return effective, ref, note
+    if scope_mode == "repo" and event_name != "schedule":
+        # 只校验调用方本仓（见上面「非 PR 事件的两档口径」）。
+        self_repo = repo_full.split("/")[-1] if repo_full else ""
+        effective = [self_repo] if self_repo in known else []
+        note = (f"事件 {event_name or '(本地)'}：范围模式 repo → 只校验调用方本仓"
+                f"（{self_repo or '(未知)'}）；"
+                f"其中有 CHANGELOG 要求的 = {effective or '（无 ⇒ 本次不校验）'}；"
+                f"全矩阵审计由 matrix-tools 的每日定时 job 承担")
+        return effective, None, note
     note = (f"事件 {event_name or '(本地)'}：非 PR 事件 → 全矩阵审计"
             f"（{len(known)} 个仓）")
     return known, None, note
@@ -716,6 +773,95 @@ GOOD_CHANGELOG = """# demo CHANGELOG
 
 真正的正文
 """
+
+
+def _scope_selftest() -> list[str]:
+    """范围判定的自测——**必须带反证样本**。
+
+    这条判据最危险的失效形态是**收窄过头**：口径一旦把**定时全矩阵审计**也收窄成
+    「只查本仓」，跨仓欠账就再也没人抓 ⇒ 静默失效（而门禁照样全绿）。
+
+    所以反证样本至少要证明：
+
+      ① `repo` 模式下 push 事件**确实**只返回调用方本仓（这就是 matrix-tools#76
+         要修的那件事——反证：不能仍然返回全矩阵）；
+      ② `repo` 模式下**定时事件仍然是全矩阵**（反证：不能把周期审计一起收窄）；
+      ③ 基建仓（不在「有 CHANGELOG 要求的仓」清单里）作为调用方 ⇒ 不校验任何仓；
+      ④ PR 事件**不受模式影响**（谁造成漂移谁负责）；
+      ⑤ `matrix` 模式（默认）**保持旧口径**全矩阵——默认换口径等于没加开关。
+
+    全部**离线**：用临时 versions.json + 临时事件文件，不联网。
+    """
+    import os
+    import shutil
+    import tempfile
+
+    fails: list[str] = []
+
+    def check(name: str, got, want) -> None:
+        if got != want:
+            fails.append(f"{name}: 期望 {want!r}，实得 {got!r}")
+
+    tmp = Path(tempfile.mkdtemp(prefix="changelog-scope-selftest-"))
+    saved = {k: os.environ.get(k) for k in
+             ("GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_REPOSITORY")}
+    try:
+        versions = tmp / "versions.json"
+        versions.write_text(json.dumps({
+            "modules": [{"repo": "alpha"}],
+            "facades": [{"repo": "beta"}],
+        }, ensure_ascii=False), encoding="utf-8")
+
+        event = tmp / "event.json"
+        event.write_text(json.dumps({
+            "pull_request": {"number": 7,
+                             "base": {"repo": {"full_name": "oagentkit/alpha"}}},
+        }), encoding="utf-8")
+
+        def scope(event_name: str, repo: str, mode: str, pr_event: bool = False):
+            os.environ["GITHUB_EVENT_NAME"] = event_name
+            os.environ["GITHUB_REPOSITORY"] = repo
+            if pr_event:
+                os.environ["GITHUB_EVENT_PATH"] = str(event)
+            else:
+                os.environ.pop("GITHUB_EVENT_PATH", None)
+            return ci_scope(versions, mode)
+
+        # ① repo 模式 + push → 只查调用方本仓（#76 的修复本体）
+        repos, ref, _ = scope("push", "oagentkit/alpha", "repo")
+        check("repo 模式 push: 只查调用方本仓", repos, ["alpha"])
+        check("repo 模式 push: 不用 PR head", ref, None)
+
+        # ② repo 模式 + 定时 → 仍然是全矩阵（反证：周期审计不能被收窄）
+        repos, _, _ = scope("schedule", "oagentkit/alpha", "repo")
+        check("repo 模式 schedule: 仍是全矩阵审计", repos, ["alpha", "beta"])
+
+        # ③ 基建仓作为调用方 ⇒ 不校验任何仓（它不是发布件，是审计归属方）
+        repos, _, _ = scope("push", "oagentkit/matrix-tools", "repo")
+        check("repo 模式 push 基建仓: 不校验任何仓", repos, [])
+
+        # ④ PR 事件不受模式影响
+        repos, ref, _ = scope("pull_request", "oagentkit/alpha", "repo", pr_event=True)
+        check("repo 模式 PR: 仍只查 base 仓", repos, ["alpha"])
+        check("repo 模式 PR: 仍用 PR head", ref, "pull/7/head")
+        repos, _, _ = scope("pull_request", "oagentkit/alpha", "matrix", pr_event=True)
+        check("matrix 模式 PR: 仍只查 base 仓", repos, ["alpha"])
+
+        # ⑤ 默认口径保持旧行为：非 PR 事件 = 全矩阵
+        repos, _, _ = scope("push", "oagentkit/alpha", "matrix")
+        check("matrix 模式 push: 保持全矩阵", repos, ["alpha", "beta"])
+
+        # ⑥ 门面仓（facade）也在「有 CHANGELOG 要求的仓」里
+        repos, _, _ = scope("push", "oagentkit/beta", "repo")
+        check("repo 模式 push 门面仓: 只查门面", repos, ["beta"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return fails
 
 
 def selftest() -> int:
@@ -886,6 +1032,8 @@ def selftest() -> int:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+    fails += _scope_selftest()
+
     if fails:
         print("❌ verify_changelog_coverage 自测失败：")
         for f in fails:
@@ -893,7 +1041,8 @@ def selftest() -> int:
         return 1
     print("✅ verify_changelog_coverage 自测通过"
           "（漏条目 / 正文缺失 / 零信息量不误报 / 类型不符 / 缺版本段 / 更丰富不误红 / "
-          "无待发版段不误红 / subject 回声不误红）")
+          "无待发版段不误红 / subject 回声不误红 / "
+          "范围口径 repo 模式只查本仓且定时仍全矩阵）")
     return 0
 
 
@@ -907,12 +1056,17 @@ def main() -> int:
     ap.add_argument("--repo", action="append", default=[], help="只查指定仓（可重复）")
     ap.add_argument("--ci", action="store_true",
                     help="按 GitHub 事件上下文裁剪范围：PR → 只查本 PR 触及的仓")
+    ap.add_argument("--scope-mode", choices=SCOPE_MODES, default=DEFAULT_SCOPE_MODE,
+                    help="非 PR 事件（push / 定时 / 手动）的范围口径："
+                         "matrix = 全矩阵（默认＝旧行为）；"
+                         "repo = 只校验调用方本仓（全矩阵审计由 matrix-tools 的每日定时 job 承担）")
     ap.add_argument("--ref", help="要校验的 ref（默认各仓当前 HEAD）")
     ap.add_argument("--versions", default=str(DEFAULT_VERSIONS))
     ap.add_argument("--print-scope", action="store_true",
                     help="只打印本次要校验的仓与 ref（每行「仓名<TAB>ref」），然后退出。"
                          "给 CI 的 shell 复用同一份范围判定用——"
-                         "范围逻辑只此一份，别在 workflow YAML 里另造")
+                         "范围逻辑只此一份，别在 workflow YAML 里另造。"
+                         "打印的是**本次实际校验的仓**（含 --scope-mode 的影响）")
     ap.add_argument("--selftest", action="store_true", help="离线自测")
     args = ap.parse_args()
 
@@ -926,7 +1080,7 @@ def main() -> int:
 
     scope_note = ""
     if args.ci:
-        repos, ci_ref, scope_note = ci_scope(Path(args.versions))
+        repos, ci_ref, scope_note = ci_scope(Path(args.versions), args.scope_mode)
         if ci_ref and not args.ref:
             args.ref = ci_ref
         if args.repo:
