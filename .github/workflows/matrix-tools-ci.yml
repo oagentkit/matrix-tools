@@ -901,10 +901,19 @@ jobs:
     # 认领/派单评论里也会出现「验收」二字 ⇒ 旧判据把它当回执 ⇒
     # 「关单成功但零回执」从那条缝里溜过去。
     #
-    # ⚠️ **报告级**（continue-on-error）：这个 job 扫的是**全矩阵**，
-    #    任何一个仓的回执缺口都会让 matrix-tools 的每个 PR 变红
-    #    ⇒ 与矩阵「跨仓硬失败要有唯一归属地」的约定冲突。
-    #    等它有了唯一归属地再转硬失败。
+    # ⚠️ **硬失败**（不再是 continue-on-error）：判据既然准了、范围也有了归属地，
+    #    结论就该落到 CI 上（issue matrix-tools#90）。
+    #
+    # 范围（--ci --scope-mode repo）：
+    #   PR / push 事件 → **只判 matrix-tools 自己仓的 issue**（归属地）；
+    #   schedule 事件  → **全矩阵**（每日 06:17 的跨仓硬失败归属地：
+    #                    别的仓的缺口到这里才判红，不去背别人的红）。
+    #   ⚠️ PR 事件的口径恒为「PR 的 base 仓」⇒ 别的仓的 issue 的缺口
+    #     不会把本仓的 PR 弄红（那正是 #90 要消灭的跨仓误伤）。
+    #
+    # 「回执还在路上」的容忍窗（判据内置）：回执是**合并之后**才补的（要等 CI、
+    # 要打 tag）⇒ 刚关单的缺口在巡检口径下判**黄**而不是红（假红会让人习惯性
+    # 忽略红标）；PR 事件严格（容忍窗 0）——那时看到的缺口一定是上一轮合并留下的。
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -924,9 +933,12 @@ jobs:
       - name: issue 回执落地对账
         # 「判不了 ≠ 没问题」：取数失败判**黄灯**而不是绿灯——
         # 否则门禁会在网络故障时静默放行，而故障恰好是最需要它的时候。
-        continue-on-error: true
+        # 范围判定只此一份（oracle 的 --ci / --scope-mode），别在这个 YAML 里另造。
         shell: bash
-        run: python3 matrix-tools/scripts/verify_receipts.py --org oagentkit --json-out receipts-report.json
+        run: >-
+          python3 matrix-tools/scripts/verify_receipts.py
+          --ci --org oagentkit --scope-mode repo
+          --json-out receipts-report.json
 
       - name: 上传回执缺口报告
         if: always()

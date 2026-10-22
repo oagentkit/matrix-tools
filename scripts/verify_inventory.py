@@ -683,12 +683,23 @@ def main() -> int:
     root = Path(args.root).resolve()
     scripts_dir = reg_path.parent
 
+    # 要核对的 CI 文件 = **登记表里登记过的那些**（从登记表推导，不另维护一份清单）。
+    #
+    # 为什么不能硬编码一份文件清单：清单与登记表是两份数据 ⇒ 它们会漂
+    # ⇒ 新登记的 CI 文件在核对时被**静默跳过**（本轮实测踩到：登记表新增了
+    # `.github/.github/workflows/go-ci.yml` 这条腿，而核对脚本的硬编码清单里没有它
+    # ⇒ 门禁报「登记的 CI 文件找不到」，而本地复刻 CI 布局跑却是绿的）。
+    # ⇒ 一份数据源：登记表说要看哪个文件，就看哪个文件；
+    #    工作区里找不到它 ⇒ 判红（「登记说有、实际没有」本来就是假的承诺）。
     workflows: dict[str, str] = {}
-    for name in ("matrix-tools/.github/workflows/matrix-tools-ci.yml",
-                 ".github/.github/workflows/repo-ci.yml"):
-        p = root / name
-        if p.is_file():
-            workflows[name] = str(p)
+    for inv in registry.get("invariants", []) or []:
+        for ci in inv.get("ci", []) or []:
+            name = str(ci.get("file", ""))
+            if not name or name in workflows:
+                continue
+            p = root / name
+            if p.is_file():
+                workflows[name] = str(p)
 
     report = Report(title="不变量登记表")
     judge(registry, scripts_dir, workflows, report)

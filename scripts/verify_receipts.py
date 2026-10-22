@@ -106,7 +106,7 @@ closer 取**最后一次**关闭事件（issue 可能被关过又重开过）。
 | 档 | 含义 | 行为 |
 |---|---|---|
 | 红 | 确认缺口（被机器自动关闭 + 无回执 + 不在豁免内） | 退出码 1 |
-| 黄 | **判不了**（取数失败 / 关闭来源判不出 / 结果被 limit 截断）、**豁免已失效**、或**回执只有完成声明没有锚点** | 不失败，但必须出现在报告里 |
+| 黄 | **判不了**（取数失败 / 关闭来源判不出 / 结果被 limit 截断）、**豁免已失效**、**回执只有完成声明没有锚点**、**回执还在路上**（刚关单，在容忍窗内） | 不失败，但必须出现在报告里 |
 | 绿 | 无缺口 | — |
 
 「判不了 ≠ 没问题」：取数失败时判**黄灯**而不是绿灯——否则门禁会在网络故障时
@@ -115,6 +115,30 @@ closer 取**最后一次**关闭事件（issue 可能被关过又重开过）。
 「有回执但核验不了」同样判**黄灯**：它确实写了回执（所以不是红），
 但机器核验不了（所以不是绿）——要求补锚点。
 
+## 范围口径（--scope-mode）与归属地（issue matrix-tools#90）
+
+「**跨仓硬失败必须有唯一归属地**」：一个仓的欠账不该把别的仓的 CI 弄红。
+
+- **PR 事件** → 范围 = **PR 的 base 仓**（= 本 PR 触及的仓 = issue 所在仓）。
+  与 scope-mode 无关（与 changelog oracle 同口径：谁造成漂移谁负责）。
+- **非 PR 事件**（push / 定时 / 手动）→ 由 `--scope-mode` 决定：
+  - `matrix`（**默认**＝旧行为）→ 全矩阵；
+  - `repo` → **只判调用方本仓**（归属地）。
+- ⚠️ **`schedule` 事件在 `repo` 模式下仍是全矩阵**——那是周期性全量审计，
+  是跨仓硬失败的**唯一归属地**；把它一起收窄＝跨仓欠账再也没人抓。
+
+## 容忍窗：「回执还在路上」（--grace-minutes）
+
+缺口的**诞生时刻**与**回执的到达时刻**不是同一刻：issue 被合并关掉的那一刻
+缺口才诞生，而回执是收尾流程在合并**之后**才补的（要等 CI 出结论、要打 tag）。
+⇒ 门禁若在「刚关单」的时刻就判红，那是**竞态**——它报的是「回执还没来得及补」，
+不是「回执没补」；这种假红会让人习惯性忽略红标。
+
+- **PR 事件 → 容忍窗 0 分钟**（严格）：PR 时刻看到的缺口一定是上一轮合并留下的，
+  那时候该有的回执早该在了；
+- **巡检口径**（push / 定时 / 手动）→ **60 分钟**：刚关单的判**黄**（「可能还在路上」），
+  过了窗口还没补，下一轮就判红。
+
 ## 用法
 
     # 全矩阵扫描（联网）
@@ -122,6 +146,12 @@ closer 取**最后一次**关闭事件（issue 可能被关过又重开过）。
 
     # 只扫一个仓
     verify_receipts.py --org oagentkit --repo llm
+
+    # 按 GitHub 事件上下文裁剪范围（CI 用；PR 事件 → PR 的 base 仓）
+    verify_receipts.py --ci --org oagentkit --scope-mode repo
+
+    # 只打印本次要判的仓（每行一个）——给 CI 的 shell 复用同一份范围判定
+    verify_receipts.py --ci --scope-mode repo --print-scope
 
     # 离线复现 llm#29 的缺口形态（真实取值形态的历史快照）
     verify_receipts.py --fixture scripts/fixtures/receipts_llm29.json
@@ -139,8 +169,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -181,6 +213,47 @@ EXEMPT_LABELS = frozenset({"wontfix", "invalid", "duplicate"})
 DEFAULT_FIXTURE = HERE / "fixtures" / "receipts_llm29.json"
 COMMIT_CLOSE_FIXTURE = HERE / "fixtures" / "receipts_commit_close.json"
 DEFAULT_EXEMPTIONS = HERE / "receipt_exemptions.json"
+
+
+# ---------------------------------------------------------------- 范围口径
+#
+# 为什么需要范围口径（issue matrix-tools#90）：
+# 「**跨仓硬失败必须有唯一归属地**」——一个仓的欠账不该把别的仓的 CI 弄红。
+# 本门禁扫的是**全矩阵**的 issue，而它原先跑在 matrix-tools 的 CI 里
+# ⇒ mcpkit 的一个缺口会让 matrix-tools 的每个 PR 都变红
+# ⇒ 修复者会去改**错误的仓**。
+#
+# 与 changelog 门禁**同源同口径**（issue matrix-tools#76 的同一套做法）：
+#
+#   PR 事件 → 范围 = **PR 的 base 仓**（= 本 PR 触及的仓 = issue 所在仓）；
+#   非 PR 事件 → 由 `--scope-mode` 决定：
+#       matrix（**默认**＝旧行为）→ 全矩阵；
+#       repo → **只判调用方本仓**（归属地）。
+#
+# ⚠️ `schedule` 事件在 `repo` 模式下**仍是全矩阵**——那是周期性全量审计，
+# 是跨仓硬失败的**唯一归属地**；把它一起收窄＝跨仓欠账再也没人抓。
+#
+# ⚠️ PR 事件的口径**恒为「PR 的 base 仓」**，不经过 scope-mode 分支——
+# 与 changelog oracle 完全一致（谁造成漂移谁负责）。
+SCOPE_MODES = ("matrix", "repo")
+DEFAULT_SCOPE_MODE = "matrix"
+
+
+# 「回执还在路上」的容忍窗（分钟）。
+#
+# 缺口的**诞生时刻**与**回执的到达时刻**不是同一刻：issue 被合并关掉的那一刻
+# 缺口才诞生，而回执是收尾流程在合并**之后**才补的（要等 CI 出结论、要打 tag）。
+# ⇒ 门禁若在「刚关单」的时刻就判红，那是**竞态**：它报的是「回执还没来得及补」，
+# 不是「回执没补」——这种假红会让人习惯性忽略红标，正是本仓反复要消灭的形态。
+#
+# 所以按事件口径给容忍窗：
+#
+#   PR 事件 → **0 分钟**（严格）：PR 时刻看到的缺口一定是**上一轮**合并留下的，
+#            那时候该有的回执早该在了；
+#   巡检口径（push / 定时 / 手动）→ **60 分钟**：刚关单的判**黄**（「可能还在路上」），
+#            过了窗口还没补，下一轮就判红。
+GRACE_MINUTES_PR = 0
+GRACE_MINUTES_AUDIT = 60
 
 
 # ---------------------------------------------------------------- 事实读取
@@ -261,13 +334,45 @@ def _closer_label(issue: dict) -> str:
     return "自动关闭"
 
 
+def _closed_at(issue: dict) -> datetime | None:
+    """该 issue 的关闭时刻（UTC）；取不到返回 None（**判不了 ≠ 没有**）。"""
+    raw = issue.get("closedAt")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _within_grace(issue: dict, now: datetime | None, grace_minutes: int) -> bool:
+    """这个缺口是不是「刚关单、回执可能还在路上」。
+
+    判据：关单时刻距今**不超过**容忍窗。关单时刻取不到 ⇒ **不算**在窗口内
+    （按严格口径判红——「判不了」不该被当成「可以放过」）。
+    """
+    if grace_minutes <= 0 or now is None:
+        return False
+    closed = _closed_at(issue)
+    if closed is None:
+        return False
+    return (now - closed) <= timedelta(minutes=grace_minutes)
+
+
 # ---------------------------------------------------------------- 判定层
 
 
-def judge_repo(repo: str, issues: list[dict], exemptions: set[int]) -> list[Finding]:
+def judge_repo(repo: str, issues: list[dict], exemptions: set[int],
+               grace_minutes: int = 0, now: datetime | None = None) -> list[Finding]:
     """判定一个仓的已关闭 issue → 结论列表（judge_report.Finding）。
 
     只判「**被机器自动关闭**」这一形态；人工关闭的不在本门禁范围。
+
+    `grace_minutes` = 「回执还在路上」的容忍窗（见文件头「范围口径」一节）：
+    刚关单、还没到容忍窗的缺口判**黄**而不是红——回执本来就是在合并之后才补的。
     """
     findings: list[Finding] = []
 
@@ -315,6 +420,16 @@ def judge_repo(repo: str, issues: list[dict], exemptions: set[int]) -> list[Find
                 "机器核验不了锚点的回执，和没有回执只差一步"))
             continue
 
+        if _within_grace(issue, now, grace_minutes):
+            # 刚关单、回执可能还在路上 ⇒ 判黄不判红（假红会让人习惯性忽略红标）。
+            findings.append(Finding(
+                YELLOW, subject,
+                f"被 {_closer_label(issue)} 自动关闭，回执还没到"
+                f"（关单后 {grace_minutes} 分钟内，可能还在路上）",
+                "回执是合并之后才补的（要等 CI 出结论、要打 tag）；"
+                "过了容忍窗还没补上，下一轮就判红"))
+            continue
+
         findings.append(Finding(
             RED, subject,
             f"被 {_closer_label(issue)} 自动关闭，但一条回执都没留下",
@@ -328,7 +443,9 @@ def judge_repo(repo: str, issues: list[dict], exemptions: set[int]) -> list[Find
 def scan(repos: list[str],
          exemptions: dict[str, set[int]],
          fetcher,
-         limit: int = 100) -> list[Finding]:
+         limit: int = 100,
+         grace_minutes: int = 0,
+         now: datetime | None = None) -> list[Finding]:
     """扫一批仓 → 结论列表。fetcher(repo) → list[dict] | None（None = 取不到 = 判不了）。"""
     findings: list[Finding] = []
 
@@ -346,7 +463,8 @@ def scan(repos: list[str],
                 YELLOW, repo,
                 f"取到的已关闭 issue 达到 limit={limit} 上限，可能被截断——没取到的那部分没被检查",
                 f"调高 --limit（当前 {limit}）"))
-        findings.extend(judge_repo(repo, issues, exemptions.get(repo, set())))
+        findings.extend(judge_repo(repo, issues, exemptions.get(repo, set()),
+                                   grace_minutes=grace_minutes, now=now))
 
     return findings
 
@@ -420,6 +538,59 @@ def matrix_repos(root: Path) -> list[str]:
     return seen
 
 
+# ---------------------------------------------------------------- 范围判定
+
+
+def _event_name() -> str:
+    return os.environ.get("GITHUB_EVENT_NAME", "")
+
+
+def _caller_repo() -> str:
+    """事件所属的仓（调用方本仓）—— `GITHUB_REPOSITORY` 的仓名部分。"""
+    repo_full = os.environ.get("GITHUB_REPOSITORY", "")
+    return repo_full.split("/")[-1] if repo_full else ""
+
+
+def _pr_base_repo(event_path: str, fallback: str) -> str:
+    """PR 事件的 base 仓（= 本 PR 触及的仓）。取不到就退回调用方本仓。"""
+    try:
+        event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return fallback
+    pr = event.get("pull_request") or {}
+    base_full = ((pr.get("base") or {}).get("repo") or {}).get("full_name") or fallback
+    return base_full.split("/")[-1] if base_full else ""
+
+
+def ci_scope(scope_mode: str = DEFAULT_SCOPE_MODE,
+             root: Path | None = None) -> tuple[list[str], str, int]:
+    """按 GitHub 事件上下文判定「本次要判哪些仓」→ (仓列表, 说明, 容忍窗分钟)。
+
+    口径见上面「范围口径」一节。**范围判定只此一份**——CI 的 YAML 不要另造一份。
+    """
+    event = _event_name()
+    caller = _caller_repo()
+
+    if event in ("pull_request", "pull_request_target"):
+        event_path = os.environ.get("GITHUB_EVENT_PATH", "")
+        base = _pr_base_repo(event_path, caller) if event_path else caller
+        repos = [base] if base else []
+        note = (f"事件 {event}：PR 的 base 仓 = {base or '(未知)'}；"
+                f"范围 = [{base or '(未知)'}]"
+                "（issue 所在仓负责自己仓的回执）")
+        return repos, note, GRACE_MINUTES_PR
+
+    if scope_mode == "repo" and event != "schedule":
+        repos = [caller] if caller else []
+        note = (f"事件 {event or '(本地)'}：范围模式 repo → 只判调用方本仓"
+                f"（{caller or '(未知)'}）")
+        return repos, note, GRACE_MINUTES_AUDIT
+
+    known = matrix_repos(root or (HERE.parent))
+    note = (f"事件 {event or '(本地)'}：全矩阵审计（{len(known)} 个仓）")
+    return known, note, GRACE_MINUTES_AUDIT
+
+
 # ---------------------------------------------------------------- 自测
 
 
@@ -429,6 +600,73 @@ def _levels(findings: list[Finding]) -> list[str]:
 
 def _red_subjects(findings: list[Finding]) -> list[str]:
     return [f.subject for f in findings if f.level == RED]
+
+
+def _scope_selftest() -> list[str]:
+    """范围口径与归属地的自测（含反证）。
+
+    反证样本：把 `ci_scope` 短路成「总是全矩阵」⇒ repo 模式的断言必须变
+    ——否则自测只是「跑通即绿」的摆设（issue matrix-tools#90）。
+    """
+    import tempfile
+
+    fails: list[str] = []
+
+    def check(name: str, got, want) -> None:
+        if got != want:
+            fails.append(f"{name}: 期望 {want!r}，实得 {got!r}")
+
+    saved = {k: os.environ.get(k) for k in
+             ("GITHUB_EVENT_NAME", "GITHUB_REPOSITORY", "GITHUB_EVENT_PATH")}
+    tmp = Path(tempfile.mkdtemp(prefix="receipts-scope-selftest-"))
+    event_path = tmp / "event.json"
+    event_path.write_text(json.dumps({
+        "pull_request": {
+            "number": 7,
+            "base": {"repo": {"full_name": "oagentkit/mcpkit"}},
+        },
+    }), encoding="utf-8")
+
+    def scope(event_name: str, repo: str, mode: str, pr: bool = False):
+        os.environ["GITHUB_EVENT_NAME"] = event_name
+        os.environ["GITHUB_REPOSITORY"] = f"oagentkit/{repo}"
+        os.environ["GITHUB_EVENT_PATH"] = str(event_path) if pr else ""
+        return ci_scope(mode, HERE.parent)
+
+    try:
+        repos, _, grace = scope("push", "mcpkit", "repo")
+        check("push + repo 模式只判调用方本仓", repos, ["mcpkit"])
+        check("巡检口径给容忍窗", grace, GRACE_MINUTES_AUDIT)
+
+        repos, _, _ = scope("push", "mcpkit", "matrix")
+        check("push + matrix 模式是全矩阵", len(repos) > 1, True)
+
+        repos, _, _ = scope("schedule", "mcpkit", "repo")
+        check("schedule 在 repo 模式下仍是全矩阵（审计入口不能收窄）",
+              len(repos) > 1, True)
+
+        repos, _, grace = scope("pull_request", "tools", "repo", pr=True)
+        check("PR 事件判的是 PR 的 base 仓（不是调用方、不是全矩阵）",
+              repos, ["mcpkit"])
+        check("PR 事件是严格口径（无容忍窗）", grace, GRACE_MINUTES_PR)
+
+        # 反证 F：把范围短路成「总是全矩阵」⇒ repo 模式的断言必须变
+        orig = globals()["ci_scope"]
+        try:
+            globals()["ci_scope"] = lambda mode=DEFAULT_SCOPE_MODE, root=None: (
+                ["alpha", "beta"], "短路", GRACE_MINUTES_PR)
+            repos, _, _ = scope("push", "mcpkit", "repo")
+            check("反证F：短路范围后不再是单仓", repos == ["mcpkit"], False)
+        finally:
+            globals()["ci_scope"] = orig
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    return fails
 
 
 def selftest() -> int:
@@ -595,6 +833,42 @@ def selftest() -> int:
         globals()["_close_source"] = orig_source
         globals()["_receipt_state"] = orig_state
 
+    # ---- 14. 范围口径（issue matrix-tools#90）：repo 模式只判调用方本仓；
+    #          schedule 事件**仍是全矩阵**（那是跨仓硬失败的唯一归属地）
+    fails.extend(_scope_selftest())
+
+    # ---- 15. 容忍窗：刚关单 + 零回执 ⇒ 巡检口径判黄、严格口径判红
+    now = datetime.now(timezone.utc)
+    fresh = copy.deepcopy(snap)
+    fresh["llm"][0]["closedAt"] = (now - timedelta(minutes=5)).isoformat().replace(
+        "+00:00", "Z")
+    fresh_audit = scan(list(fresh.keys()), {}, lambda repo: fresh.get(repo, []),
+                       grace_minutes=GRACE_MINUTES_AUDIT, now=now)
+    check("刚关单的缺口在容忍窗内判黄", _levels(fresh_audit), [YELLOW])
+    check("刚关单的缺口不算确认缺口", _red_subjects(fresh_audit), [])
+    check("严格口径下刚关单的缺口判红",
+          _red_subjects(scan(list(fresh.keys()), {},
+                              lambda repo: fresh.get(repo, []),
+                              grace_minutes=0, now=now)),
+          ["llm#29"])
+    check("老缺口不受容忍窗影响",
+          _red_subjects(scan(list(snap.keys()), {},
+                              lambda repo: snap.get(repo, []),
+                              grace_minutes=GRACE_MINUTES_AUDIT, now=now)),
+          ["llm#29"])
+
+    # ---- 16. 反证自测：把被防的那一路掐掉后，结论必须变（反证 F / G）
+    orig_within = _within_grace
+    try:
+        globals()["_within_grace"] = lambda issue, now, grace_minutes: False
+        check("反证G：掐掉容忍窗后刚关单的缺口判红",
+              _red_subjects(scan(list(fresh.keys()), {},
+                                  lambda repo: fresh.get(repo, []),
+                                  grace_minutes=GRACE_MINUTES_AUDIT, now=now)),
+              ["llm#29"])
+    finally:
+        globals()["_within_grace"] = orig_within
+
     if fails:
         print("❌ verify_receipts 自测失败：")
         for f in fails:
@@ -603,7 +877,8 @@ def selftest() -> int:
     print("✅ verify_receipts 自测通过"
           "（llm#29 缺口复现 / 有回执转绿 / 范围收窄 / 豁免过期判黄 / "
           "判不了判黄 / commit 关单判红 / 认领评论判红 / 无锚点回执判黄 / "
-          "反证 A–E）")
+          "范围口径 repo·schedule·PR base 仓 / 容忍窗黄红两档 / "
+          "反证 A–G）")
     return 0
 
 
@@ -623,6 +898,22 @@ def main() -> int:
                     help="显式豁免名单路径")
     ap.add_argument("--limit", type=int, default=100,
                     help="每仓最多取多少条已关闭 issue（取到上限判黄）")
+    ap.add_argument("--scope-mode", choices=SCOPE_MODES, default=DEFAULT_SCOPE_MODE,
+                    help="非 PR 事件（push / 定时 / 手动）的范围口径："
+                         "matrix = 全矩阵（默认＝旧行为）；"
+                         "repo = 只判调用方本仓（归属地；"
+                         "全矩阵审计由归属地的定时 job 承担）")
+    ap.add_argument("--ci", action="store_true",
+                    help="按 GitHub 事件上下文裁剪范围："
+                         "PR 事件 → 只判本 PR 触及的仓（= PR 的 base 仓）")
+    ap.add_argument("--print-scope", action="store_true",
+                    help="只打印本次要判的仓（每行一个仓名）然后退出——"
+                         "给 CI 的 shell 复用同一份范围判定用，"
+                         "范围逻辑只此一份，别在 workflow YAML 里另造")
+    ap.add_argument("--grace-minutes", type=int, default=None,
+                    help="「回执还在路上」的容忍窗（分钟）："
+                         "刚关单、还没超过这个窗口的缺口判黄不判红；"
+                         "默认按事件口径（PR 事件 = 0，巡检口径 = 60）")
     ap.add_argument("--selftest", action="store_true", help="离线自测（含反证）")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--json-out", default=None, help="把 JSON 报告写到该文件")
@@ -632,11 +923,35 @@ def main() -> int:
     if args.selftest:
         return selftest()
 
+    root = Path(args.root)
     exemptions, err = load_exemptions(Path(args.exemptions))
     report = Report(title="issue 回执落地")
     if err:
         report.yellow("exemptions", err,
                       "豁免名单读不到 ⇒ 按「没有豁免」处理（更严），但这一条要有人看")
+
+    # 范围口径（--ci）：与 changelog 门禁同源同口径，别在 YAML 里另造一份。
+    repos: list[str] = []
+    grace = args.grace_minutes
+    if args.ci:
+        scoped, scope_note, event_grace = ci_scope(args.scope_mode, root)
+        repos = scoped
+        if grace is None:
+            grace = event_grace
+        if args.repo:
+            # 显式指定仓时以它为准（本地调试用）
+            repos = list(args.repo)
+        print(f"ℹ️ 范围判定：{scope_note}", file=sys.stderr)
+
+    if args.print_scope:
+        # stdout 只放仓名（每行一个）；信息性输出一律走 stderr。
+        # 空范围 ⇒ 一行都不输出（调用方的循环自然空转，退出码 0）。
+        for repo in repos:
+            print(repo)
+        return 0
+
+    if grace is None:
+        grace = GRACE_MINUTES_PR          # 本地 / fixture 模式：严格口径
 
     if args.fixture:
         path = Path(args.fixture)
@@ -647,21 +962,25 @@ def main() -> int:
                        "确认 --fixture 指向的是 gh issue list --json 的输出")
             return emit(report, fail_on_yellow=args.fail_on_yellow, as_json=args.json)
         report.findings.extend(scan(list(snap.keys()), exemptions,
-                                     lambda repo: snap.get(repo, []), limit=args.limit))
+                                     lambda repo: snap.get(repo, []),
+                                     limit=args.limit, grace_minutes=grace,
+                                     now=datetime.now(timezone.utc)))
     elif args.org:
-        if args.repo:
-            repos = list(args.repo)
-        else:
-            try:
-                repos = matrix_repos(Path(args.root))
-            except (OSError, ValueError) as exc:
-                report.red("modules.json", f"仓清单读不到：{exc}",
-                           "确认 --root 指向含 modules.json 的矩阵根目录")
-                return emit(report, fail_on_yellow=args.fail_on_yellow, as_json=args.json)
+        if not repos:
+            if args.repo:
+                repos = list(args.repo)
+            else:
+                try:
+                    repos = matrix_repos(root)
+                except (OSError, ValueError) as exc:
+                    report.red("modules.json", f"仓清单读不到：{exc}",
+                               "确认 --root 指向含 modules.json 的矩阵根目录")
+                    return emit(report, fail_on_yellow=args.fail_on_yellow, as_json=args.json)
         report.findings.extend(scan(
             repos, exemptions,
             lambda repo: live_closed_issues(args.org, repo, limit=args.limit),
-            limit=args.limit))
+            limit=args.limit, grace_minutes=grace,
+            now=datetime.now(timezone.utc)))
     else:
         ap.error("需要 --org（联网扫描）或 --fixture（离线快照）之一")
 
