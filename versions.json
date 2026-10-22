@@ -167,7 +167,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.13.1",
+      "latest": "v0.14.0",
       "packages": [
         {
           "pkg": "fence",
@@ -275,6 +275,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.18.0",
               "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.0",
+          "date": "2026-10-22",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.20.0",
+              "to": "v0.22.0"
             }
           ]
         }
@@ -1869,7 +1880,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.34",
+      "latest": "v1.8.35",
       "retiring": true,
       "breakingIndex": [
         {
@@ -2683,6 +2694,27 @@
               "dep": "github.com/oagentkit/agent",
               "from": "v0.10.4",
               "to": "v0.10.5"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.35",
+          "date": "2026-10-22",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.13.1",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.20.0",
+              "to": "v0.20.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.21.0",
+              "to": "v0.22.0"
             }
           ]
         }
