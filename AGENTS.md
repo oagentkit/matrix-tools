@@ -59,6 +59,22 @@ scripts/             工具链（见下）
 
 先接线再登记，登记就变成了事后追认——那正是我们要消灭的形态。
 
+**登记的三件事现在都受机器校验**（`verify_inventory.py`）：
+
+| 登记项 | 校验内容 | 判红条件 |
+|---|---|---|
+| `judges` | 判据脚本存在、已被登记的 CI 文件引用 | 脚本不存在 / 没被引用 |
+| `ci[].job` | job 名在 workflow 里存在 | 改名后没同步 ⇒ **判黄** |
+| `ci[].triggers` | trigger 存在于 workflow 级 `on:`，且不被该 job 的 `if:` 排除 | 登记了但不会跑 ⇒ **判红** |
+
+⚠️ 触发条件这一腿此前**从未被校验过**（`triggers` 在表里出现 31 次却一次没被读过）——
+实测抽掉 workflow 的 `schedule` 触发后门禁仍报「红 0 / 黄 0」，
+而 `schedule` 恰恰是跨仓审计唯一的自愈入口（matrix-tools#76）。
+
+⚠️ `if:` 表达式只静态认 `github.event_name` 的 `==` / `!=` 形式（含 `||` / `&&` 组合）；
+认不出来的（`always()` 等）⇒ **判黄不判红**——判不了 ≠ 没问题，但也不是确认违规
+（硬规则 3）。
+
 ### 2. 守卫必须自证还活着
 
 每条守卫都要有 `--selftest`，而且自测必须**带反证样本**：
@@ -220,7 +236,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 | `matrix-local-guards` | 层级方向 / 门面规则 / 仓文档（需要各仓源码） |
 | `pending-release` | 预写段可观测性（需完整历史，只在 push/定时跑） |
 | `latest-field` | latest 字段 ↔ 远端最新 tag |
-| `inventory` | 不变量登记表（承诺 ↔ 判据 ↔ 接线） |
+| `inventory` | 不变量登记表（承诺 ↔ 判据 ↔ 接线 ↔ 触发条件） |
 
 ⚠️ 跨仓一致性门禁有「顺序窗口」：本仓推了生成物而站点副本未跟上时，
 `.github` 仓的门禁会红，且红因与那个 PR 无关。按「谁造成漂移谁负责」处理。

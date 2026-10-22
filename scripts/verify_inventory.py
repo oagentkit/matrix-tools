@@ -10,12 +10,32 @@
 门面 README 说「不接受任何新功能」——只有事后快照守卫，而快照把违规吸收了；
 `versions.json` 的 `latest`——drift 门禁明确忽略它，而全 CI 无人在查。
 
-所以本脚本查四件事：
+所以本脚本查六件事：
 
 1. **每条不变量的判据脚本都存在**（登记了却没写，或写完被删）。
 2. **每条不变量的判据脚本都被登记的 CI 文件引用**（登记了却没接线 = 承诺是假的）。
 3. **每个守卫脚本都被登记**（写了却没登记 = 死代码，或忘了接进 CI）。
 4. **独立 oracle 不得悄悄 import 生成器**——耦合必须显式登记并写明理由。
+5. **每条判据脚本都支持 `--selftest`，且该自测被 CI 真的调用过**（硬规则 2）。
+6. **登记的触发条件真的能跑起来**（登记表的第三腿：什么条件下跑）。
+
+## 第 6 条为什么必须有
+
+登记表给每个 CI 登记项都写了 `triggers`，`why` 里也明写「判据在哪、谁在跑、
+**什么条件下跑**」是三件事之一、「缺任何一件，verify_inventory.py 会判红」——
+但本脚本此前**从不读这个字段**（`grep -c trigger scripts/verify_inventory.py` ⇒ 0），
+而它在登记表里出现 31 次。
+
+实测形态：抽掉 workflow 的 `schedule` 触发后，门禁仍然报「红 0 / 黄 0」——
+**登记说会跑、实际不会跑，正是这张表要消灭的形态**。而 `schedule` 恰恰是
+矩阵跨仓审计唯一的自愈入口（matrix-tools#76 修的正是「模块仓缺 schedule ⇒
+跨仓欠账没人抓」）。
+
+所以这里补上第三腿：
+① 登记的 trigger 必须存在于 workflow 级 `on:`；
+② job 级 `if:` 不得把已登记的 trigger 排除掉（workflow 声明了 `schedule`
+   不等于该 job 真会在 `schedule` 上跑）；
+③ `if:` 判不了 ⇒ **判黄**不判红（硬规则 3：判不了 ≠ 没问题，但也不是确认违规）。
 
 ## 第 4 条为什么用「登记制」而不是自动判定
 
@@ -110,6 +130,192 @@ def selftest_invoked(ci_text: str, script: str) -> bool:
         if f"scripts/{script}" in line and "--selftest" in line:
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# 触发条件（什么条件下跑）——登记表的第三腿
+# ---------------------------------------------------------------------------
+
+# job 级 `if:` 里，只有这两种形式能静态判定；其余写法一律判「判不了」。
+_CMP_EQ = re.compile(r"^\s*github\.event_name\s*==\s*'([^']+)'\s*$")
+_CMP_NE = re.compile(r"^\s*github\.event_name\s*!=\s*'([^']+)'\s*$")
+
+
+def _load_yaml(path: Path):
+    """解析 YAML。返回 (data, err)；err 非 None 表示**判不了**（不是判绿）。
+
+    pyyaml 的兜底沿用 `.github/workflows/repo-ci.yml` 里已有的写法
+    （先试 import，失败再 pip install）——CI 里已显式装 pyyaml，
+    这条只是本地/离线环境的保险。
+    """
+    try:
+        import yaml
+    except ImportError:
+        try:
+            import subprocess
+            import sys
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pyyaml"])
+            import yaml
+        except Exception as exc:  # noqa: BLE001
+            return None, f"环境缺 pyyaml 且无法安装（{exc}）"
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")), None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"YAML 解析失败（{exc}）"
+
+
+def workflow_events(wf) -> set[str]:
+    """workflow 级 `on:` 声明的事件集合。
+
+    ⚠️ PyYAML 按 YAML 1.1 解析，裸键 `on:` 会被解析成布尔 True
+    ⇒ 两个键都要试，否则读出来是空集（本判据会因此「全绿但什么都没查」）。
+    """
+    if not isinstance(wf, dict):
+        return set()
+    on = wf.get("on")
+    if on is None:
+        on = wf.get(True)
+    if isinstance(on, str):
+        return {on}
+    if isinstance(on, list):
+        return {str(x) for x in on}
+    if isinstance(on, dict):
+        return {str(k) for k in on.keys()}
+    return set()
+
+
+def _split_top(expr: str, op: str) -> list[str]:
+    """按顶层分隔符切分（括号内的分隔符不算）。"""
+    out: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    i = 0
+    while i < len(expr):
+        ch = expr[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if depth == 0 and expr.startswith(op, i):
+            out.append("".join(cur))
+            cur = []
+            i += len(op)
+            continue
+        cur.append(ch)
+        i += 1
+    out.append("".join(cur))
+    return [x.strip() for x in out if x.strip()]
+
+
+def _conjunct_value(conj: str, event: str):
+    """单个合取项对给定事件的取值：True / False / None(判不了)。"""
+    m = _CMP_EQ.match(conj)
+    if m:
+        return event == m.group(1)
+    m = _CMP_NE.match(conj)
+    if m:
+        return event != m.group(1)
+    return None
+
+
+def condition_allows(expr, event: str):
+    """job 级 `if:` 表达式在 `event` 事件下是否放行。
+
+    返回 True / False / None(判不了)。
+    只认 `github.event_name` 的 `==` / `!=` 形式（含 `||` 与 `&&` 组合）；
+    其余写法（`always()`、`needs.*` 等）**不猜**——判不了就是判不了。
+    """
+    if expr is None:
+        return True
+    expr = str(expr).strip()
+    if not expr:
+        return True
+    while expr.startswith("(") and expr.endswith(")"):
+        expr = expr[1:-1].strip()
+
+    vals: list = []
+    for alt in _split_top(expr, "||"):
+        value = True
+        unknown = False
+        for conj in _split_top(alt, "&&"):
+            r = _conjunct_value(conj, event)
+            if r is False:
+                value = False
+                break
+            if r is None:
+                unknown = True
+        vals.append(False if value is False else (None if unknown else True))
+
+    if any(v is True for v in vals):
+        return True
+    if any(v is None for v in vals):
+        return None
+    return False
+
+
+def check_triggers(inv_id: str, ci: dict, workflows: dict[str, str],
+                   cache: dict, report: Report) -> None:
+    """校验登记的触发条件是不是真的能跑起来（登记表的第三腿）。
+
+    ① 登记的 trigger 必须存在于 workflow 级 `on:`，否则**判红**；
+    ② job 级 `if:` 不得把已登记的 trigger 排除掉，否则**判红**；
+    ③ `if:` 判不了 / YAML 判不了 ⇒ **判黄**（硬规则 3：判不了 ≠ 没问题，
+       但也不是确认违规——不能凭「猜它会跑」就放过去）。
+    """
+    triggers = [str(t) for t in (ci.get("triggers") or [])]
+    wf_name = ci.get("file", "")
+    job_name = ci.get("job", "")
+
+    if not triggers:
+        report.yellow(
+            inv_id,
+            f"登记的 CI 接线没写触发条件：{wf_name} / {job_name}",
+            "登记表承诺的是三件事——判据在哪、谁在跑、什么条件下跑；"
+            "缺触发条件 ⇒ 第三腿无从核对（判不了 ≠ 没问题）")
+        return
+
+    wf_path = workflows.get(wf_name)
+    if wf_path is None:
+        return  # 文件找不到已由上层判红，不重复报
+
+    if wf_path not in cache:
+        cache[wf_path] = _load_yaml(Path(wf_path))
+    data, err = cache[wf_path]
+    if err is not None:
+        report.yellow(inv_id, f"判不了 {wf_name} 的触发条件：{err}",
+                      "解析不了 workflow ⇒ 无法核对登记的触发条件（判不了 ≠ 没问题）")
+        return
+
+    jobs = (data or {}).get("jobs") if isinstance(data, dict) else None
+    job = jobs.get(job_name) if isinstance(jobs, dict) else None
+    if job is None:
+        return  # job 名不存在已由上层判黄
+
+    actual = workflow_events(data)
+    cond = job.get("if") if isinstance(job, dict) else None
+
+    for trig in triggers:
+        if trig not in actual:
+            report.red(
+                inv_id,
+                f"登记的触发条件 {trig} 在 {wf_name} 里不存在——承诺是假的",
+                f"要么在 {wf_name} 的 on: 里补上 {trig}，要么把登记里的 {trig} 去掉——"
+                f"「登记说会跑、实际不会跑」正是这张表要消灭的形态")
+            continue
+        allows = condition_allows(cond, trig)
+        if allows is False:
+            report.red(
+                inv_id,
+                f"job {job_name} 的 if 条件排除了登记的触发条件 {trig}",
+                f"job 级 if: {cond} —— {wf_name} 在 workflow 级声明了 {trig}，"
+                f"但这个 job 在 {trig} 事件下不会运行；"
+                f"要么改 if，要么把 {trig} 从登记里去掉")
+        elif allows is None:
+            report.yellow(
+                inv_id,
+                f"判不了 job {job_name} 的 if 条件是否放行 {trig}（if: {cond}）",
+                "只认 github.event_name 的 == / != 形式；其余写法无法静态判定"
+                "（判不了 ≠ 没问题）")
 
 
 def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
@@ -208,6 +414,19 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                     f"在 CI 的 guards job 里加一步："
                     f"python3 scripts/{judge_script} --selftest")
 
+    # 6：登记的触发条件必须真的能跑起来（登记表的第三腿）
+    #
+    # 登记表给每个 CI 登记项都写了 `triggers`，`why` 里明写「判据在哪、谁在跑、
+    # 什么条件下跑」是三件事之一、「缺任何一件，verify_inventory.py 会判红」——
+    # 但本脚本此前从不读这个字段。实测：抽掉 workflow 的 `schedule` 触发后，
+    # 门禁仍报「红 0 / 黄 0」，而 `schedule` 是跨仓审计唯一的自愈入口
+    # （matrix-tools#76）。承诺与触发条件之间没有核对＝登记表自己会撒谎。
+    wf_cache: dict = {}
+    for inv in invariants:
+        inv_id = inv.get("id", "?")
+        for ci in inv.get("ci", []):
+            check_triggers(inv_id, ci, workflows, wf_cache, report)
+
     # 5：每个守卫脚本都必须被登记
     registered: set[str] = set()
     for inv in invariants:
@@ -266,26 +485,81 @@ def selftest() -> int:
             "print('x')\nap = None  # --selftest\n", encoding="utf-8")
         (scripts / "gen_changelogs.py").write_text("x = 1\n", encoding="utf-8")
 
+        # workflow：ci.yml 的 `on:` **故意没有 schedule**（反证「登记了却不存在」）；
+        # ci2.yml 的 `on:` 有 schedule，但 only-push 用 if 排除它（反证「if 排除了
+        # 已登记的 trigger」），opaque 用判不了的 if（反证「判不了 ⇒ 判黄不判红」）。
         wf = root / "ci.yml"
-        wf.write_text(
-            "jobs:\n  a:\n    steps:\n"
+        wf2 = root / "ci2.yml"
+
+        def write_ci1(steps: str) -> None:
+            wf.write_text(
+                "on:\n"
+                "  push:\n"
+                "  pull_request:\n"
+                "jobs:\n"
+                "  a:\n    steps:\n" + steps,
+                encoding="utf-8")
+
+        def write_ci2(steps: str) -> None:
+            # ci2.yml 里也必须真的引用判据脚本——否则会先被「判据脚本没被 CI 引用」
+            # 那条判定抓住，红的就不是触发条件这一条，自证就没有区分力了。
+            wf2.write_text(
+                "on:\n"
+                "  push:\n"
+                "  schedule:\n"
+                "jobs:\n"
+                "  only-push:\n"
+                "    if: github.event_name == 'push'\n"
+                "    steps:\n"
+                "      - run: python3 scripts/verify_ok.py\n"
+                "      - run: echo only-push\n"
+                "  opaque:\n"
+                "    if: always()\n"
+                "    steps:\n"
+                "      - run: python3 scripts/verify_ok.py\n"
+                "      - run: echo opaque\n" + steps,
+                encoding="utf-8")
+
+        base_steps = (
             "      - run: python3 scripts/verify_ok.py\n"
             "      - run: python3 scripts/verify_ok.py --selftest\n"
-            "      - run: python3 scripts/verify_coupled.py --selftest\n",
-            encoding="utf-8")
+            "      - run: python3 scripts/verify_coupled.py --selftest\n")
+        write_ci1(base_steps)
+        write_ci2("")
 
         registry = {
             "invariants": [
                 {"id": "ok", "judges": ["verify_ok.py"], "oracle": "independent",
-                 "sharedWith": [], "ci": [{"file": "ci.yml", "job": "a"}]},
+                 "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "a",
+                         "triggers": ["push", "pull_request"]}]},
                 {"id": "coupled", "judges": ["verify_coupled.py"], "oracle": "independent",
-                 "sharedWith": [], "ci": [{"file": "ci.yml", "job": "a"}]},
+                 "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "a",
+                         "triggers": ["push", "pull_request"]}]},
                 {"id": "noselftest", "judges": ["verify_noselftest.py"],
                  "oracle": "independent", "sharedWith": [],
-                 "ci": [{"file": "ci.yml", "job": "a"}]},
+                 "ci": [{"file": "ci.yml", "job": "a",
+                         "triggers": ["push", "pull_request"]}]},
                 {"id": "unwired", "judges": ["verify_unwired.py"],
                  "oracle": "independent", "sharedWith": [],
-                 "ci": [{"file": "ci.yml", "job": "a"}]},
+                 "ci": [{"file": "ci.yml", "job": "a",
+                         "triggers": ["push", "pull_request"]}]},
+                # 反证样本 ⑤：登记了 schedule，但 ci.yml 的 on: 里没有 schedule
+                {"id": "missing-trigger", "judges": ["verify_ok.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "a",
+                         "triggers": ["push", "schedule"]}]},
+                # 反证样本 ⑥：schedule 在 on: 里，但 job 的 if 把它排除了
+                {"id": "excluded-trigger", "judges": ["verify_ok.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci2.yml", "job": "only-push",
+                         "triggers": ["push", "schedule"]}]},
+                # 反证样本 ⑦：if 判不了 ⇒ 判黄，不判红
+                {"id": "unknown-if", "judges": ["verify_ok.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci2.yml", "job": "opaque",
+                         "triggers": ["schedule"]}]},
             ],
             "retired": [],
             "notInvariants": {"tools": ["gen_changelogs.py"]},
@@ -294,8 +568,9 @@ def selftest() -> int:
         reg_path.write_text(json.dumps(registry), encoding="utf-8")
 
         rep = Report(title="不变量登记表")
-        judge(registry, scripts, {"ci.yml": str(wf)}, rep)
+        judge(registry, scripts, {"ci.yml": str(wf), "ci2.yml": str(wf2)}, rep)
         subjects = {f.subject for f in rep.reds}
+        yellow_subjects = {f.subject for f in rep.yellows}
         check("未登记的守卫被抓出", "verify_orphan.py" in subjects, True)
         check("未披露的耦合被抓出", "coupled" in subjects, True)
         check("已登记且合规的不报", "ok" in subjects, False)
@@ -303,15 +578,20 @@ def selftest() -> int:
         check("没有 --selftest 的判据被抓出", "noselftest" in subjects, True)
         # ④ 硬规则 2：--selftest 没接进 CI 必须判红
         check("--selftest 未接线的判据被抓出", "unwired" in subjects, True)
+        # ⑤ 登记的 trigger 在 on: 里不存在 ⇒ 判红
+        check("登记了不存在的 trigger 被抓出", "missing-trigger" in subjects, True)
+        # ⑥ job 的 if 排除了登记的 trigger ⇒ 判红
+        check("if 排除登记 trigger 被抓出", "excluded-trigger" in subjects, True)
+        # ⑦ if 判不了 ⇒ 判黄，**不判红**（硬规则 3）
+        check("if 判不了的不判红", "unknown-if" in subjects, False)
+        check("if 判不了的判黄", "unknown-if" in yellow_subjects, True)
 
         # 反证：把 --selftest 的 CI 接线去掉 ⇒ 必须转红（证明这条判定有区分力）
-        wf.write_text(
-            "jobs:\n  a:\n    steps:\n"
+        write_ci1(
             "      - run: python3 scripts/verify_ok.py\n"
-            "      - run: python3 scripts/verify_coupled.py --selftest\n",
-            encoding="utf-8")
+            "      - run: python3 scripts/verify_coupled.py --selftest\n")
         rep_x = Report(title="不变量登记表")
-        judge(registry, scripts, {"ci.yml": str(wf)}, rep_x)
+        judge(registry, scripts, {"ci.yml": str(wf), "ci2.yml": str(wf2)}, rep_x)
         check("抽掉 --selftest 接线 → 判红", rep_x.has_red(), True)
 
         # 披露之后应当转绿（并把两个反证样本补齐）
@@ -321,21 +601,54 @@ def selftest() -> int:
         ]
         # 把孤儿脚本登记进不变量**并且**接进 CI（两者缺一都会红）
         registry["invariants"][0]["judges"].append("verify_orphan.py")
-        registry["invariants"][0]["ci"].append({"file": "ci.yml", "job": "a"})
+        registry["invariants"][0]["ci"].append(
+            {"file": "ci.yml", "job": "a", "triggers": ["push", "pull_request"]})
         # 反证样本补齐：给它们加上 --selftest 开关并接进 CI
         (scripts / "verify_noselftest.py").write_text(
             "ap = None  # --selftest\n", encoding="utf-8")
-        wf.write_text("jobs:\n  a:\n    steps:\n"
-                      "      - run: python3 scripts/verify_ok.py\n"
-                      "      - run: python3 scripts/verify_ok.py --selftest\n"
-                      "      - run: python3 scripts/verify_coupled.py --selftest\n"
-                      "      - run: python3 scripts/verify_orphan.py --selftest\n"
-                      "      - run: python3 scripts/verify_noselftest.py --selftest\n"
-                      "      - run: python3 scripts/verify_unwired.py --selftest\n",
-                      encoding="utf-8")
+        write_ci1(
+            "      - run: python3 scripts/verify_ok.py\n"
+            "      - run: python3 scripts/verify_ok.py --selftest\n"
+            "      - run: python3 scripts/verify_coupled.py --selftest\n"
+            "      - run: python3 scripts/verify_orphan.py --selftest\n"
+            "      - run: python3 scripts/verify_noselftest.py --selftest\n"
+            "      - run: python3 scripts/verify_unwired.py --selftest\n")
+        # 触发条件补齐：ci.yml 真的加上 schedule；ci2.yml 的 only-push 去掉 if
+        wf.write_text(
+            "on:\n"
+            "  push:\n"
+            "  pull_request:\n"
+            "  schedule:\n"
+            "jobs:\n"
+            "  a:\n    steps:\n"
+            "      - run: python3 scripts/verify_ok.py\n"
+            "      - run: python3 scripts/verify_ok.py --selftest\n"
+            "      - run: python3 scripts/verify_coupled.py --selftest\n"
+            "      - run: python3 scripts/verify_orphan.py --selftest\n"
+            "      - run: python3 scripts/verify_noselftest.py --selftest\n"
+            "      - run: python3 scripts/verify_unwired.py --selftest\n",
+            encoding="utf-8")
+        wf2.write_text(
+            "on:\n"
+            "  push:\n"
+            "  schedule:\n"
+            "jobs:\n"
+            "  only-push:\n"
+            "    steps:\n"
+            "      - run: python3 scripts/verify_ok.py\n"
+            "      - run: echo only-push\n"
+            "  opaque:\n"
+            "    if: always()\n"
+            "    steps:\n"
+            "      - run: python3 scripts/verify_ok.py\n"
+            "      - run: echo opaque\n",
+            encoding="utf-8")
         rep2 = Report(title="不变量登记表")
-        judge(registry, scripts, {"ci.yml": str(wf)}, rep2)
+        judge(registry, scripts, {"ci.yml": str(wf), "ci2.yml": str(wf2)}, rep2)
         check("披露后转绿", rep2.has_red(), False)
+        # 判不了的仍然是黄灯——补齐不该把它变成绿灯（硬规则 3）
+        check("补齐后判不了的仍是黄灯",
+              "unknown-if" in {f.subject for f in rep2.yellows}, True)
 
     if fails:
         print("❌ verify_inventory 自测失败：")
@@ -343,7 +656,8 @@ def selftest() -> int:
             print(f"   - {f}")
         return 1
     print("✅ verify_inventory 自测通过"
-          "（未登记 / 未接线 / 未披露耦合 / 无 --selftest / --selftest 未接线 五类检出）")
+          "（未登记 / 未接线 / 未披露耦合 / 无 --selftest / --selftest 未接线 / "
+          "登记了不存在的 trigger / if 排除登记的 trigger / if 判不了判黄 八类检出）")
     return 0
 
 

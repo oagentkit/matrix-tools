@@ -674,7 +674,7 @@
     },
     {
       "id": "invariant-inventory",
-      "claim": "每条不变量都必须有判据脚本与 CI 接线；每条守卫脚本都必须在本表登记；每条登记的判据脚本都必须能自证还活着（支持 --selftest 且自测已接进 CI）",
+      "claim": "每条不变量都必须有判据脚本与 CI 接线；每条守卫脚本都必须在本表登记；每条登记的判据脚本都必须能自证还活着（支持 --selftest 且自测已接进 CI）；每条登记的触发条件都必须真的能跑起来（workflow 的 on: 里存在，且不被 job 级 if 排除）",
       "judges": [
         "verify_inventory.py"
       ],
@@ -693,7 +693,7 @@
         }
       ],
       "since": "2026-10-21",
-      "note": "本表自己的守门人。它同时强制「独立 oracle 不得悄悄 import 生成器」——耦合必须显式登记并说明理由。\n2026-10-22 起还强制 AGENTS.md 硬规则 2「守卫必须自证还活着」：每个已登记的判据脚本必须支持 --selftest，且该自测必须在本 org 的 CI 里被真的调用过。此前这条规则**只是文档**——实测 27 个登记判据里有 4 个根本没有 --selftest 开关（verify_ghost_packages / scan_stale_refs / verify_docs / verify_repo_docs），它们处于「一直绿、从没生效过」的高危形态且无人知晓。",
+      "note": "本表自己的守门人。它同时强制「独立 oracle 不得悄悄 import 生成器」——耦合必须显式登记并说明理由。\n2026-10-22 起还强制 AGENTS.md 硬规则 2「守卫必须自证还活着」：每个已登记的判据脚本必须支持 --selftest，且该自测必须在本 org 的 CI 里被真的调用过。此前这条规则**只是文档**——实测 27 个登记判据里有 4 个根本没有 --selftest 开关（verify_ghost_packages / scan_stale_refs / verify_docs / verify_repo_docs），它们处于「一直绿、从没生效过」的高危形态且无人知晓。\n2026-10-22 起（issue matrix-tools#86）还强制登记表的**第三腿「什么条件下跑」**：每个 CI 登记项写的 triggers 必须在被登记 workflow 的 `on:` 里真实存在，且不得被该 job 的 `if:` 排除。此前 triggers 在本表出现 31 次却**从未被读过**——实测抽掉 workflow 的 schedule 触发后门禁仍报「红 0 / 黄 0」，而 schedule 恰恰是跨仓审计唯一的自愈入口（matrix-tools#76）。`if:` 判不了（如 always()）⇒ 判黄不判红（硬规则 3：判不了 ≠ 没问题，但也不是确认违规）。",
       "kind": "gate"
     },
     {
