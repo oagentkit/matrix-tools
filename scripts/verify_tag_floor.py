@@ -65,11 +65,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import matrix_facts  # noqa: E402
 import repo_meta  # noqa: E402
 
 DEFAULT_ORGS = ("github.com/oagentkit/", "github.com/oekit/")
 ROOT_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
-REQUIRE_RE = re.compile(r"^\s*([\w.\-]+(?:\.[\w\-]+)*/[\w.\-/]+)\s+(v[\w.\-+]+)")
 
 
 def parse_version(v: str) -> tuple | None:
@@ -254,27 +254,33 @@ def api_go_mod(org: str, repo: str, ref: str) -> str | None:
 
 
 def floors_from_go_mod(text: str) -> dict[str, str]:
-    """go.mod require 段 → {module path: 版本}（只收第一方）。"""
+    """go.mod require 段 → {module path: 版本}（只收第一方）。
+
+    取数走**事实层**（matrix_facts.parse_go_mod），不在本脚本里自写一份解析器。
+
+    为什么：自写的那份只认 require **块**形式，单行 `require X v` 形式会被
+    **静默丢弃**（2026-10-22 实测：guardx / runtime / textx / promptx / obs /
+    toolgate 六个仓的第一方依赖全在这两种形式里）⇒ 这六个仓的地板对本门禁
+    **完全不可见** ⇒ 门禁报「无落后」——但那不是「查过没问题」，
+    是「没查」。**判不了 ≠ 没问题**（matrix-tools/AGENTS.md 硬规则 3）。
+
+    事实层是矩阵里唯一的事实来源（同一份 go.mod 解析被 gen_floor_bumps /
+    verify_dep_floors / verify_dep_floor 共用）⇒ 这里复用它，
+    不再新增第四份同义实现，避免「同一类 bug 修多次」。
+
+    ⚠️ 判定逻辑（时间口径、版本比较）仍在本脚本里独立实现——
+    事实可以共享，判定不能共享。
+    """
+    parsed = matrix_facts.parse_go_mod(text or "")
     out: dict[str, str] = {}
-    in_block = False
-    for line in (text or "").splitlines():
-        s = line.strip()
-        if s.startswith("require ("):
-            in_block = True
+    # 事实层的 requires 是 **set** ⇒ 迭代顺序不确定 ⇒ 排序后遍历，
+    # 保证同一个 go.mod 每次解析出的字典一致（报告可复现）。
+    for item in sorted(parsed.get("requires", ())):
+        # item 形态为 "path version"（事实层已按空格切分）
+        parts = item.split()
+        if len(parts) < 2:
             continue
-        if in_block and s == ")":
-            in_block = False
-            continue
-        if s.startswith("require ") and not s.startswith("require ("):
-            s = s[len("require "):]
-        if not s or s.startswith("//"):
-            continue
-        if not (in_block or s.startswith("require ")):
-            continue
-        m = REQUIRE_RE.match(s)
-        if not m:
-            continue
-        path, ver = m.group(1), m.group(2)
+        path, ver = parts[0], parts[1]
         if is_first_party(path):
             out[path] = ver
     return out
@@ -623,6 +629,33 @@ def selftest() -> int:
             "\tgithub.com/oekit/pkg v0.15.1\n\tgithub.com/cloudwego/eino v0.9.21\n)\n"
     check("只收第一方", floors_from_go_mod(gomod),
           {"github.com/oagentkit/textx": "v0.5.0", "github.com/oekit/pkg": "v0.15.1"})
+
+    # 单行 require 形式（2026-10-22 的真实回归）：
+    # guardx / runtime / textx / promptx / obs / toolgate 六个仓的第一方依赖
+    # 都写在单行形式里。自写解析器曾把它们**静默丢弃** ⇒ 这六个仓的地板
+    # 对门禁完全不可见 ⇒ 门禁报「无落后」，而那其实是「没查」。
+    # 反证样本：这份 go.mod 必须被判出落后，否则就是假绿。
+    single = "module x\n\ngo 1.26.0\n\nrequire github.com/oekit/pkg v0.20.0\n"
+    check("单行 require 也被解析", floors_from_go_mod(single),
+          {"github.com/oekit/pkg": "v0.20.0"})
+    single_indirect = ("module x\n\ngo 1.26.0\n\nrequire github.com/oekit/pkg v0.20.0"
+                        " // indirect\n")
+    check("单行 require + indirect 也被解析", floors_from_go_mod(single_indirect),
+          {"github.com/oekit/pkg": "v0.20.0"})
+    # 单行 + 块形式混排（promptx / toolgate 的真实形态）
+    mixed = ("module x\n\ngo 1.26.0\n\nrequire (\n\tgithub.com/oekit/concurrency v0.19.0\n)\n"
+             "\nrequire github.com/oekit/pkg v0.20.0 // indirect\n")
+    check("块 + 单行混排都被解析", floors_from_go_mod(mixed),
+          {"github.com/oekit/concurrency": "v0.19.0", "github.com/oekit/pkg": "v0.20.0"})
+
+    # 反证：单行形式的地板真落后时，必须被判红（不能因为「解析不到」而放行）
+    single_problems = check_ref("guardx", "v0.13.2", "2026-10-22T00:00:00+08:00",
+                                floors_from_go_mod(single),
+                                lambda o, r, mv=None: [("v0.21.0", "2026-10-21T19:17:42+08:00")])
+    check("单行形式的地板落后被抓到", len(single_problems), 1)
+    if single_problems:
+        check("报出应接的版本", single_problems[0]["should_be"], "v0.21.0")
+        check("报出当前地板", single_problems[0]["floor"], "v0.20.0")
 
     # 时间口径：T 之后才发布的 tag 不算当时就落后
     tags = [("v0.5.0", "2026-10-19T10:00:00+08:00"),
