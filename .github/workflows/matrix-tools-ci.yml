@@ -256,6 +256,30 @@ jobs:
         # 自测没有区分力 ⇒ 门禁是「一直绿、从没生效过」。
         run: python3 scripts/verify_receipts.py --selftest
 
+      - name: 幽灵包守卫自测
+        # 反证样本：幽灵包 / **嵌套**幽灵包 / 测试专用包 / 登记了但仓里没有 必报，
+        # 合规仓与 SKIP 名单（cmd/internal/…）不误报。
+        # 这条守卫此前对嵌套包与测试专用包**完全失明**（口径只扫仓根直接子目录
+        # 且要求含非测试 .go 文件），而这两种形态 `go build ./... && go test ./...`
+        # 全绿 ⇒ 幽灵包可以存在于 CI 完全看不见的地方。
+        run: python3 scripts/verify_ghost_packages.py --selftest
+
+      - name: 文档陈旧引用守卫自测
+        # 反证样本：裸写死包路径必报；**不误报**样本同样重要（误报是这类扫描的
+        # 主要风险）：迁移箭头 / 已退役章节 / 宣布退役的引用块 / URL / CHANGELOG。
+        run: python3 scripts/scan_stale_refs.py --selftest
+
+      - name: llms.txt 防漂移守卫自测
+        # 反证样本：llms.txt 与 modules.json 漂移（多行 / 少行 / 整体换掉）必红，
+        # 一致判绿，--fix 能修回。
+        run: python3 scripts/verify_docs.py --selftest
+
+      - name: 仓文档漂移报告器自测
+        # 这条是**报告器**（恒不失败），但报告器同样要能自证还活着：
+        # 漂移必报、一致/缺文档/缺仓不报，且守住核心承诺——**只报告不覆盖**
+        # （手写内容被抹掉是它存在的理由）。
+        run: python3 scripts/verify_repo_docs.py --selftest
+
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
     # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的

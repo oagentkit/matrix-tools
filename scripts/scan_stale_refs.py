@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import tempfile
 from pathlib import Path
 
 # 只匹配两段形式：oagentkit/<repo>/<pkg>。单段（oagentkit/agentkit）是仓名不是包。
@@ -174,12 +175,126 @@ def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str
     return hits
 
 
+def selftest() -> int:
+    """反证自测：拿**故意造坏**的文档跑一遍，要求它报出来。
+
+    「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西
+    （matrix-tools/AGENTS.md 硬规则 2）。所以样本必须覆盖两类方向：
+
+      ① **该报的必报**（反证）
+         - 裸写死包路径（无豁免）        → 必须报出
+         - 死包出现在当前指引正文里       → 必须报出
+      ② **不该报的不报**（不误报样本）
+         - 合法包引用                     → 不报
+         - 迁移箭头（旧 → 新）             → 不报（保留旧路径是正确写法）
+         - 「已退役」章节内的历史路径       → 不报
+         - 宣布退役的引用块               → 不报
+         - Markdown 链接 URL              → 不报
+         - CHANGELOG.md                   → 不扫（那是历史记录）
+
+    误报是这类扫描的主要风险（脚本 docstring 原话），所以不误报样本
+    与反证样本同等重要。
+    """
+    fails: list[str] = []
+
+    def check(name: str, got, want) -> None:
+        if got != want:
+            fails.append(f"{name}: 期望 {want!r}，实得 {got!r}")
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        valid = {"github.com/oagentkit/alpha/core",
+                 "github.com/oagentkit/beta/core"}
+
+        def write(rel: str, text: str):
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8")
+
+        # ① 裸写死包路径 → 必须报出
+        write("alpha/README.md",
+              "能力归属：`github.com/oagentkit/alpha/ghost` 负责熔断。\n")
+        # ① 死包在当前指引正文里 → 必须报出
+        write("alpha/AGENTS.md",
+              "## 能力归属\n\n- 熔断：`github.com/oagentkit/alpha/breaker`\n")
+        # ② 合法包 → 不报
+        write("beta/README.md",
+              "能力归属：`github.com/oagentkit/beta/core` 负责文本。\n")
+        # ② 迁移箭头（旧 → 新，右侧合法）→ 不报
+        write("beta/AGENTS.md",
+              "`audit` / `bashguard` 已迁出：`github.com/oagentkit/beta/audit` → "
+              "`github.com/oagentkit/alpha/core`\n")
+        # ② 「已退役」章节内的历史路径 → 不报
+        write("gamma/README.md",
+              "# gamma\n\n## 已退役的包\n\n"
+              "### `breaker` —— 三态熔断器\n\n"
+              "    import \"github.com/oagentkit/alpha/breaker\"\n")
+        # ② 宣布退役的引用块 → 不报
+        # 形态取自真实文件 guardx/AGENTS.md:30-32（注意「已**退役**」被粗体打断，
+        # 真正生效的是同一块里未被打断的「已冻结」/「不再有后续版本」——
+        # 这就是为什么反证样本必须照抄真实形态，不能自己编一句）。
+        write("gamma/AGENTS.md",
+              "> ⚠️ `github.com/oagentkit/alpha/audit` 这两条 import 路径\n"
+              "> 已**退役**（它们曾短暂以嵌套 module 形式存在，tag `audit/v0.1.0`\n"
+              "> 仍在，但那条线**已冻结**，不再有后续版本）。新代码请用上面表里的新路径。\n")
+        # ② Markdown 链接 URL → 不报
+        write("delta/README.md",
+              "详见 <https://github.com/oagentkit/alpha/deadlink>。\n")
+        # ② CHANGELOG.md → 不扫
+        write("alpha/CHANGELOG.md",
+              "BREAKING：`github.com/oagentkit/alpha/breaker` 不再存在。\n")
+
+        hits = scan(root, valid, verbose=False)
+        found = {full for _, _, full, _ in hits}
+        paths = {p for p, _, _, _ in hits}
+
+        # ① 反证：死包必须被报出
+        check("① 裸写死包被报出",
+              "github.com/oagentkit/alpha/ghost" in found, True)
+        check("① 正文里的死包被报出",
+              "github.com/oagentkit/alpha/breaker" in found, True)
+        # ② 不误报
+        check("② 合法包不误报",
+              "github.com/oagentkit/beta/core" in found, False)
+        check("② 迁移箭头不误报",
+              "github.com/oagentkit/beta/audit" in found, False)
+        check("② 已退役章节不误报",
+              "github.com/oagentkit/alpha/breaker" in
+              {full for p, _, full, _ in hits if p.startswith("gamma/")}, False)
+        check("② 退役引用块不误报",
+              "github.com/oagentkit/alpha/audit" in found, False)
+        check("② URL 不误报",
+              "github.com/oagentkit/alpha/deadlink" in found, False)
+        check("② CHANGELOG.md 不扫",
+              any(p == "alpha/CHANGELOG.md" for p in paths), False)
+        # 命中总数：恰好两条死包
+        check("命中总数恰好 2", len(hits), 2)
+
+    if fails:
+        print("❌ scan_stale_refs 自测失败：")
+        for f in fails:
+            print(f"   - {f}")
+        return 1
+    print("✅ scan_stale_refs 自测通过"
+          "（死包必报；迁移箭头 / 退役章节 / 退役引用块 / URL / CHANGELOG 不误报）")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True, help="各仓工作目录的父目录")
+    ap.add_argument("--root", help="各仓工作目录的父目录")
     ap.add_argument("--matrix", default=None, help="modules.json 路径（默认自动定位）")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--selftest", action="store_true",
+                    help="离线反证自测（带故意造坏的样本）")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
+
+    if not args.root:
+        print("❌ 缺少 --root（或用 --selftest）")
+        return 1
 
     here = Path(__file__).resolve().parent
     matrix = Path(args.matrix) if args.matrix else here.parent / "modules.json"

@@ -100,6 +100,18 @@ def imported_modules(script: Path) -> set[str]:
     return out
 
 
+def selftest_invoked(ci_text: str, script: str) -> bool:
+    """CI 里是否有一步**以 --selftest 调用**了这个判据脚本。
+
+    按**行**判定：同一个文件里既有普通调用又有 --selftest 调用时，
+    只有后者算数（普通调用是门禁本身，不是自测）。
+    """
+    for line in ci_text.splitlines():
+        if f"scripts/{script}" in line and "--selftest" in line:
+            return True
+    return False
+
+
 def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
           report: Report) -> None:
     invariants = registry.get("invariants", [])
@@ -146,7 +158,7 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                     report.yellow(inv_id, f"登记的 job 名 {job} 在 {ci.get('file')} 里找不到",
                                   "可能是 job 已改名——登记表要跟着改")
 
-        # 4：独立 oracle 不得悄悄 import 生成器
+        # 3：独立 oracle 不得悄悄 import 生成器
         declared = {s.get("module") for s in inv.get("sharedWith", [])}
         for judge_script in inv.get("judges", []):
             script = scripts_dir / judge_script
@@ -162,7 +174,41 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                     "「门禁与被检对象共享判断逻辑」是矩阵踩过两次的坑，"
                     "披露是最低限度的防线")
 
-    # 3：每个守卫脚本都必须被登记
+    # 4：硬规则 2——每条守卫都要能自证还活着（AGENTS.md 硬规则 2）
+    #
+    # 「每条守卫都要有 --selftest，而且自测必须带反证样本」这条规则此前**只是文档**：
+    # 登记表门禁只查「脚本存在 / 被 CI 引用 / job 名存在 / 耦合披露 / 守卫必须登记」，
+    # 没有一条判「判据脚本支持 --selftest」——实测 27 个登记判据里有 4 个根本没有
+    # --selftest 开关（verify_ghost_packages / scan_stale_refs / verify_docs /
+    # verify_repo_docs），它们处于「一直绿、从没生效过」的高危形态且无人知晓。
+    #
+    # 所以这里把它变成**机器可执行的不变量**：
+    #   ① 判据脚本必须支持 --selftest；
+    #   ② 该自测必须在本 org 的 CI 里真的被调用一次（否则是「写了但没接线」）。
+    ci_text = "\n".join(Path(p).read_text(encoding="utf-8", errors="ignore")
+                        for p in workflows.values())
+    for inv in invariants:
+        inv_id = inv.get("id", "?")
+        for judge_script in inv.get("judges", []):
+            script = scripts_dir / judge_script
+            if not script.is_file():
+                continue
+            src = script.read_text(encoding="utf-8", errors="ignore")
+            if "--selftest" not in src:
+                report.red(
+                    inv_id,
+                    f"{judge_script} 没有 --selftest——硬规则 2 要求每条守卫都能自证还活着",
+                    f"给这个守卫加 --selftest，并带上**故意造坏**的样本"
+                    f"（「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西）")
+                continue
+            if not selftest_invoked(ci_text, judge_script):
+                report.red(
+                    inv_id,
+                    f"{judge_script} 的 --selftest 没有接进任何 CI——写了但没接线",
+                    f"在 CI 的 guards job 里加一步："
+                    f"python3 scripts/{judge_script} --selftest")
+
+    # 5：每个守卫脚本都必须被登记
     registered: set[str] = set()
     for inv in invariants:
         registered.update(inv.get("judges", []))
@@ -182,7 +228,16 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
 
 
 def selftest() -> int:
-    """反证自测：登记表的四种失配都必须被抓出来。"""
+    """反证自测：登记表的失配都必须被抓出来。
+
+    覆盖六类（每一类都带**故意造坏**的样本）：
+      ① 未登记的守卫脚本        → 判红
+      ② 未披露的生成器耦合      → 判红
+      ③ 判据脚本没有 --selftest → 判红（硬规则 2）
+      ④ --selftest 没接进 CI   → 判红（硬规则 2）
+      ⑤ 全部合规                → 不报
+      ⑥ 补齐后                  → 转绿
+    """
     import tempfile
 
     fails: list[str] = []
@@ -195,16 +250,29 @@ def selftest() -> int:
         root = Path(td)
         scripts = root / "scripts"
         scripts.mkdir()
+        # 合规的判据脚本：有 --selftest 开关
         (scripts / "verify_ok.py").write_text(
-            "import sys\nfrom pathlib import Path\nimport json\n", encoding="utf-8")
+            "import sys\nfrom pathlib import Path\nimport json\n"
+            "ap = None  # --selftest\n", encoding="utf-8")
         (scripts / "verify_coupled.py").write_text(
-            "import gen_changelogs\nfrom matrix_facts import git\n", encoding="utf-8")
-        (scripts / "verify_orphan.py").write_text("print('x')\n", encoding="utf-8")
+            "import gen_changelogs\nfrom matrix_facts import git\n"
+            "ap = None  # --selftest\n", encoding="utf-8")
+        # 反证样本：没有 --selftest 开关的判据脚本
+        (scripts / "verify_noselftest.py").write_text("print('x')\n", encoding="utf-8")
+        # 反证样本：有 --selftest，但 CI 里没调用它
+        (scripts / "verify_unwired.py").write_text(
+            "ap = None  # --selftest\n", encoding="utf-8")
+        (scripts / "verify_orphan.py").write_text(
+            "print('x')\nap = None  # --selftest\n", encoding="utf-8")
         (scripts / "gen_changelogs.py").write_text("x = 1\n", encoding="utf-8")
 
         wf = root / "ci.yml"
-        wf.write_text("jobs:\n  a:\n    steps:\n      - run: python3 scripts/verify_ok.py\n",
-                      encoding="utf-8")
+        wf.write_text(
+            "jobs:\n  a:\n    steps:\n"
+            "      - run: python3 scripts/verify_ok.py\n"
+            "      - run: python3 scripts/verify_ok.py --selftest\n"
+            "      - run: python3 scripts/verify_coupled.py --selftest\n",
+            encoding="utf-8")
 
         registry = {
             "invariants": [
@@ -212,6 +280,12 @@ def selftest() -> int:
                  "sharedWith": [], "ci": [{"file": "ci.yml", "job": "a"}]},
                 {"id": "coupled", "judges": ["verify_coupled.py"], "oracle": "independent",
                  "sharedWith": [], "ci": [{"file": "ci.yml", "job": "a"}]},
+                {"id": "noselftest", "judges": ["verify_noselftest.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "a"}]},
+                {"id": "unwired", "judges": ["verify_unwired.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "a"}]},
             ],
             "retired": [],
             "notInvariants": {"tools": ["gen_changelogs.py"]},
@@ -225,8 +299,22 @@ def selftest() -> int:
         check("未登记的守卫被抓出", "verify_orphan.py" in subjects, True)
         check("未披露的耦合被抓出", "coupled" in subjects, True)
         check("已登记且合规的不报", "ok" in subjects, False)
+        # ③ 硬规则 2：没有 --selftest 的判据脚本必须判红
+        check("没有 --selftest 的判据被抓出", "noselftest" in subjects, True)
+        # ④ 硬规则 2：--selftest 没接进 CI 必须判红
+        check("--selftest 未接线的判据被抓出", "unwired" in subjects, True)
 
-        # 披露之后应当转绿
+        # 反证：把 --selftest 的 CI 接线去掉 ⇒ 必须转红（证明这条判定有区分力）
+        wf.write_text(
+            "jobs:\n  a:\n    steps:\n"
+            "      - run: python3 scripts/verify_ok.py\n"
+            "      - run: python3 scripts/verify_coupled.py --selftest\n",
+            encoding="utf-8")
+        rep_x = Report(title="不变量登记表")
+        judge(registry, scripts, {"ci.yml": str(wf)}, rep_x)
+        check("抽掉 --selftest 接线 → 判红", rep_x.has_red(), True)
+
+        # 披露之后应当转绿（并把两个反证样本补齐）
         registry["invariants"][1]["sharedWith"] = [
             {"module": "gen_changelogs", "why": "只取事实"},
             {"module": "matrix_facts", "why": "只取事实"},
@@ -234,10 +322,17 @@ def selftest() -> int:
         # 把孤儿脚本登记进不变量**并且**接进 CI（两者缺一都会红）
         registry["invariants"][0]["judges"].append("verify_orphan.py")
         registry["invariants"][0]["ci"].append({"file": "ci.yml", "job": "a"})
+        # 反证样本补齐：给它们加上 --selftest 开关并接进 CI
+        (scripts / "verify_noselftest.py").write_text(
+            "ap = None  # --selftest\n", encoding="utf-8")
         wf.write_text("jobs:\n  a:\n    steps:\n"
                       "      - run: python3 scripts/verify_ok.py\n"
-                      "      - run: python3 scripts/verify_coupled.py\n"
-                      "      - run: python3 scripts/verify_orphan.py\n", encoding="utf-8")
+                      "      - run: python3 scripts/verify_ok.py --selftest\n"
+                      "      - run: python3 scripts/verify_coupled.py --selftest\n"
+                      "      - run: python3 scripts/verify_orphan.py --selftest\n"
+                      "      - run: python3 scripts/verify_noselftest.py --selftest\n"
+                      "      - run: python3 scripts/verify_unwired.py --selftest\n",
+                      encoding="utf-8")
         rep2 = Report(title="不变量登记表")
         judge(registry, scripts, {"ci.yml": str(wf)}, rep2)
         check("披露后转绿", rep2.has_red(), False)
@@ -247,7 +342,8 @@ def selftest() -> int:
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ verify_inventory 自测通过（未登记 / 未接线 / 未披露耦合 三类检出）")
+    print("✅ verify_inventory 自测通过"
+          "（未登记 / 未接线 / 未披露耦合 / 无 --selftest / --selftest 未接线 五类检出）")
     return 0
 
 
