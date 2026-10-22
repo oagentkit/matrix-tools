@@ -888,11 +888,23 @@ jobs:
     # 没有任何地方会报错**。
     #
     # 判据只取**产物**（issue 上真的有没有回执型评论），不看任何命令的退出码。
-    # 范围收敛到「被 PR 自动关闭」这一形态：人工 gh issue close 关掉的 issue
+    # 范围收敛到「**被机器自动关闭**」这一形态：人工 gh issue close 关掉的 issue
     # 本来就不该有回执，算进来就是上线即一片红。
     #
-    # ⚠️ **报告级**（continue-on-error）：判据刚上线、豁免名单还不全，
-    #    一上来就硬失败会恒红 ⇒ 与「红了就加豁免」同命。判据跑稳后再转硬失败。
+    # 关闭来源取**两个来源的并集**（issue matrix-tools#88）：
+    #   - `closedByPullRequestsReferences` 非空 ⇒ 被 PR 关闭（含跨仓 PR）；
+    #   - issue 时间线的 `closedEvent.closer` 是 PR / Commit ⇒ 被机器关闭
+    #     （**Commit 这一支是 commit message 里的关闭关键词**——squash 合并把
+    #     commit message 带进 main，`Closes #N` 照样触发自动关单，而
+    #     `closedByPullRequestsReferences` 在那条路上是**空的**）。
+    # 回执判据要求**锚点**（PR 链接 / 版本号 / 完整提交 sha）：
+    # 认领/派单评论里也会出现「验收」二字 ⇒ 旧判据把它当回执 ⇒
+    # 「关单成功但零回执」从那条缝里溜过去。
+    #
+    # ⚠️ **报告级**（continue-on-error）：这个 job 扫的是**全矩阵**，
+    #    任何一个仓的回执缺口都会让 matrix-tools 的每个 PR 变红
+    #    ⇒ 与矩阵「跨仓硬失败要有唯一归属地」的约定冲突。
+    #    等它有了唯一归属地再转硬失败。
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

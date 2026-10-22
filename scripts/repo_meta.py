@@ -130,6 +130,167 @@ def fetch_tree_paths(org: str, repo: str, ref: str = "main") -> list[str] | None
     return [e.get("path", "") for e in payload.get("tree", []) if e.get("type") == "blob"]
 
 
+def gh_graphql(query: str, variables: dict | None = None,
+               retries: int = 3) -> dict | None:
+    """调 `gh api graphql` → 解析后的 JSON；取不到返回 None（**判不了 ≠ 没有**）。
+
+    与 `gh_api` 分开：GraphQL 要 POST 一个查询体，`gh api <path>` 那套
+    「路径 + query string」的形态表达不了。
+    """
+    cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
+    for key, value in (variables or {}).items():
+        cmd += ["-F", f"{key}={value}"]
+
+    for attempt in range(retries):
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_API_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            if attempt < retries - 1:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            return None
+        except OSError:            # gh 不在 PATH 上
+            return None
+        if p.returncode == 0 and p.stdout.strip():
+            try:
+                payload = json.loads(p.stdout)
+            except ValueError:
+                return None
+            if not isinstance(payload, dict):
+                return None
+            if payload.get("errors"):
+                return None           # GraphQL 报错 ⇒ 判不了，不是「没有」
+            return payload
+        if attempt < retries - 1:
+            time.sleep(1.5 * (attempt + 1))
+    return None
+
+
+# 已关闭 issue 的**关闭来源**取数（GraphQL）。
+#
+# 为什么必须单独取：`gh issue list --json closedByPullRequestsReferences`
+# 只覆盖「**被 PR 关闭**」这一条路。而 GitHub 还会读 **commit message** 里的
+# 关闭关键词——squash 合并会把 commit message 原样带进 main ⇒
+# commit message 里的 `Closes #N` 照样触发自动关单，那条路在 REST 侧完全不可见。
+#
+# issue 时间线上的 `closedEvent.closer` 有三种取值，正好对应三种关闭方式：
+#   - `PullRequest`：被某个 PR 关闭（**可以是别的仓的 PR**——GitHub 支持
+#     `Closes owner/repo#N` 跨仓关单；实测 mcpkit#17 就是被 toolgate#24 关的）；
+#   - `Commit`：被某个提交关闭（commit message 里的关闭关键词）；
+#   - `null`：人工关闭（`gh issue close` 或 UI 关单）。
+CLOSER_QUERY = """
+query($owner:String!,$name:String!,$n:Int!){
+  repository(owner:$owner,name:$name){
+    issues(first:$n, states:CLOSED,
+           orderBy:{field:CREATED_AT, direction:DESC}){
+      pageInfo{hasNextPage}
+      nodes{
+        __typename
+        number
+        ... on Issue{
+          timelineItems(first:50, itemTypes:[CLOSED_EVENT]){
+            pageInfo{hasNextPage}
+            nodes{ ... on ClosedEvent{ createdAt closer{
+              __typename
+              ... on PullRequest{number state merged repository{nameWithOwner}}
+              ... on Commit{oid committedDate repository{nameWithOwner}}
+            }}}
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def parse_closer_events(events: list[dict]) -> dict:
+    """时间线上的关闭事件列表 → closer 描述（**纯函数**，离线可测）。
+
+    取**最后一次**关闭事件：issue 可能被关过又重开过，这时最后一次的
+    closer 才是当前这次关闭的来源。
+    """
+    if not events:
+        return {"type": "unknown"}         # 判不到关闭事件 ⇒ 判不了
+
+    closer = events[-1].get("closer") or {}
+    kind = closer.get("__typename")
+    if kind == "PullRequest":
+        return {
+            "type": "pull_request",
+            "pr": closer.get("number"),
+            "pr_repo": ((closer.get("repository") or {}).get("nameWithOwner")),
+            "merged": closer.get("merged"),
+            "oid": None,
+        }
+    if kind == "Commit":
+        return {
+            "type": "commit",
+            "pr": None,
+            "pr_repo": ((closer.get("repository") or {}).get("nameWithOwner")),
+            "merged": None,
+            "oid": closer.get("oid"),
+        }
+    # closer 为 null ⇒ 人工关单
+    return {
+        "type": "manual",
+        "pr": None,
+        "pr_repo": None,
+        "merged": None,
+        "oid": None,
+    }
+
+
+def list_closed_issue_closers(org: str, repo: str, limit: int = 100) -> dict[int, dict] | None:
+    """取仓里**已关闭 issue 的关闭来源**（谁关的：PR / 提交 / 人工）。
+
+    → {issue 号: closer 描述}；取不到返回 None（**判不了 ≠ 没有**）。
+
+    closer 描述的形状（事实，不含任何判定）：
+
+        {"type": "pull_request", "pr": 32, "pr_repo": "oagentkit/llm",
+         "merged": True, "oid": None}
+        {"type": "commit", "pr": None, "pr_repo": None,
+         "merged": None, "oid": "aa60d8facf3e…"}
+        {"type": "manual", "pr": None, "pr_repo": None,
+         "merged": None, "oid": None}
+
+    取「**最后一次**关闭事件」：issue 可能被关过又重开过，这时最后一次
+    的 closer 才是当前这次关闭的来源。
+
+    为什么在事实层（而不是判定层）取：这是「谁关的单」这一**事实**，
+    「该不该有回执」才是判定。事实可以共享，判定不能共享（见 AGENTS.md
+    三层架构）。
+    """
+    payload = gh_graphql(CLOSER_QUERY, {
+        "owner": org, "name": repo, "n": limit,
+    })
+    if not payload:
+        return None
+    issues = ((payload.get("data") or {}).get("repository") or {}).get("issues")
+    if not isinstance(issues, dict):
+        return None
+    if (issues.get("pageInfo") or {}).get("hasNextPage"):
+        return None                 # 被 limit 截断 ⇒ 判不了（不能当成「就这些」）
+
+    out: dict[int, dict] = {}
+    for node in issues.get("nodes") or []:
+        # `repository.issues` 在 GraphQL 里**同时返回 PR**（PR 也是 issue），
+        # 而 IssueFilters 又没有 types 参数可过滤 ⇒ 按 __typename 剔掉。
+        if node.get("__typename") != "Issue":
+            continue
+        number = node.get("number")
+        if not isinstance(number, int):
+            continue
+        timeline = node.get("timelineItems") or {}
+        events = timeline.get("nodes") or []
+        if (timeline.get("pageInfo") or {}).get("hasNextPage"):
+            out[number] = {"type": "unknown"}
+            continue
+        out[number] = parse_closer_events(events)
+    return out
+
+
 def list_closed_issues(org: str, repo: str, limit: int = 100) -> list[dict] | None:
     """列出仓里**已关闭**的 issue（含「被哪些 PR 自动关闭」与评论正文）。
 
@@ -364,13 +525,41 @@ def selftest() -> int:
     check("空文本", changelog_version_sections(""), set())
     check("None 也不炸", changelog_version_sections(None), set())
 
+    # parse_closer_events：关闭来源的三种形态
+    #   PullRequest（被 PR 关，含跨仓 PR）/ Commit（被 commit message 关）/ null（人工关）
+    pr_event = [{"closer": {"__typename": "PullRequest", "number": 24,
+                            "merged": True,
+                            "repository": {"nameWithOwner": "oagentkit/toolgate"}}}]
+    check("PR 关闭",
+          parse_closer_events(pr_event),
+          {"type": "pull_request", "pr": 24, "pr_repo": "oagentkit/toolgate",
+           "merged": True, "oid": None})
+    commit_event = [{"closer": {"__typename": "Commit",
+                                "oid": "aa60d8facf3ea010117cc495c56ef43ea6db86a7",
+                                "repository": {"nameWithOwner": "oagentkit/matrix-tools"}}}]
+    check("commit message 关闭",
+          parse_closer_events(commit_event),
+          {"type": "commit", "pr": None, "pr_repo": "oagentkit/matrix-tools",
+           "merged": None, "oid": "aa60d8facf3ea010117cc495c56ef43ea6db86a7"})
+    check("人工关闭", parse_closer_events([{"closer": None}]),
+          {"type": "manual", "pr": None, "pr_repo": None,
+           "merged": None, "oid": None})
+    check("没有关闭事件 ⇒ 判不了", parse_closer_events([])["type"], "unknown")
+    check("多个关闭事件取最后一次",
+          parse_closer_events([{"closer": {"__typename": "PullRequest", "number": 1,
+                                           "merged": True,
+                                           "repository": {"nameWithOwner": "o/r"}}},
+                               {"closer": None}])["type"],
+          "manual")
+
     if fails:
         print("❌ repo_meta 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
     print("✅ repo_meta 自测通过"
-          "（tag 过滤 / semver / module 路径 / 包目录 / CHANGELOG 版本段解析）")
+          "（tag 过滤 / semver / module 路径 / 包目录 / CHANGELOG 版本段解析 / "
+          "关闭来源三态）")
     return 0
 
 
