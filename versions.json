@@ -486,7 +486,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.5",
+      "latest": "v0.9.6",
       "packages": [
         {
           "pkg": "langfuse",
@@ -624,6 +624,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.18.0",
               "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.6",
+          "date": "2026-10-22",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.20.0",
+              "to": "v0.21.0"
             }
           ]
         }
