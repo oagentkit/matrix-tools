@@ -96,6 +96,12 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: 安装 pyyaml
+        # verify_inventory 的触发条件校验要解析 workflow YAML。
+        # 显式装，不靠 runner 镜像/解释器预装的 pyyaml——那是不确定因素。
+        # 写法沿用 .github/workflows/repo-ci.yml 里已有的兜底。
+        run: python3 -m pip install --quiet pyyaml
+
       - uses: actions/setup-go@v5
         with:
           # 门面符号级门禁的符号提取器是 scripts/symdump/main.go（go/parser
@@ -861,6 +867,11 @@ jobs:
         # 少克隆一个，门禁就会报「登记的 CI 文件找不到」——那是真话：
         # 在只看得到一个 CI 文件的环境里，跨仓的那几条承诺确实无法验证。
         run: git clone -q --depth 1 "https://github.com/oagentkit/.github.git" .github
+
+      - name: 安装 pyyaml
+        # 触发条件校验要解析 workflow YAML（on: 与 job 级 if:）。
+        # 显式装，不靠 runner 镜像/解释器预装的 pyyaml——那是不确定因素。
+        run: python3 -m pip install --quiet pyyaml
 
       - name: 不变量登记表核对
         run: python3 matrix-tools/scripts/verify_inventory.py --root .
