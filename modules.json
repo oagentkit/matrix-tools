@@ -304,7 +304,8 @@
         "llm/port",
         "llm/wrap",
         "llm/llmtest",
-        "obsx"
+        "obsx",
+        "llm/decision"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
@@ -331,7 +332,8 @@
         "llm/port": "窄接口层（不引 eino）：Complete(ctx,req) 形态的降级链/预算/成本记账；无 eino 的内核（预算/成本/价表/熔断）由根包下沉而来，两条路径共用同一份实现",
         "llm/wrap": "调用包装与限流适配",
         "llm/llmtest": "模型层契约测试套件",
-        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）"
+        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）",
+        "llm/decision": "System One 协议判定面客户端（非自回归判定模型）：choice/score/noul 三原语 + 校准置信口径（本地算，两端同义）"
       }
     },
     {

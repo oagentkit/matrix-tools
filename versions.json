@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 51,
+  "packageCount": 52,
   "modules": [
     {
       "repo": "textx",
@@ -1048,7 +1048,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.15.2",
+      "latest": "v0.16.0",
       "packages": [
         {
           "pkg": "llm",
@@ -1074,6 +1074,11 @@
           "pkg": "obsx",
           "importPath": "github.com/oagentkit/llm/obsx",
           "fromLegacy": "agentkit/obsx"
+        },
+        {
+          "pkg": "llm/decision",
+          "importPath": "github.com/oagentkit/llm/decision",
+          "fromLegacy": "agentkit/llm/decision"
         }
       ],
       "matrixDeps": [
@@ -1225,6 +1230,22 @@
               "dep": "github.com/oagentkit/textx",
               "from": "v0.6.1",
               "to": "v0.6.2"
+            }
+          ]
+        },
+        {
+          "version": "v0.16.0",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.19.0",
+              "to": "v0.20.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.20.0",
+              "to": "v0.22.0"
             }
           ]
         }
@@ -1880,7 +1901,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.35",
+      "latest": "v1.8.36",
       "retiring": true,
       "breakingIndex": [
         {
@@ -2715,6 +2736,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.21.0",
               "to": "v0.22.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.36",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.15.2",
+              "to": "v0.16.0"
             }
           ]
         }
