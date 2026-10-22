@@ -237,6 +237,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 | `pending-release` | 预写段可观测性（需完整历史，只在 push/定时跑） |
 | `latest-field` | latest 字段 ↔ 远端最新 tag |
 | `inventory` | 不变量登记表（承诺 ↔ 判据 ↔ 接线 ↔ 触发条件） |
+| `receipts` | issue 回执落地（被机器自动关闭的 issue 必须留下带锚点的回执） |
 
 ⚠️ 跨仓一致性门禁有「顺序窗口」：本仓推了生成物而站点副本未跟上时，
 `.github` 仓的门禁会红，且红因与那个 PR 无关。按「谁造成漂移谁负责」处理。

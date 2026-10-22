@@ -1,0 +1,25 @@
+{
+  "_note": "**缺口形态**快照：由 matrix-tools#86 的真实取值形态构造——**关闭来源是 commit message**（不是 PR 正文），且**一条回执都没留下**。",
+  "_why": "matrix-tools#86 本身**已有**回执（2026-10-22T11:53 补发），所以实时扫描它不是缺口。这份快照复现的是**同一种关闭形态下没有回执**的那个缺口——那正是旧口径完全看不见的路：PR 正文刻意写 `Refs: #86`，但 squash 合并把 commit message 里的 `Closes #86` 带进了 main ⇒ GitHub 按 commit message 自动关单 ⇒ `closedByPullRequestsReferences` 为空 ⇒ 旧判据直接跳过。",
+  "_capturedFrom": "matrix-tools#86 的真实值形态（issue 本体来自 gh issue list --json，关闭来源来自 gh api graphql 的 closedEvent.closer），只把 comments 还原成空数组以复现缺口",
+  "_capturedAt": "2026-10-22T12:10:00+08:00",
+  "repos": {
+    "matrix-tools": [
+      {
+        "closedAt": "2026-10-22T11:52:26Z",
+        "closedByPullRequestsReferences": [],
+        "closer": {
+          "type": "commit",
+          "pr": null,
+          "pr_repo": "oagentkit/matrix-tools",
+          "merged": null,
+          "oid": "aa60d8facf3ea010117cc495c56ef43ea6db86a7"
+        },
+        "comments": [],
+        "labels": [],
+        "number": 86,
+        "title": "[门禁] 不变量登记表的「触发条件」从未被校验——抽掉 workflow 的 schedule 触发，verify_inventory 仍报红 0"
+      }
+    ]
+  }
+}

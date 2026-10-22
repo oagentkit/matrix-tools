@@ -698,13 +698,13 @@
     },
     {
       "id": "receipt-landing",
-      "claim": "被 PR 自动关闭的 issue 必须留下一条事实型回执（PR 链接 / 版本号 / 验收结论）",
+      "claim": "被 PR 或提交自动关闭的 issue 必须留下一条**带可核验锚点**的事实型回执（PR 链接 / 版本号 / 提交 sha 之一）",
       "judges": [
         "verify_receipts.py"
       ],
       "oracle": "independent",
       "sharedWith": [],
-      "facts": "GitHub issue 的 closedByPullRequestsReferences（被哪些 PR 自动关闭）与评论正文——**只取产物，不看任何命令的退出码**",
+      "facts": "GitHub issue 的**关闭来源**（closedByPullRequestsReferences + issue 时间线的 closedEvent.closer：PR / 提交 / 人工）与评论正文——**只取产物，不看任何命令的退出码**",
       "ci": [
         {
           "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
@@ -717,7 +717,7 @@
         }
       ],
       "since": "2026-10-22",
-      "note": "issue matrix-tools#71：issue 被 PR 正文 `Closes #N` 在合入时自动关闭时，回执评论可能一条都没留下（实测 llm#29：关单成功、CI 绿、tag 已打，却没有任何地方会报错）——因为 `gh issue close --comment` 对已关闭 issue 静默不贴评论、退出码仍是 0。范围收敛到「被 PR 自动关闭」这一形态（人工关闭的本来就不该有回执，算进来就是上线即一片红）；豁免走显式名单 receipt_exemptions.json，且名单会过期（该 issue 后来有了回执 ⇒ 判黄要求删掉）。⚠️ 目前是**报告级**（CI 里 continue-on-error）：判据刚上线，豁免名单还不全，一上来就硬失败会恒红 ⇒ 与「红了就加豁免」同命。判据跑稳后再转硬失败。",
+      "note": "issue matrix-tools#71：issue 被 PR 正文 `Closes #N` 在合入时自动关闭时，回执评论可能一条都没留下（实测 llm#29：关单成功、CI 绿、tag 已打，却没有任何地方会报错）——因为 `gh issue close --comment` 对已关闭 issue 静默不贴评论、退出码仍是 0。范围收敛到「被机器自动关闭」这一形态（人工关闭的本来就不该有回执，算进来就是上线即一片红）；豁免走显式名单 receipt_exemptions.json，且名单会过期（该 issue 后来有了回执 ⇒ 判黄要求删掉）。⚠️ 目前是**报告级**（CI 里 continue-on-error）：判据刚上线，豁免名单还不全，一上来就硬失败会恒红 ⇒ 与「红了就加豁免」同命。判据跑稳后再转硬失败。\nissue matrix-tools#88 补上两个**旧口径看不见的口子**：① 关闭来源只认 `closedByPullRequestsReferences` ⇒ **commit message 里的关闭关键词**那条路完全不可见（squash 合并把 commit message 带进 main，`Closes #N` 照样触发自动关单；实测 matrix-tools#86：PR 正文写 `Refs:`、commit message 写 `Closes` ⇒ 合并后 2 秒自动关单而该字段为空）⇒ 现在取该字段**与**时间线 `closedEvent.closer` 的**并集**（closer ∈ {PR, Commit} = 机器关的；null = 人工关的）。② 回执判定是「PR 链接 / 版本号 / 验收类结论**任一**命中」⇒ **认领/派单评论**里也会出现「验收」二字（实测 matrix-tools#86 的认领评论有一节标题就叫「## 验收」，不含任何锚点）⇒ 认领评论被当成回执 ⇒ 现在要求**锚点**（PR 链接 / 版本号 / 完整提交 sha），并把「有完成声明但无锚点」单列为**黄灯**（确实是回执，但机器核验不了 ⇒ 要求补锚点，不是判红冤枉、也不是判绿放过）。跨仓 PR 关单也覆盖（GitHub 支持 `Closes owner/repo#N`；实测 mcpkit#17 是被 toolgate#24 关的）。",
       "kind": "report"
     }
   ],
