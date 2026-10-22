@@ -1048,7 +1048,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.16.0",
+      "latest": "v0.17.0",
       "packages": [
         {
           "pkg": "llm",
@@ -1661,7 +1661,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.10.5",
+      "latest": "v0.10.6",
       "packages": [
         {
           "pkg": "agentrun",
@@ -1893,6 +1893,27 @@
               "to": "v0.21.0"
             }
           ]
+        },
+        {
+          "version": "v0.10.6",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.15.2",
+              "to": "v0.16.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.20.0",
+              "to": "v0.20.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.21.0",
+              "to": "v0.22.0"
+            }
+          ]
         }
       ]
     }
@@ -1901,7 +1922,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.36",
+      "latest": "v1.8.37",
       "retiring": true,
       "breakingIndex": [
         {
@@ -2747,6 +2768,22 @@
               "dep": "github.com/oagentkit/llm",
               "from": "v0.15.2",
               "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.37",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.5",
+              "to": "v0.10.6"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
             }
           ]
         }
