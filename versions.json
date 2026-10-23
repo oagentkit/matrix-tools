@@ -1293,7 +1293,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.12.4",
+      "latest": "v0.12.5",
       "packages": [
         {
           "pkg": "toolprior",
@@ -1464,6 +1464,32 @@
               "dep": "github.com/oagentkit/mcpkit",
               "from": "v0.8.4",
               "to": "v0.8.5"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.5",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.13.1",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.5",
+              "to": "v0.8.6"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.19.0",
+              "to": "v0.20.2"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.20.0",
+              "to": "v0.22.0"
             }
           ]
         }
@@ -1976,7 +2002,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.42",
+      "latest": "v1.8.43",
       "retiring": true,
       "breakingIndex": [
         {
@@ -2893,6 +2919,17 @@
               "dep": "github.com/oagentkit/obs",
               "from": "v0.9.6",
               "to": "v0.9.7"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.43",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.4",
+              "to": "v0.12.5"
             }
           ]
         }
