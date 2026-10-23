@@ -774,6 +774,30 @@
       "since": "2026-10-24",
       "note": "仓级第一入口的层位漂移（2026-10-24 实测）：queue/obs/skillkit/mcpkit/rag 5 个仓的 AGENTS.md 写的都是重定位**之前**的旧层位（queue 写 tier 0、其余 4 个写 tier 1），而 modules.json 里全是 tier 2 ⇒ 读仓级文档的人/agent 会按错的层位判依赖方向。而三个本该抓住它的机制逐个失效：① verify_repo_docs.py 虽在 CI 里跑，但它是报告器（continue-on-error，恒不失败）——它比整文件 diff，而 13 个仓的 AGENTS.md 都有大量手写段落，噪音太大；② verify_profile_tiers.py 只守 org profile 那一处生成区；③ gen_docs.py 的合并模型要求生成区标记，而这 13 个仓的 AGENTS.md 一个都没有 ⇒ 生成器一律跳过，**重定位之后没有任何自动路径能更新它们**。本条把仓级层位声明变成红灯：判「自述层位」（规范行 + 正文自述行，数字与层名都比），不判「跨仓提及」；认不出声明 ⇒ 黄灯「判不了」（该仓不再被机器核对），CI 用 --fail-on-yellow 把黄灯升级为失败（每次都扫全矩阵，安静地失去覆盖是本仓反复出现的失效形态）。",
       "kind": "gate"
+    },
+    {
+      "id": "repo-dep-claim",
+      "claim": "各模块仓 AGENTS.md / README.md 里声明的依赖零性红线，必须与该仓 go.mod 的实际 require 段相容",
+      "judges": [
+        "verify_repo_dep_claims.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 AGENTS.md / README.md 的依赖零性声明行（钉死语义的：require 段为空 / 零第三方依赖；没钉死语义的：零外部依赖）+ 各仓 go.mod 的 require 段（direct + indirect，取数走 matrix_facts.parse_go_mod）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-24",
+      "note": "仓级依赖红线声明的漂移（2026-10-24 实测）：guardx/AGENTS.md 写着「本仓不得有外部依赖（require 段必须为空）」，而它的 go.mod 实测是 require github.com/oekit/pkg v0.22.1 ⇒ 那句话是假的；同一文件第 44 行又把 oekit/pkg 当「外部依赖」⇒ **同一份文件里两条指令互斥**。而且这不是「忘了改」：2026-10-19 22:48 的 3c0d845 之后 require 段确实为空（文档那一刻是真的），23:59 的 2b628b1 首次引入 oekit/pkg v0.16.0 ⇒ 文档从那一刻起变假，之后 4 次**有意的**地板抬升（v0.18.0 → v0.20.0 → v0.22.0 → v0.22.1，每次一个独立 PR）都没回改它。三个本该抓住它的机制逐个失效：① verify_repo_docs 是报告器（continue-on-error，恒不失败），比的是整文件 diff 而 13 个仓的 README/AGENTS.md 都有大量手写段落 ⇒ 噪音太大；② gen_docs 的合并模型要求生成区标记，而这 13 个仓的 README/AGENTS.md 一个都没有 ⇒ 生成器一律跳过；③ verify_repo_tiers 只判层位数字与层名，不判依赖红线。判据取「文档声明 vs go.mod 事实」：钉死了语义的（require 段为空 / 零第三方依赖）判红，没钉死语义的（「零外部依赖」——指「一条 require 都没有」还是「没有第三方依赖」？第一方基座 github.com/oekit/* 算哪一种？）判黄，缺 go.mod 判黄；CI 用 --fail-on-yellow 把黄灯升级为失败（黄灯＝该仓的依赖红线不再被机器核对＝安静地失去覆盖）。只判本仓自述，不判跨仓提及与否定句（同 verify_repo_tiers 的边界）。",
+      "kind": "gate"
     }
   ],
   "retired": [

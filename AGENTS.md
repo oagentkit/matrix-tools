@@ -189,6 +189,33 @@ oracle 类门禁的自测，拿**有盲区的旧产物**跑一遍必须报出缺
 ⇒ **新增欠账被基线吸收、无人可见**。这条洞由上面那条门禁兜住：
 新增的、未缓解的欠账一律判红。
 
+### 11. 仓级文档的依赖红线必须与 go.mod 相容
+
+各仓 `AGENTS.md` / `README.md` 里写的依赖零性红线（「零第三方依赖」/
+「`require` 段必须为空」/「零外部依赖」…），**必须与该仓 `go.mod` 的实际
+require 段相容**。由 `scripts/verify_repo_dep_claims.py` 判定。
+
+实测 2026-10-24：`guardx/AGENTS.md` 写着「本仓不得有外部依赖
+（`require` 段必须为空）」，而它的 go.mod 实测是
+`require github.com/oekit/pkg v0.22.1` ⇒ **那句话是假的**；同一文件第 44 行
+又把 `oekit/pkg` 当「外部依赖」⇒ **两条指令互斥**，无论怎么解读都自相矛盾。
+
+三个本该抓住它的机制逐个失效：`verify_repo_docs.py` 是报告器（恒不失败）、
+`gen_docs.py` 因这 13 个仓的 README/AGENTS.md **没有生成区标记**而一律跳过、
+`verify_repo_tiers.py` 只判层位数字不判依赖红线 ⇒ 仓级依赖红线**完全裸奔**。
+
+三条纪律：
+
+1. **写依赖红线要把语义钉死**。矩阵里「外部依赖」有两个读法：「一条 require
+   都没有」与「没有第三方依赖」——第一方基座 `github.com/oekit/*`（姊妹矩阵）
+   算哪一种？`modules.json` 的 tier 0 定义与 `verify_dep_floor.py` 的基座白名单
+   都把它算作**允许**的依赖 ⇒ 该写「**零第三方依赖**」，并列出允许的依赖
+   （样板：`obs/README.md` 的「外部依赖地板」一节）。
+   ⇒ 没钉死语义 ⇒ 门禁**判黄**（「核对不了」），CI 用 `--fail-on-yellow` 升级为失败。
+2. **只判本仓自述，不判跨仓提及与否定句**（与 `verify_repo_tiers.py` 同款边界）。
+3. **require 段口径含 indirect**：文档自己的理由就是「import 某个包会把
+   **整个模块的 require** 拉进消费方的模块图」——间接依赖同样进模块图。
+
 ## 发版
 
 发版动作已脚本化（`scripts/release.py`），顺序依赖由代码保证：
@@ -233,7 +260,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 | `facade-frozen` | 门面包集合冻结 |
 | `dep-floors` | 依赖地板**报告器**（恒不失败，不挂 PR） |
 | `drift` | versions.json 与 modules.json 一致 + llms.txt 可确定性重生成 |
-| `matrix-local-guards` | 层级方向 / 门面规则 / 仓文档 / **各仓 AGENTS.md 层位声明**（需要各仓源码） |
+| `matrix-local-guards` | 层级方向 / 门面规则 / 仓文档 / **各仓 AGENTS.md 层位声明** / **各仓依赖零性声明**（需要各仓源码） |
 | `pending-release` | 预写段可观测性（需完整历史，只在 push/定时跑） |
 | `latest-field` | latest 字段 ↔ 远端最新 tag |
 | `inventory` | 不变量登记表（承诺 ↔ 判据 ↔ 接线 ↔ 触发条件） |
