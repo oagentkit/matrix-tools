@@ -227,6 +227,12 @@ jobs:
           python3 scripts/matrix_facts.py --selftest
           python3 scripts/judge_report.py --selftest
 
+      - name: 各仓层位声明门禁自测
+        # 反证样本：层位数字错 / 层名错 / **正文自述行错**（只刷规范行不算修好）/
+        # 认不出声明（判黄）/ 缺 AGENTS.md（判黄）/ 跨仓提及不误报。
+        # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
+        run: python3 scripts/verify_repo_tiers.py --selftest
+
       - name: 第一方依赖方向门禁自测
         # 反证样本：tier 倒挂 / 依赖未声明 / 声明陈旧 / 矩阵内消费门面，
         # 以及**不误报**样本（合规依赖、indirect require 不算直接依赖）。
@@ -805,6 +811,31 @@ jobs:
         # 那才是「该重新生成」的情形。这个方向由人看报告决定。
         continue-on-error: true
         run: python3 matrix-tools/scripts/verify_repo_docs.py --mirror .
+
+      - name: 各仓 AGENTS.md 层位声明（判红 + 判不了即失败）
+        # 这条守的是**仓级第一入口**：各仓 `AGENTS.md` 声明的层位必须与
+        # `modules.json`（矩阵单一数据源）一致。
+        #
+        # 为什么此前没人守（实测 2026-10-24）：queue/obs/skillkit/mcpkit/rag
+        # 5 个仓写的都是重定位**之前**的旧层位（tier 0 / tier 1），而数据源是 tier 2。
+        # 而三个本该抓住它的机制逐个失效：verify_repo_docs 是报告器（恒不失败）、
+        # verify_profile_tiers 只守 org profile 一处生成区、gen_docs 因这 13 个仓的
+        # AGENTS.md **没有生成区标记**而一律跳过 ⇒ 没有任何自动路径能更新它们。
+        #
+        # `--fail-on-yellow`：本守卫每次扫全矩阵，「认不出声明」＝
+        # **这条仓的层位声明不再被机器核对**＝安静地失去覆盖 ——
+        # 那是本仓反复出现的失效形态，所以在这里把黄灯升级为失败
+        # （报告里仍以 ⚠️ 呈现，与「确认违规」的红区分）。
+        run: python3 matrix-tools/scripts/verify_repo_tiers.py --root . --fail-on-yellow --json-out repo-tiers-report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repo-tiers-report
+          path: repo-tiers-report.json
+          # 脚本崩在写文件之前时不该再红一次——那会把「门禁自己坏了」
+          # 伪装成「门禁报了缺口」。
+          if-no-files-found: ignore
 
       - name: 上传文档差异报告
         if: always()

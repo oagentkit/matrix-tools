@@ -750,6 +750,30 @@
       "since": "2026-10-23",
       "note": "文档承诺 vs 机器校验的缺口（2026-10-23 实测）：站点 AGENTS.md 写明「本仓 data/modules.json 是该文件的副本……内容必须逐字段一致」「禁止在本仓单方面发明模块信息」，CONTRIBUTING 发版第 4 步也写着「同步站点 data/modules.json」——但三处承诺一处机器校验都没有：① verify_docs.py 守的是 llms.txt、verify_versions_drift.py 守的是 versions.json，两者都不碰 data/modules.json；② 站点仓自己的 CI 只跑 gen_module_pages.py --check，校验的是「生成物 vs 站点自己的副本」，副本本身烂掉它照样绿；③ release.py sync-matrix 只拷 site/docs/public/versions.json（源码里只有这一处 site_copy），data/modules.json 从头到尾没人碰 ⇒ CONTRIBUTING 第 4 步那句「同步站点 data/modules.json」是纯手工动作，漏了没有任何反馈——2026-10-21 就这么漏过一次（站点副本缺 llm/port，CONTRIBUTING 有实测记录）。本条把那句承诺变成红灯：源先、副本后（源是权威）。",
       "kind": "gate"
+    },
+    {
+      "id": "repo-tier-declaration",
+      "claim": "各模块仓 AGENTS.md 声明的层位（数字与层名）必须与 matrix-tools/modules.json 一致",
+      "judges": [
+        "verify_repo_tiers.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 AGENTS.md 的自述层位行（规范行「矩阵分层：**tier N（层名…）**」与正文自述行「本仓是 tier N」）+ modules.json 的 tier 与层名（层名出自 tiers 映射，不硬编码）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-24",
+      "note": "仓级第一入口的层位漂移（2026-10-24 实测）：queue/obs/skillkit/mcpkit/rag 5 个仓的 AGENTS.md 写的都是重定位**之前**的旧层位（queue 写 tier 0、其余 4 个写 tier 1），而 modules.json 里全是 tier 2 ⇒ 读仓级文档的人/agent 会按错的层位判依赖方向。而三个本该抓住它的机制逐个失效：① verify_repo_docs.py 虽在 CI 里跑，但它是报告器（continue-on-error，恒不失败）——它比整文件 diff，而 13 个仓的 AGENTS.md 都有大量手写段落，噪音太大；② verify_profile_tiers.py 只守 org profile 那一处生成区；③ gen_docs.py 的合并模型要求生成区标记，而这 13 个仓的 AGENTS.md 一个都没有 ⇒ 生成器一律跳过，**重定位之后没有任何自动路径能更新它们**。本条把仓级层位声明变成红灯：判「自述层位」（规范行 + 正文自述行，数字与层名都比），不判「跨仓提及」；认不出声明 ⇒ 黄灯「判不了」（该仓不再被机器核对），CI 用 --fail-on-yellow 把黄灯升级为失败（每次都扫全矩阵，安静地失去覆盖是本仓反复出现的失效形态）。",
+      "kind": "gate"
     }
   ],
   "retired": [
