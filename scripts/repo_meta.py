@@ -52,6 +52,15 @@ NESTED_TAG_RE = re.compile(r"^(?P<prefix>[^/]+/[\w.\-/]*?)v\d+\.\d+\.\d+(?:-[0-9
 # 超时」，报错完全指不到真正原因）。
 GH_API_TIMEOUT = float(os.environ.get("OAGENTKIT_GH_API_TIMEOUT", "60"))
 
+# GraphQL 的 `first` **硬上限是 100**：超过就报 EXCESSIVE_PAGINATION。
+# 实测：`issues(first:200)` → "Requesting 200 records on the `issues` connection
+# exceeds the `first` limit of 100 records."（issue matrix-tools#104）
+# ⇒ 每页都不得超过这个数，要更多就翻页。
+GRAPHQL_PAGE_MAX = 100
+# 翻页的总页数上限：仓里有海量已关闭 PR 时不至于无限翻（`repository.issues`
+# 把 PR 也一起返回，而 limit 只按 issue 计）。超了就判不了，不当成「就这些」。
+GRAPHQL_MAX_PAGES = 20
+
 
 def gh_api_status(path: str, retries: int = 3) -> tuple[str | None, str]:
     """调 `gh api <path>`；→ (正文, 状态)，状态 ∈ {ok, not_found, error}。
@@ -139,7 +148,10 @@ def gh_graphql(query: str, variables: dict | None = None,
     """
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
     for key, value in (variables or {}).items():
-        cmd += ["-F", f"{key}={value}"]
+        # None 必须发成 **JSON null**（gh 的 -F 会把字面量 "null" 解析成 null）。
+        # 直接 f-string 会得到字符串 "None" ⇒ GraphQL 把它当游标/参数用 ⇒
+        # 报 "`None` does not appear to be a valid cursor."（issue matrix-tools#104）
+        cmd += ["-F", f"{key}=null" if value is None else f"{key}={value}"]
 
     for attempt in range(retries):
         try:
@@ -179,11 +191,11 @@ def gh_graphql(query: str, variables: dict | None = None,
 #   - `Commit`：被某个提交关闭（commit message 里的关闭关键词）；
 #   - `null`：人工关闭（`gh issue close` 或 UI 关单）。
 CLOSER_QUERY = """
-query($owner:String!,$name:String!,$n:Int!){
+query($owner:String!,$name:String!,$n:Int!,$after:String){
   repository(owner:$owner,name:$name){
-    issues(first:$n, states:CLOSED,
+    issues(first:$n, states:CLOSED, after:$after,
            orderBy:{field:CREATED_AT, direction:DESC}){
-      pageInfo{hasNextPage}
+      pageInfo{hasNextPage endCursor}
       nodes{
         __typename
         number
@@ -261,33 +273,62 @@ def list_closed_issue_closers(org: str, repo: str, limit: int = 100) -> dict[int
     为什么在事实层（而不是判定层）取：这是「谁关的单」这一**事实**，
     「该不该有回执」才是判定。事实可以共享，判定不能共享（见 AGENTS.md
     三层架构）。
-    """
-    payload = gh_graphql(CLOSER_QUERY, {
-        "owner": org, "name": repo, "n": limit,
-    })
-    if not payload:
-        return None
-    issues = ((payload.get("data") or {}).get("repository") or {}).get("issues")
-    if not isinstance(issues, dict):
-        return None
-    if (issues.get("pageInfo") or {}).get("hasNextPage"):
-        return None                 # 被 limit 截断 ⇒ 判不了（不能当成「就这些」）
 
+    ⚠️ **必须翻页**（issue matrix-tools#104）：GraphQL 对 `first` 有**硬上限 100**
+    ——超过就报 `EXCESSIVE_PAGINATION`，而 `gh_graphql()` 把 GraphQL 错误吞成 None
+    ⇒ 整仓「取不到」⇒ 回执门禁把**全矩阵**判成「判不了」且退出码仍是 0。
+    所以这里每页 `first` 恒 ≤ `GRAPHQL_PAGE_MAX`，页间用 `after` 游标串起来，
+    累计取到 `limit` 条为止。
+    """
     out: dict[int, dict] = {}
-    for node in issues.get("nodes") or []:
-        # `repository.issues` 在 GraphQL 里**同时返回 PR**（PR 也是 issue），
-        # 而 IssueFilters 又没有 types 参数可过滤 ⇒ 按 __typename 剔掉。
-        if node.get("__typename") != "Issue":
-            continue
-        number = node.get("number")
-        if not isinstance(number, int):
-            continue
-        timeline = node.get("timelineItems") or {}
-        events = timeline.get("nodes") or []
-        if (timeline.get("pageInfo") or {}).get("hasNextPage"):
-            out[number] = {"type": "unknown"}
-            continue
-        out[number] = parse_closer_events(events)
+    fetched = 0                 # 已取到的 **issue** 条数（PR 不计入 limit 口径）
+    cursor: str | None = None
+    exhausted = True            # 页数预算用完时为 True（⇒ 可能还有更多 ⇒ 判不了）
+
+    for _page_no in range(GRAPHQL_MAX_PAGES):
+        if fetched >= limit:
+            exhausted = False
+            break
+        payload = gh_graphql(CLOSER_QUERY, {
+            "owner": org, "name": repo, "n": GRAPHQL_PAGE_MAX, "after": cursor,
+        })
+        if not payload:
+            return None
+        issues = ((payload.get("data") or {}).get("repository") or {}).get("issues")
+        if not isinstance(issues, dict):
+            return None
+        nodes = issues.get("nodes") or []
+        for node in nodes:
+            # `repository.issues` 在 GraphQL 里**同时返回 PR**（PR 也是 issue），
+            # 而 IssueFilters 又没有 types 参数可过滤 ⇒ 按 __typename 剔掉。
+            if node.get("__typename") != "Issue":
+                continue
+            number = node.get("number")
+            if not isinstance(number, int):
+                continue
+            timeline = node.get("timelineItems") or {}
+            events = timeline.get("nodes") or []
+            if (timeline.get("pageInfo") or {}).get("hasNextPage"):
+                out[number] = {"type": "unknown"}
+                continue
+            out[number] = parse_closer_events(events)
+            fetched += 1
+            if fetched >= limit:
+                break
+
+        page_info = issues.get("pageInfo") or {}
+        if not page_info.get("hasNextPage"):
+            exhausted = False        # 翻完了 ⇒ 没有更多
+            break
+        cursor = page_info.get("endCursor")
+        if not cursor:
+            return None               # 有下一页却拿不到游标 ⇒ 判不了，不能当成「就这些」
+        if not nodes:
+            return None               # 空页却在翻页 ⇒ 状态不自洽 ⇒ 判不了
+
+    if exhausted:
+        # 页数预算用完：可能还有更多 issue ⇒ 判不了，不能当成「就这些」
+        return None
     return out
 
 
@@ -552,6 +593,85 @@ def selftest() -> int:
                                {"closer": None}])["type"],
           "manual")
 
+    # ---- 关闭来源取数：**必须翻页**（issue matrix-tools#104）
+    #
+    # GraphQL 的 `first` 硬上限 100 ⇒ 超过就报 EXCESSIVE_PAGINATION ⇒
+    # gh_graphql 把 GraphQL 错误吞成 None ⇒ 整仓「取不到」⇒
+    # 回执门禁把**全矩阵**判成「判不了」且退出码仍是 0。
+    def _issue_node(number: int) -> dict:
+        return {"__typename": "Issue", "number": number,
+                "timelineItems": {
+                    "pageInfo": {"hasNextPage": False},
+                    "nodes": [{"closer": {"__typename": "PullRequest", "number": 7,
+                                          "state": "MERGED", "merged": True,
+                                          "repository": {"nameWithOwner": "o/r"}}}]}}
+
+    def _page(numbers, has_next: bool, cursor=None) -> dict:
+        return {"data": {"repository": {"issues": {
+            "pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
+            "nodes": [_issue_node(n) for n in numbers]}}}}
+
+    saved_gql = gh_graphql
+    try:
+        calls: list[dict] = []
+
+        def fake_gql(query, variables=None, retries=3):
+            calls.append(variables or {})
+            if (variables or {}).get("after") is None:
+                return _page([1, 2], True, "CUR1")
+            return _page([3], False, None)
+
+        globals()["gh_graphql"] = fake_gql
+        closers = list_closed_issue_closers("oagentkit", "x", limit=150)
+        check("翻页后第 2 页的 issue 收进来了", sorted(closers or {}), [1, 2, 3])
+        check("翻页用了两次取数", len(calls), 2)
+        check("第 2 次带上了 after 游标", calls[1].get("after"), "CUR1")
+        check("每页 first 都不超过 GraphQL 上限",
+              all((v.get("n") or 0) <= GRAPHQL_PAGE_MAX for v in calls), True)
+        # 有区分力：单页实现只可能拿到第 1 页那 2 条 ⇒ 断言必须与它不同
+        check("断言与单页结果不同（有区分力）", sorted(closers or {}) != [1, 2], True)
+
+        # 反证样本：假翻页（游标不前进，永远只回第 1 页）⇒
+        # **不能**把只看到的第 1 页当成「就这些」⇒ 必须判不了（返回 None）。
+        calls.clear()
+
+        def fake_gql_no_cursor(query, variables=None, retries=3):
+            calls.append(variables or {})
+            return _page([1, 2], True, "CUR1")
+
+        globals()["gh_graphql"] = fake_gql_no_cursor
+        closers_bad = list_closed_issue_closers("oagentkit", "x", limit=150)
+        check("反证：假翻页时判不了（不当成「就这些」）", closers_bad, None)
+    finally:
+        globals()["gh_graphql"] = saved_gql
+
+    # ---- GraphQL 变量为 None 时必须发成 **JSON null**（issue matrix-tools#104）
+    # 直接 f-string 会得到字符串 "None" ⇒ GraphQL 拿它当游标 ⇒
+    # 「`None` does not appear to be a valid cursor.」⇒ 整仓「取不到」。
+    import subprocess as _sp
+
+    captured: list[list[str]] = []
+
+    class _FakeProc:
+        returncode = 0
+        stdout = '{"data":{}}'
+        stderr = ""
+
+    saved_run = _sp.run
+
+    def fake_run(cmd, *a, **kw):
+        captured.append(list(cmd))
+        return _FakeProc()
+
+    _sp.run = fake_run
+    try:
+        gh_graphql("query{}", {"after": None, "n": 100})
+    finally:
+        _sp.run = saved_run
+    check("None 变量发成 JSON null", "after=null" in captured[0], True)
+    check("None 变量没被发成字符串 None", "after=None" in captured[0], False)
+    check("非 None 变量原样发", "n=100" in captured[0], True)
+
     if fails:
         print("❌ repo_meta 自测失败：")
         for f in fails:
@@ -559,7 +679,7 @@ def selftest() -> int:
         return 1
     print("✅ repo_meta 自测通过"
           "（tag 过滤 / semver / module 路径 / 包目录 / CHANGELOG 版本段解析 / "
-          "关闭来源三态）")
+          "关闭来源三态 / 关闭来源取数翻页）")
     return 0
 
 
