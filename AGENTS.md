@@ -233,7 +233,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 | `facade-frozen` | 门面包集合冻结 |
 | `dep-floors` | 依赖地板**报告器**（恒不失败，不挂 PR） |
 | `drift` | versions.json 与 modules.json 一致 + llms.txt 可确定性重生成 |
-| `matrix-local-guards` | 层级方向 / 门面规则 / 仓文档（需要各仓源码） |
+| `matrix-local-guards` | 层级方向 / 门面规则 / 仓文档 / **各仓 AGENTS.md 层位声明**（需要各仓源码） |
 | `pending-release` | 预写段可观测性（需完整历史，只在 push/定时跑） |
 | `latest-field` | latest 字段 ↔ 远端最新 tag |
 | `inventory` | 不变量登记表（承诺 ↔ 判据 ↔ 接线 ↔ 触发条件） |
