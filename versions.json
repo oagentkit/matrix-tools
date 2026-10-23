@@ -497,7 +497,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.6",
+      "latest": "v0.9.7",
       "packages": [
         {
           "pkg": "langfuse",
@@ -646,6 +646,22 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.20.0",
               "to": "v0.21.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.7",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.13.1",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.21.0",
+              "to": "v0.22.0"
             }
           ]
         }
@@ -1960,7 +1976,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.41",
+      "latest": "v1.8.42",
       "retiring": true,
       "breakingIndex": [
         {
@@ -2866,6 +2882,17 @@
               "dep": "github.com/oagentkit/agent",
               "from": "v0.10.6",
               "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.42",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.6",
+              "to": "v0.9.7"
             }
           ]
         }
