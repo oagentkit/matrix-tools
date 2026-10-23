@@ -233,6 +233,14 @@ jobs:
         # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
         run: python3 scripts/verify_repo_tiers.py --selftest
 
+      - name: 各仓依赖零性声明门禁自测
+        # 反证样本：「require 段必须为空」但 go.mod 非空（红）/「零第三方依赖」
+        # 但 go.mod 有第三方（红）/「零外部依赖」语义没钉死（黄）/ 缺 go.mod（黄），
+        # 以及**不误报**样本（跨仓提及、否定句、口语「零依赖」、
+        # 「新增第三方依赖前先确认…」这类**要求**而非状态声明）。
+        # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
+        run: python3 scripts/verify_repo_dep_claims.py --selftest
+
       - name: 第一方依赖方向门禁自测
         # 反证样本：tier 倒挂 / 依赖未声明 / 声明陈旧 / 矩阵内消费门面，
         # 以及**不误报**样本（合规依赖、indirect require 不算直接依赖）。
@@ -827,6 +835,34 @@ jobs:
         # 那是本仓反复出现的失效形态，所以在这里把黄灯升级为失败
         # （报告里仍以 ⚠️ 呈现，与「确认违规」的红区分）。
         run: python3 matrix-tools/scripts/verify_repo_tiers.py --root . --fail-on-yellow --json-out repo-tiers-report.json
+
+      - name: 各仓依赖零性声明 vs go.mod 实际 require 段
+        # 守的是**仓级第一入口的依赖红线**：文档写「本仓零依赖」，go.mod 里
+        # 却有一条 require，读文档的人/agent 会按文档（而不是按仓库事实）做决定。
+        #
+        # 实测 2026-10-24：guardx/AGENTS.md 写着「本仓不得有外部依赖
+        # （`require` 段必须为空）」，而它的 go.mod 实测是
+        # `require github.com/oekit/pkg v0.22.1` ⇒ 那句话是假的；
+        # 同一文件第 44 行又把 `oekit/pkg` 当「外部依赖」⇒ 两条指令互斥。
+        # 而且这不是「忘了改」——2026-10-19 那句是真的，之后 4 次**有意的**
+        # 地板抬升都没回改它。
+        #
+        # 三个本该抓住它的机制逐个失效：verify_repo_docs 是报告器（恒不失败）、
+        # gen_docs 因这 13 个仓的 README/AGENTS.md 没有生成区标记而一律跳过、
+        # verify_repo_tiers 只判层位数字不判依赖红线。
+        #
+        # `--fail-on-yellow`：黄灯 = 「语义没钉死，核对不了」＝
+        # 该仓的依赖红线**不再被机器核对**＝安静地失去覆盖 ——
+        # 那是本仓反复出现的失效形态，所以在这里把黄灯升级为失败
+        # （报告里仍以 ⚠️ 呈现，与「确认违规」的红区分）。
+        run: python3 matrix-tools/scripts/verify_repo_dep_claims.py --root . --fail-on-yellow --json-out repo-dep-claims-report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repo-dep-claims-report
+          path: repo-dep-claims-report.json
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: always()
