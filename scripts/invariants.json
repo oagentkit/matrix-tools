@@ -726,6 +726,30 @@
       "since": "2026-10-22",
       "note": "issue matrix-tools#71：issue 被 PR 正文 `Closes #N` 在合入时自动关闭时，回执评论可能一条都没留下（实测 llm#29：关单成功、CI 绿、tag 已打，却没有任何地方会报错）——因为 `gh issue close --comment` 对已关闭 issue 静默不贴评论、退出码仍是 0。范围收敛到「被机器自动关闭」这一形态（人工关闭的本来就不该有回执，算进来就是上线即一片红）；豁免走显式名单 receipt_exemptions.json，且名单会过期（该 issue 后来有了回执 ⇒ 判黄要求删掉）。（2026-10-22 刚上线时是**报告级**——判据刚上线、豁免名单还不全，一上来就硬失败会恒红 ⇒ 与「红了就加豁免」同命；判据跑稳 + 范围有了归属地后，已在 issue matrix-tools#90 转**硬失败**。）\nissue matrix-tools#88 补上两个**旧口径看不见的口子**：① 关闭来源只认 `closedByPullRequestsReferences` ⇒ **commit message 里的关闭关键词**那条路完全不可见（squash 合并把 commit message 带进 main，`Closes #N` 照样触发自动关单；实测 matrix-tools#86：PR 正文写 `Refs:`、commit message 写 `Closes` ⇒ 合并后 2 秒自动关单而该字段为空）⇒ 现在取该字段**与**时间线 `closedEvent.closer` 的**并集**（closer ∈ {PR, Commit} = 机器关的；null = 人工关的）。② 回执判定是「PR 链接 / 版本号 / 验收类结论**任一**命中」⇒ **认领/派单评论**里也会出现「验收」二字（实测 matrix-tools#86 的认领评论有一节标题就叫「## 验收」，不含任何锚点）⇒ 认领评论被当成回执 ⇒ 现在要求**锚点**（PR 链接 / 版本号 / 完整提交 sha），并把「有完成声明但无锚点」单列为**黄灯**（确实是回执，但机器核验不了 ⇒ 要求补锚点，不是判红冤枉、也不是判绿放过）。跨仓 PR 关单也覆盖（GitHub 支持 `Closes owner/repo#N`；实测 mcpkit#17 是被 toolgate#24 关的）。\nissue matrix-tools#90 补上**牙齿**与**唯一归属地**（判据本身在 #88 已修好，但结论只落进 artifact、且全矩阵扫描挂在 matrix-tools 的 CI 里 ⇒ mcpkit 的一个缺口会把 matrix-tools 的每个 PR 弄红，修复者会去改**错误的仓**）：① 判据加 `--scope-mode {matrix,repo}`（默认 matrix＝旧行为）与 `--ci`/`--print-scope`——PR 事件恒判 **PR 的 base 仓**（issue 所在仓），非 PR 事件按 scope-mode，**schedule 事件在 repo 模式下仍是全矩阵**（跨仓硬失败的唯一归属地，收窄它＝跨仓欠账再也没人抓）；② 矩阵源仓自带的 receipts job 去掉 `continue-on-error` ⇒ 转**硬失败**，且 PR/push 只判自己仓、schedule 才判全矩阵；③ `.github` 的可复用工作流给各模块仓下发 receipts job（`receipts-enabled` 开关 + `receipts-scope` 口径）⇒ **每个仓自己 issue 的回执由它自己负责**，跨仓硬失败不再让无关仓背红（基建仓 `.github` 与站点仓自己 issue 的回执，由 matrix-tools 的每日全矩阵审计兜底——那条审计是**硬失败**且已登记在本仓这条 ci 腿上；站点仓没有 CI，只进审计不进 PR 门禁）。另加**容忍窗**（判据内置）：回执是**合并之后**才补的（要等 CI、要打 tag）⇒ 刚关单的缺口在巡检口径下判**黄**（「可能还在路上」）而不是红，PR 事件严格（容忍窗 0）——假红会让人习惯性忽略红标。",
       "kind": "gate"
+    },
+    {
+      "id": "site-modules-copy",
+      "claim": "站点仓 data/modules.json 必须与矩阵源 matrix-tools/modules.json 逐字段一致——站点不得单方面发明模块信息",
+      "judges": [
+        "verify_modules_copy.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "两侧 modules.json 的顶层字段与每个模块的逐字段值（modules 按 repo 对齐后深比，list 按顺序比）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "site-modules-copy",
+          "triggers": [
+            "push",
+            "schedule",
+            "workflow_dispatch"
+          ]
+        }
+      ],
+      "since": "2026-10-23",
+      "note": "文档承诺 vs 机器校验的缺口（2026-10-23 实测）：站点 AGENTS.md 写明「本仓 data/modules.json 是该文件的副本……内容必须逐字段一致」「禁止在本仓单方面发明模块信息」，CONTRIBUTING 发版第 4 步也写着「同步站点 data/modules.json」——但三处承诺一处机器校验都没有：① verify_docs.py 守的是 llms.txt、verify_versions_drift.py 守的是 versions.json，两者都不碰 data/modules.json；② 站点仓自己的 CI 只跑 gen_module_pages.py --check，校验的是「生成物 vs 站点自己的副本」，副本本身烂掉它照样绿；③ release.py sync-matrix 只拷 site/docs/public/versions.json（源码里只有这一处 site_copy），data/modules.json 从头到尾没人碰 ⇒ CONTRIBUTING 第 4 步那句「同步站点 data/modules.json」是纯手工动作，漏了没有任何反馈——2026-10-21 就这么漏过一次（站点副本缺 llm/port，CONTRIBUTING 有实测记录）。本条把那句承诺变成红灯：源先、副本后（源是权威）。",
+      "kind": "gate"
     }
   ],
   "retired": [

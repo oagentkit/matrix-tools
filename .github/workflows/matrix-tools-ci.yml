@@ -286,6 +286,12 @@ jobs:
         # （手写内容被抹掉是它存在的理由）。
         run: python3 scripts/verify_repo_docs.py --selftest
 
+      - name: 站点 modules.json 副本守卫自测
+        # 反证样本：少一个包（2026-10-21 真实形态——站点副本缺 llm/port）/
+        # 改 tier / 多一个仓 / 少一个顶层字段 / 副本缺失 / JSON 损坏 /
+        # 嵌套字段被改 / packages 顺序乱 ⇒ 必报；完全一致 ⇒ 不报。
+        run: python3 scripts/verify_modules_copy.py --selftest
+
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
     # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的
@@ -685,6 +691,45 @@ jobs:
           else
             echo "❌ 两次生成结果不同"; exit 1
           fi
+
+  site-modules-copy:
+    name: Site modules.json copy (站点副本 vs 矩阵源)
+    # modules.json 是矩阵的单一数据源；站点仓 data/modules.json 是它的**副本**。
+    # 这件事三处都有明文：站点 AGENTS.md「内容必须逐字段一致」「禁止在本仓单方面
+    # 发明模块信息」、CONTRIBUTING 发版第 4 步「同步站点 data/modules.json」——
+    # 但此前**一处机器校验都没有**：verify_docs.py 守 llms.txt、
+    # verify_versions_drift.py 守 versions.json，两者都不碰 data/modules.json；
+    # 站点仓自己的 CI 只验「生成物 vs 站点自己的副本」，副本本身烂掉它照样绿；
+    # release.py sync-matrix 也只拷 versions.json ⇒ 那句同步是纯手工动作。
+    # 2026-10-21 就这么漏过一次（站点副本缺 llm/port，CONTRIBUTING 有实测记录）。
+    #
+    # 为什么挂 push/schedule 而不挂 PR：副本在**另一个仓**，而纪律是
+    # **源先、副本后**（源 PR 先合、副本 PR 后合）——PR 事件里拿 PR 的 modules.json
+    # 去比站点 main 的副本，必然红，而且红得没法在 PR 内自愈。
+    # 本 job 在**源仓 main** 上比对：源改了、副本没同步 ⇒ 红灯；
+    # 副本补齐（站点 PR 合并）后靠每日 schedule 自愈——
+    # 与 .github 仓那份「站点 versions.json 副本」检查同一形态。
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone 站点仓（取它的 data/modules.json 副本）
+        # 公开仓，走 HTTPS 匿名克隆即可（与 matrix-local-guards 克隆各模块仓同法）。
+        run: git clone -q --depth 1 https://github.com/oagentkit/oagentkit.github.io.git site
+
+      - name: 站点 data/modules.json 与矩阵源逐字段一致
+        # 副本漂了 ⇒ 站点对外清单（13 个模块页 / 首页矩阵表 / 依赖图）与权威源矛盾，
+        # 而 llms.txt 仍与源一致 ⇒ 两套互相矛盾的对外清单
+        # （站点 AGENTS.md 点名的形态）。修法：源先、副本后。
+        run: python3 scripts/verify_modules_copy.py --matrix modules.json --compare site/data/modules.json
 
   matrix-local-guards:
     name: Matrix local guards (层级方向 / 门面规则 / 仓文档)
