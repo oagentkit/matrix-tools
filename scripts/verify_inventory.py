@@ -10,7 +10,7 @@
 门面 README 说「不接受任何新功能」——只有事后快照守卫，而快照把违规吸收了；
 `versions.json` 的 `latest`——drift 门禁明确忽略它，而全 CI 无人在查。
 
-所以本脚本查六件事：
+所以本脚本查七件事：
 
 1. **每条不变量的判据脚本都存在**（登记了却没写，或写完被删）。
 2. **每条不变量的判据脚本都被登记的 CI 文件引用**（登记了却没接线 = 承诺是假的）。
@@ -18,6 +18,7 @@
 4. **独立 oracle 不得悄悄 import 生成器**——耦合必须显式登记并写明理由。
 5. **每条判据脚本都支持 `--selftest`，且该自测被 CI 真的调用过**（硬规则 2）。
 6. **登记的触发条件真的能跑起来**（登记表的第三腿：什么条件下跑）。
+7. **登记的 CI 位置真的跑这个判据**（接线不能只在别的 job 里，更不能只在 `--selftest` 里）。
 
 ## 第 6 条为什么必须有
 
@@ -36,6 +37,27 @@
 ② job 级 `if:` 不得把已登记的 trigger 排除掉（workflow 声明了 `schedule`
    不等于该 job 真会在 `schedule` 上跑）；
 ③ `if:` 判不了 ⇒ **判黄**不判红（硬规则 3：判不了 ≠ 没问题，但也不是确认违规）。
+
+## 第 7 条为什么必须有：「接上了」不等于「在跑」
+
+第 2 条此前只做**整文件文本 grep**（`scripts/<name>` 出现在这个 workflow 的**任何位置**
+就算「已接线」）。它有两处看不见的盲区：
+
+- **不区分 job**：登记写的是 `file` + `job`，判定却只扫整个文件——
+  判据在 A job 里跑，登记写的是 B job，照样报「已接线」；
+- **不区分自测与判定**：同一个文件里 `--selftest` 的那一步会被当成判定接线——
+  而自测**证明的是判据自己活着**，不是「这条不变量被守住了」。
+
+实测形态（2026-10-24，issue matrix-tools#119）：`invariants.json` 的 `facade-release-floor`
+登记成 `matrix-tools-ci.yml :: facade-symbols`，而那个 job 只跑 `verify_facade_symbols.py`，
+`verify_facade_release.py` 在该文件里**只**出现在 `guards` job 的 `--selftest` 步骤；
+真判定在**另一个仓**的 `.github/.../repo-ci.yml :: matrix-docs`。
+反证实验：把那个真判定步骤**整个删掉**，`verify_inventory.py` 仍然报「红 0 / 黄 0」、退出码 0
+——**门禁对自己的登记表失明**。
+
+所以第 7 条要求：**登记的那个 job 里必须真的有一步调用该判据**（不含 `--selftest`）。
+判定粒度是**步骤**而不是行（`--selftest` 写在续行上的写法不该被误判成真判定）。
+YAML 读不出来 ⇒ **判黄**（硬规则 3：判不了 ≠ 没问题）。
 
 ## 第 4 条为什么用「登记制」而不是自动判定
 
@@ -130,6 +152,85 @@ def selftest_invoked(ci_text: str, script: str) -> bool:
         if f"scripts/{script}" in line and "--selftest" in line:
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# 第 7 条：登记的 CI 位置必须**真的**跑这个判据
+# ---------------------------------------------------------------------------
+
+
+def _job_steps(wf_path: Path, job_name: str, cache: dict):
+    """取某个 workflow 里某个 job 的所有 `run:` 步骤文本。
+
+    返回 (steps, err)：
+      · steps 是 list ⇒ job 存在，元素是各步骤的 run 文本；
+      · steps 是 None 且 err 是 None ⇒ **job 不存在**；
+      · err 非 None ⇒ **判不了**（YAML 解析失败 / 环境缺 pyyaml）。
+
+    cache 按 wf_path 缓存——与 check_triggers 用同一个缓存，语义一致
+    （缓存是每次 judge() 调用内部新建的，改了文件重跑就是新内容）。
+    """
+    key = str(wf_path)
+    if key not in cache:
+        cache[key] = _load_yaml(Path(wf_path))
+    data, err = cache[key]
+    if err is not None:
+        return None, err
+    jobs = (data or {}).get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, dict):
+        return None, "workflow 里没有 jobs 段"
+    job = jobs.get(job_name)
+    if job is None:
+        return None, None
+    steps = []
+    for st in ((job.get("steps") or []) if isinstance(job, dict) else []):
+        if isinstance(st, dict):
+            r = st.get("run")
+            if r:
+                steps.append(str(r))
+    return steps, None
+
+
+def _step_kinds(steps: list[str], script: str) -> tuple[bool, bool]:
+    """这个 job 里对 `script` 的调用分类：(真判定, 自测)。
+
+    判定粒度是**步骤**而不是行——「提到脚本且同一步骤提到 --selftest」⇒ 自测步骤；
+    「提到脚本且该步骤没有 --selftest」⇒ 真判定步骤。
+    行级判定会把 `--selftest` 写在续行上的写法误判成真判定。
+    """
+    real = selftest = False
+    for s in steps:
+        if f"scripts/{script}" not in s:
+            continue
+        if "--selftest" in s:
+            selftest = True
+        else:
+            real = True
+    return real, selftest
+
+
+def _real_locations(workflows: dict[str, str], script: str, cache: dict) -> list[str]:
+    """这个判据在**所有**已登记的 workflow 里，真正跑判定的地方。
+
+    用于修法文案：登记指错了位置时，直接告诉人「真判定在哪」。
+    """
+    out = []
+    for wf_name, wf_path in workflows.items():
+        key = str(wf_path)
+        if key not in cache:
+            cache[key] = _load_yaml(Path(wf_path))
+        data, err = cache[key]
+        if err is not None or not isinstance(data, dict):
+            continue
+        for jn, jb in ((data.get("jobs") or {}).items()):
+            steps = []
+            for st in ((jb.get("steps") or []) if isinstance(jb, dict) else []):
+                if isinstance(st, dict) and st.get("run"):
+                    steps.append(str(st["run"]))
+            real, _ = _step_kinds(steps, script)
+            if real:
+                out.append(f"{wf_name} :: {jn}")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +429,13 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
         report.red("invariants.json", "登记表是空的——等于没有登记任何不变量")
         return
 
-    # 1 + 2：判据脚本存在且被登记的 CI 文件引用
+    # 1 + 2 + 7：判据脚本存在；登记的 CI 位置**真的**跑它
+    #
+    # 第 7 条（2026-10-24，issue matrix-tools#119）：登记写的是 `file` + `job`，
+    # 判定却必须落到**那个 job 的某一步真判定**上——
+    # 「脚本在这个 workflow 里出现过」不等于「这条不变量被守住了」。
+    # 详见模块 docstring「第 7 条为什么必须有」。
+    wf_job_cache: dict = {}
     for inv in invariants:
         inv_id = inv.get("id", "?")
         for judge_script in inv.get("judges", []):
@@ -336,8 +443,11 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                 report.red(inv_id, f"判据脚本 {judge_script} 不存在",
                            "登记表与实际脚本对不上——要么补上脚本，要么撤掉这条登记")
                 continue
+            any_real = False    # 该判据在**登记的位置**里有没有真判定步骤
+            inspected = False   # 有没有成功读到某个 job 的步骤（读不到 ⇒ 不能断言）
             for ci in inv.get("ci", []):
                 wf_name = ci.get("file", "")
+                job_name = ci.get("job", "")
                 wf_path = workflows.get(wf_name)
                 if wf_path is None:
                     report.red(inv_id, f"登记的 CI 文件 {wf_name} 找不到",
@@ -351,18 +461,53 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                         inv_id,
                         f"判据脚本 {judge_script} 没有被 {wf_name} 引用——承诺是假的",
                         f"在 {wf_name} 里加一步：python3 scripts/{judge_script} …")
-                else:
-                    report.info(inv_id, f"{judge_script} 已在 {wf_name} 接线")
-            # job 名存在性
-            for ci in inv.get("ci", []):
-                wf_path = workflows.get(ci.get("file", ""))
-                if wf_path is None:
                     continue
-                content = Path(wf_path).read_text(encoding="utf-8", errors="ignore")
-                job = ci.get("job")
-                if job and f"{job}:" not in content:
-                    report.yellow(inv_id, f"登记的 job 名 {job} 在 {ci.get('file')} 里找不到",
+                if not job_name:
+                    report.yellow(
+                        inv_id,
+                        f"{wf_name} 这条登记没写 job 名——判不了 {judge_script} 在哪跑",
+                        "把 job 名补进登记表的 ci 条目")
+                    continue
+                steps, err = _job_steps(Path(wf_path), job_name, wf_job_cache)
+                if err is not None:
+                    report.yellow(
+                        inv_id,
+                        f"判不了 {wf_name} :: {job_name} 是否真的跑 {judge_script}（{err}）",
+                        "YAML 读不出来 ⇒ 不能断言它没跑（硬规则 3：判不了 ≠ 没问题）")
+                    continue
+                if steps is None:
+                    # job 名不存在 ⇒ 沿用「job 名存在性」黄灯
+                    report.yellow(inv_id, f"登记的 job 名 {job_name} 在 {wf_name} 里找不到",
                                   "可能是 job 已改名——登记表要跟着改")
+                    continue
+                inspected = True
+                real, selftest = _step_kinds(steps, judge_script)
+                if real:
+                    any_real = True
+                    report.info(inv_id,
+                                f"{judge_script} 已在 {wf_name} :: {job_name} 真判定")
+                    continue
+                # 登记的位置不跑这个判据 ⇒ 确认的假承诺 ⇒ 判红
+                where = _real_locations(workflows, judge_script, wf_job_cache)
+                why = ("该 job 里只有 --selftest 调用（自测证明的是判据自己活着，"
+                       "不是这条不变量被守住）" if selftest
+                       else "该 job 里根本没有这个判据的调用")
+                if where:
+                    fix = ("把登记表指向真正跑判定的地方：" + "、".join(where)
+                           + f"；或让 {job_name} 也跑一次真判定")
+                else:
+                    fix = (f"在 {wf_name} :: {job_name} 里加一步真判定："
+                           f"python3 scripts/{judge_script} …")
+                report.red(
+                    inv_id,
+                    f"登记的 CI 位置不跑该判据：{wf_name} :: {job_name} —— {why}",
+                    fix)
+            if inspected and not any_real:
+                report.red(
+                    inv_id,
+                    f"{judge_script} 在登记的所有 CI 位置都没有真判定步骤"
+                    "——这条不变量没有门禁守着",
+                    "要么把登记指向真正跑判定的地方，要么给它加一步真判定")
 
         # 3：独立 oracle 不得悄悄 import 生成器
         declared = {s.get("module") for s in inv.get("sharedWith", [])}
@@ -449,13 +594,16 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
 def selftest() -> int:
     """反证自测：登记表的失配都必须被抓出来。
 
-    覆盖六类（每一类都带**故意造坏**的样本）：
+    覆盖九类（每一类都带**故意造坏**的样本）：
       ① 未登记的守卫脚本        → 判红
       ② 未披露的生成器耦合      → 判红
       ③ 判据脚本没有 --selftest → 判红（硬规则 2）
       ④ --selftest 没接进 CI   → 判红（硬规则 2）
-      ⑤ 全部合规                → 不报
-      ⑥ 补齐后                  → 转绿
+      ⑤ 登记的 job 里只有 --selftest → 判红（第 7 条：自测不是判定）
+      ⑥ 真判定在别的 job、登记指错 → 判红（第 7 条）
+      ⑦ 全部合规                → 不报
+      ⑧ 补齐后                  → 转绿
+      ⑨ if 判不了               → 判黄不判红（硬规则 3）
     """
     import tempfile
 
@@ -483,6 +631,12 @@ def selftest() -> int:
             "ap = None  # --selftest\n", encoding="utf-8")
         (scripts / "verify_orphan.py").write_text(
             "print('x')\nap = None  # --selftest\n", encoding="utf-8")
+        # 反证样本：登记的 job 里**只有 --selftest**（自测不是判定）
+        (scripts / "verify_selftestonly.py").write_text(
+            "ap = None  # --selftest\n", encoding="utf-8")
+        # 反证样本：真判定在**别的 job**（c），登记指错了位置（b）
+        (scripts / "verify_elsewhere.py").write_text(
+            "ap = None  # --selftest\n", encoding="utf-8")
         (scripts / "gen_changelogs.py").write_text("x = 1\n", encoding="utf-8")
 
         # workflow：ci.yml 的 `on:` **故意没有 schedule**（反证「登记了却不存在」）；
@@ -491,13 +645,24 @@ def selftest() -> int:
         wf = root / "ci.yml"
         wf2 = root / "ci2.yml"
 
-        def write_ci1(steps: str) -> None:
+        def write_ci1(steps: str, b_real: bool = False) -> None:
+            # job b 是「登记的位置」——先只给 --selftest（反证：自测不是判定）；
+            # b_real=True 时补上真判定（补齐后应当转绿）。
+            # job c 是 verify_elsewhere.py 的**真判定**所在 ⇒ 登记指 b 就是指错了。
+            b_steps = ("      - run: python3 scripts/verify_selftestonly.py --selftest\n"
+                       "      - run: python3 scripts/verify_elsewhere.py --selftest\n")
+            if b_real:
+                b_steps += ("      - run: python3 scripts/verify_selftestonly.py\n"
+                            "      - run: python3 scripts/verify_elsewhere.py\n")
             wf.write_text(
                 "on:\n"
                 "  push:\n"
                 "  pull_request:\n"
                 "jobs:\n"
-                "  a:\n    steps:\n" + steps,
+                "  a:\n    steps:\n" + steps +
+                "  b:\n    steps:\n" + b_steps +
+                "  c:\n    steps:\n"
+                "      - run: python3 scripts/verify_elsewhere.py\n",
                 encoding="utf-8")
 
         def write_ci2(steps: str) -> None:
@@ -560,6 +725,16 @@ def selftest() -> int:
                  "oracle": "independent", "sharedWith": [],
                  "ci": [{"file": "ci2.yml", "job": "opaque",
                          "triggers": ["schedule"]}]},
+                # 反证样本 ⑧：登记的 job 里只有 --selftest ⇒ 判红
+                {"id": "selftest-only", "judges": ["verify_selftestonly.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "b",
+                         "triggers": ["push", "pull_request"]}]},
+                # 反证样本 ⑨：真判定在 job c，登记指了 job b ⇒ 判红
+                {"id": "misplaced", "judges": ["verify_elsewhere.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci.yml", "job": "b",
+                         "triggers": ["push", "pull_request"]}]},
             ],
             "retired": [],
             "notInvariants": {"tools": ["gen_changelogs.py"]},
@@ -585,6 +760,12 @@ def selftest() -> int:
         # ⑦ if 判不了 ⇒ 判黄，**不判红**（硬规则 3）
         check("if 判不了的不判红", "unknown-if" in subjects, False)
         check("if 判不了的判黄", "unknown-if" in yellow_subjects, True)
+        # ⑧ 第 7 条：登记的 job 里只有 --selftest ⇒ 判红（自测不是判定）
+        check("登记 job 里只有 --selftest 被抓出", "selftest-only" in subjects, True)
+        # ⑨ 第 7 条：真判定在别的 job、登记指错 ⇒ 判红
+        check("登记的 CI 位置指错被抓出", "misplaced" in subjects, True)
+        misplaced_hint = " ".join(f.hint or "" for f in rep.reds if f.subject == "misplaced")
+        check("修法文案指出真判定在哪个 job", "ci.yml :: c" in misplaced_hint, True)
 
         # 反证：把 --selftest 的 CI 接线去掉 ⇒ 必须转红（证明这条判定有区分力）
         write_ci1(
@@ -609,11 +790,18 @@ def selftest() -> int:
         write_ci1(
             "      - run: python3 scripts/verify_ok.py\n"
             "      - run: python3 scripts/verify_ok.py --selftest\n"
+            "      - run: python3 scripts/verify_coupled.py\n"
             "      - run: python3 scripts/verify_coupled.py --selftest\n"
+            "      - run: python3 scripts/verify_orphan.py\n"
             "      - run: python3 scripts/verify_orphan.py --selftest\n"
+            "      - run: python3 scripts/verify_noselftest.py\n"
             "      - run: python3 scripts/verify_noselftest.py --selftest\n"
-            "      - run: python3 scripts/verify_unwired.py --selftest\n")
+            "      - run: python3 scripts/verify_unwired.py\n"
+            "      - run: python3 scripts/verify_unwired.py --selftest\n",
+            b_real=True)
         # 触发条件补齐：ci.yml 真的加上 schedule；ci2.yml 的 only-push 去掉 if
+        # 接线补齐（第 7 条）：每条登记的位置都必须有**真判定**步骤，
+        # 不能只有 --selftest —— 补齐后应当转绿。
         wf.write_text(
             "on:\n"
             "  push:\n"
@@ -623,10 +811,21 @@ def selftest() -> int:
             "  a:\n    steps:\n"
             "      - run: python3 scripts/verify_ok.py\n"
             "      - run: python3 scripts/verify_ok.py --selftest\n"
+            "      - run: python3 scripts/verify_coupled.py\n"
             "      - run: python3 scripts/verify_coupled.py --selftest\n"
+            "      - run: python3 scripts/verify_orphan.py\n"
             "      - run: python3 scripts/verify_orphan.py --selftest\n"
+            "      - run: python3 scripts/verify_noselftest.py\n"
             "      - run: python3 scripts/verify_noselftest.py --selftest\n"
-            "      - run: python3 scripts/verify_unwired.py --selftest\n",
+            "      - run: python3 scripts/verify_unwired.py\n"
+            "      - run: python3 scripts/verify_unwired.py --selftest\n"
+            "  b:\n    steps:\n"
+            "      - run: python3 scripts/verify_selftestonly.py --selftest\n"
+            "      - run: python3 scripts/verify_elsewhere.py --selftest\n"
+            "      - run: python3 scripts/verify_selftestonly.py\n"
+            "      - run: python3 scripts/verify_elsewhere.py\n"
+            "  c:\n    steps:\n"
+            "      - run: python3 scripts/verify_elsewhere.py\n",
             encoding="utf-8")
         wf2.write_text(
             "on:\n"
@@ -657,7 +856,8 @@ def selftest() -> int:
         return 1
     print("✅ verify_inventory 自测通过"
           "（未登记 / 未接线 / 未披露耦合 / 无 --selftest / --selftest 未接线 / "
-          "登记了不存在的 trigger / if 排除登记的 trigger / if 判不了判黄 八类检出）")
+          "登记的 CI 位置不跑该判据 / 登记了不存在的 trigger / "
+          "if 排除登记的 trigger / if 判不了判黄 九类检出）")
     return 0
 
 
