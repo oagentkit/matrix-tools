@@ -2050,7 +2050,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.47",
+      "latest": "v1.8.48",
       "retiring": true,
       "breakingIndex": [
         {
@@ -3027,6 +3027,17 @@
               "dep": "github.com/oagentkit/guardx",
               "from": "v0.14.0",
               "to": "v0.15.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.48",
+          "date": "2026-10-24",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.22.1",
+              "to": "v0.23.1"
             }
           ]
         }
