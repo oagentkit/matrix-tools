@@ -32,6 +32,38 @@ Go 的依赖面按 **module** 结算：消费方 import 某仓的**任意一个�
 2. **tier ≥ 2 的仓**：允许重地板（那是它们的定位：集成层 = 重第三方地板），
    但地板清单会写进 `versions.json` 的 `depFloor` 字段与 llms.txt，消费者可据此判断。
 
+## 三个载体，只有一个被守（实测 2026-10-24）
+
+「本仓有哪些重量级第三方依赖」这件事，在矩阵里有**三个载体**：
+
+| 载体 | 怎么产生的 | 谁在守 |
+|---|---|---|
+| `versions.json` 的 `depFloor` | **自动**从各仓 go.mod 读（`gen_versions.py`） | ✅ 本脚本的 `reconcile_dep_floor` |
+| `modules.json` 的 `heavyDeps` | **手写** | ❌ 此前无人守 |
+| 各仓 README 的「外部依赖地板」小节 | **手写** | ❌ 此前无人守 |
+
+⇒ 后两者会**静默漂移**。实测 5 个仓的 `modules.json.heavyDeps` 与 go.mod 对不上：
+`obs` 仍登记着已随 `obsx` 迁走的 `eino`；`skillkit` / `tools` / `agent` **漏登记**；
+`llm` 登记的是 `github.com/cloudwego/eino-ext` —— 这个模块路径**根本不在 llm 的模块图里**
+（llm 直接依赖的是 `github.com/cloudwego/eino-ext/components/model/openai`，
+根模块 `eino-ext` 连 go.sum 都没有）。
+
+本脚本新增 `reconcile_heavy_deps` 守**第二个**载体。
+第三个载体（README 小节）要解析散文、且涉及「测试依赖算不算外部依赖」这类判断
+（`queue` 的 `lib/pq` 只在测试里用），留作另案 —— ���看 issue 里的取舍。
+
+## 两种口径：`floor_of` 与 `third_party_of` 不是一回事
+
+- `floor_of` = **消费方模块图继承到的东西**（含 `oekit/logx` —— 它不在基座白名单里，
+  因为 logx 带 hertz）⇒ 门禁 `tier0/tier1` 与 `versions.json.depFloor` 用这个口径；
+- `third_party_of` = **第三方直接依赖**（排除全部 `oekit/*` 第一方基座与 `oagentkit/*` 矩阵内仓）
+  ⇒ `modules.json.heavyDeps` 用这个口径
+  （基座是「第一方基座」，不是「外部依赖」——各仓 README 的「外部依赖地板」小节也是这么写的）。
+
+两个口径各有消费者 ⇒ 各写一份实现、各自写清 docstring；
+**不要把一个口径悄悄套到另一个载体上**（那会把「登记口径」与「门禁口径」搅在一起，
+到时连「红的是哪一条」都说不清）。
+
 ## 豁免
 
 `tier ≤ 1` 确需某个第三方时，把它加进 `ALLOWED` 并**写明 reason** ——
@@ -61,6 +93,10 @@ DEFAULT_MATRIX = HERE.parent / "modules.json"
 DEFAULT_VERSIONS = HERE.parent / "versions.json"
 
 FIRST_PARTY_PREFIX = "github.com/oagentkit/"
+
+# 第一方基座前缀（oekit 矩阵）。基座是「第一方基座」，**不是**「外部依赖」——
+# 各仓 README 的「外部依赖地板」小节都不列它 ⇒ `third_party_of` 排除整棵前缀。
+BASE_PREFIX = "github.com/oekit/"
 
 # 基座白名单：纯 stdlib 邻接的 oekit 仓。
 # ⚠️ `github.com/oekit/logx` **不在**这里：它带 `oekit/core` → `hertz`（HTTP 框架），
@@ -128,6 +164,27 @@ def floor_of(reqs: list[tuple[str, bool]]) -> list[str]:
     return floor
 
 
+def third_party_of(reqs: list[tuple[str, bool]]) -> list[str]:
+    """各仓 go.mod 的**第三方直接依赖**（「外部依赖地板」口径）。
+
+    与 `floor_of` 的区别（两个口径各有消费者，别互相套用）：
+
+    - `floor_of` = 消费方模块图**继承到**的东西 ⇒ 含 `oekit/logx`
+      （它不在基座白名单里，因为 logx 带 hertz）⇒ 门禁 `tier0/tier1` 用它；
+    - `third_party_of` = **第三方**（非第一方基座、非矩阵内仓）的直接依赖
+      ⇒ `modules.json.heavyDeps` 用它 —— 基座是「第一方基座」，不是「外部依赖」。
+
+    同样：只收**直接**依赖（indirect 是传递进来的，不是本仓自己拉的）。
+    """
+    out: list[str] = []
+    for dep, indirect in reqs:
+        if dep.startswith(FIRST_PARTY_PREFIX) or dep.startswith(BASE_PREFIX):
+            continue
+        if not indirect:
+            out.append(dep)
+    return out
+
+
 def check_module(repo: str, tier: int | None,
                  reqs: list[tuple[str, bool]]) -> tuple[list[str], list[str]]:
     """→ (问题列表, 地板清单[仅直接依赖])
@@ -165,6 +222,46 @@ def reconcile_dep_floor(repo: str, actual: list[str], recorded: list[str] | None
         extra = sorted(set(recorded) - set(actual))
         return [f"{repo}: versions.json 的 depFloor 与 go.mod 不一致"
                 f"（矩阵缺 {missing or '无'} / 多 {extra or '无'}）—— 重跑 gen_versions.py"]
+    return []
+
+
+def recorded_heavy(data: dict, repo: str) -> tuple[bool, list[str] | None]:
+    """→ (是不是矩阵模块, 该仓登记的 `heavyDeps`)
+
+    **不是**矩阵模块（如门面 `agentkit`）⇒ `(False, None)` ⇒ **不参与这条对账** ——
+    门面在 `modules.json` 的 `infraRepos` 里、不是 `modules[]` 的一条，
+    本来就没有 `heavyDeps` 字段（它的地板由 `versions.json` 的 `facades[].depFloor` 记，
+    那份已由 `reconcile_dep_floor` 守着）。
+
+    是矩阵模块但**没有** `heavyDeps` 字段 ⇒ `(True, None)` ⇒ 判红（漏登记）。
+    """
+    for m in data.get("modules", []):
+        if m.get("repo") == repo:
+            hd = m.get("heavyDeps")
+            return True, (list(hd) if isinstance(hd, list) else None)
+    return False, None
+
+
+def reconcile_heavy_deps(repo: str, actual: list[str],
+                         recorded: list[str] | None) -> list[str]:
+    """`modules.json` 登记的 `heavyDeps` vs go.mod 实际算出的第三方直接依赖。
+
+    与 `reconcile_dep_floor` 同级：**矩阵登记的必须等于事实源算出来的**。
+    漏登记 / 多登记 / 内容不一致 ⇒ 一律红。
+
+    为什么这条必须存在：`modules.json.heavyDeps` 是**手写**字段，
+    而同义的 `versions.json.depFloor` 是**自动生成**且已被对账 ——
+    有人据此以为「地板这件事有门禁」，其实手写的那一份没人守。
+    """
+    if recorded is None:
+        return [f"{repo}: modules.json 里没有这一仓的 heavyDeps —— "
+                f"矩阵漏登记了？（该仓 go.mod 实测第三方直接依赖：{actual or '无'}）"]
+    if set(recorded) != set(actual):
+        missing = sorted(set(actual) - set(recorded))
+        extra = sorted(set(recorded) - set(actual))
+        return [f"{repo}: modules.json 的 heavyDeps 与 go.mod 不一致"
+                f"（矩阵漏 {missing or '无'} / 多 {extra or '无'}）"
+                f"—— 登记必须等于 go.mod 实测的第三方直接依赖"]
     return []
 
 
@@ -227,11 +324,17 @@ def main() -> int:
             problems.append(f"{repo}: 取不到 go.mod（判不了，不能当成「没有地板」）")
             continue
         checked += 1
-        probs, floor = check_module(repo, tier, requires(text))
+        reqs = requires(text)
+        probs, floor = check_module(repo, tier, reqs)
         problems.extend(probs)
         report.append((repo, tier, floor))
         # 对账：矩阵登记的地板必须等于 go.mod 的实际地板
         problems.extend(reconcile_dep_floor(repo, floor, recorded_floor(versions, repo)))
+        # 对账：**手写**的 heavyDeps 必须等于 go.mod 实测的第三方直接依赖
+        # （只对矩阵模块做对账；门面在 infraRepos 里，本来就没有 heavyDeps 字段）
+        is_module, recorded = recorded_heavy(data, repo)
+        if is_module:
+            problems.extend(reconcile_heavy_deps(repo, third_party_of(reqs), recorded))
 
     if checked == 0:
         print("❌ 一个仓都没检查到（拒绝判定：避免「全绿但什么都没查」）")
@@ -254,10 +357,14 @@ def main() -> int:
         print("     ALLOWED 白名单并写明 reason（豁免必须显式列举）；")
         print("  3. 矩阵登记与实际不一致 → 跑 gen_versions.py 重生成 versions.json，")
         print("     并把 matrix-tools/versions.json 与站点 docs/public/versions.json 一起提交。")
+        print("  4. modules.json 的 heavyDeps 与 go.mod 不一致 → 把 modules.json 里该仓的")
+        print("     heavyDeps 改成 go.mod 实测的**第三方直接依赖**（排除 oekit 第一方基座、")
+        print("     排除 oagentkit 矩阵内仓、排除 indirect）；它同时驱动 gen_docs.py 生成的")
+        print("     README「外部依赖地板」小节 ⇒ 登记错了，生成出来的文档也是错的。")
         return 1
 
     print(f"✅ {checked} 个仓的依赖地板合规（tier0/tier1 无重量级第三方直接依赖），"
-          f"且与 versions.json 登记一致")
+          f"且与 versions.json 的 depFloor、modules.json 的 heavyDeps 登记均一致")
     return 0
 
 
@@ -334,13 +441,62 @@ require github.com/oekit/concurrency v0.17.1
     check("取 facades 的登记", recorded_floor(v, "b"), [])
     check("没登记返回 None", recorded_floor(v, "zzz"), None)
 
+    # ── 第三种口径：第三方直接依赖（heavyDeps 用它）──
+    # 与 floor_of 的区别：**排除全部 oekit 基座**（基座不是「外部依赖」），
+    # 且排除矩阵内仓；indirect 同样不算。
+    check("third_party 排除 oekit 基座",
+          third_party_of([("github.com/oekit/logx", False),
+                          ("github.com/oekit/pkg", False),
+                          ("github.com/cloudwego/eino", False)]),
+          ["github.com/cloudwego/eino"])
+    check("third_party 排除矩阵内仓",
+          third_party_of([("github.com/oagentkit/obs", False),
+                          ("github.com/cloudwego/eino", False)]),
+          ["github.com/cloudwego/eino"])
+    check("third_party 排除 indirect",
+          third_party_of([("github.com/cloudwego/eino", True),
+                          ("github.com/cloudwego/eino-ext", False)]),
+          ["github.com/cloudwego/eino-ext"])
+    check("third_party 与 floor_of 口径不同",
+          third_party_of([("github.com/oekit/logx", False)]), [])
+    check("floor_of 收 logx 而 third_party 不收（两者口径确实不同）",
+          floor_of([("github.com/oekit/logx", False)]),
+          ["github.com/oekit/logx"])
+
+    # ── 对账：modules.json 手写的 heavyDeps vs go.mod 实测 ──
+    check("heavyDeps 对账一致",
+          reconcile_heavy_deps("x", ["github.com/cloudwego/eino"],
+                               ["github.com/cloudwego/eino"]), [])
+    check("heavyDeps 对账空一致", reconcile_heavy_deps("x", [], []), [])
+    check("heavyDeps 缺登记即红", len(reconcile_heavy_deps("x", [], None)), 1)
+    check("heavyDeps 漏登记即红",
+          len(reconcile_heavy_deps("x", ["github.com/cloudwego/eino"], [])), 1)
+    check("heavyDeps 多登记即红",
+          len(reconcile_heavy_deps("x", [], ["github.com/cloudwego/eino"])), 1)
+    check("heavyDeps 路径漂移即红",
+          len(reconcile_heavy_deps("x", ["github.com/cloudwego/eino-ext/components/model/openai"],
+                                   ["github.com/cloudwego/eino-ext"])), 1)
+
+    # recorded_heavy：从 modules.json 取登记。
+    # ⚠️ 返回 (是不是矩阵模块, 登记值) —— 门面在 infraRepos 里、不是 modules[] 的一条 ⇒
+    # 不参与对账（否则会被误报成「漏登记」）。
+    md = {"modules": [{"repo": "a", "heavyDeps": ["x"]},
+                      {"repo": "b", "heavyDeps": []},
+                      {"repo": "c"}]}
+    check("取 heavyDeps 登记", recorded_heavy(md, "a"), (True, ["x"]))
+    check("取空的 heavyDeps 登记", recorded_heavy(md, "b"), (True, []))
+    check("模块缺 heavyDeps 字段 → (True, None)", recorded_heavy(md, "c"), (True, None))
+    check("非矩阵模块（如门面）→ (False, None)", recorded_heavy(md, "zzz"), (False, None))
+
     if fails:
         print("❌ verify_dep_floor 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
     print("✅ verify_dep_floor 自测通过（tier0/1 红 / tier2 放行但记账 / logx 不在白名单 / "
-          "depFloor 对账：漏登记·多登记·漂移即红）")
+          "depFloor 对账：漏登记·多登记·漂移即红 / "
+          "third_party 口径排除基座·矩阵内仓·indirect / "
+          "heavyDeps 对账：漏登记·多登记·路径漂移即红）")
     return 0
 
 
