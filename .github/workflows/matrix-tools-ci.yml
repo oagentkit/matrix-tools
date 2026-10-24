@@ -241,6 +241,17 @@ jobs:
         # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
         run: python3 scripts/verify_repo_dep_claims.py --selftest
 
+      - name: 各仓依赖清单声明门禁自测
+        # 反证样本：清单多列一个仓（红）/ 漏列一个仓（红）/
+        # **indirect 不算本仓依赖**（绿）/ 同仓两个第一入口不一致（红）/
+        # 尾部括注里的包路径不是仓名（绿）/ 有依赖却没声明（黄）/
+        # 只有一个入口声明（黄）/ 缺 go.mod（黄）/ 认不出仓名（黄）/
+        # 拼错的仓名（黄），
+        # 以及**不误报**样本（tier 0 的否定句、显式空声明「无」、
+        # 全文路径写法、非矩阵依赖 oekit/* 不参与）。
+        # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
+        run: python3 scripts/verify_repo_dep_inventory.py --selftest
+
       - name: 第一方依赖方向门禁自测
         # 反证样本：tier 倒挂 / 依赖未声明 / 声明陈旧 / 矩阵内消费门面，
         # 以及**不误报**样本（合规依赖、indirect require 不算直接依赖）。
@@ -864,11 +875,39 @@ jobs:
         # （报告里仍以 ⚠️ 呈现，与「确认违规」的红区分）。
         run: python3 matrix-tools/scripts/verify_repo_dep_claims.py --root . --fail-on-yellow --json-out repo-dep-claims-report.json
 
+      - name: 各仓「本仓依赖的矩阵内仓」清单 vs go.mod 直接依赖（判红 + 判不了即失败）
+        # 这条守的是**仓级第一入口的依赖清单**：`README.md` / `AGENTS.md` 里
+        # 声明的「本仓依赖哪些矩阵内仓」必须与该仓 `go.mod` 的**直接**矩阵内依赖一致。
+        #
+        # 为什么此前没人守（实测 2026-10-24，issue matrix-tools#127）：
+        # obs/README.md 的清单写着「`textx`、`guardx`」，而 obs/go.mod 的矩阵内
+        # 直接依赖只有 guardx ⇒ 多列 textx（textx 随 019c029「obsx 迁出本仓」
+        # 离开 go.mod，同一份 README 第 22 行已经记了那次迁移，却漏改了上一行）；
+        # toolgate/README.md 与 toolgate/AGENTS.md 都只写「`mcpkit`」，而
+        # toolgate/go.mod 直接 require guardx（**无** // indirect 标记）⇒ 漏列 guardx。
+        #
+        # 三条已有守卫都停在「文档 ↔ go.mod」这一层之前：
+        # ① verify_import_direction 判 modules.json 的 dependsOn ↔ go.mod（数据源，13/13 一致）；
+        # ② verify_repo_dep_claims 判依赖**零性**红线；
+        # ③ verify_repo_tiers 判层位数字与层名。
+        #
+        # `--fail-on-yellow`：黄灯 = 「认不出声明 / 缺 go.mod / 有依赖却没声明」
+        # = 该仓的依赖清单**不再被机器核对** = 安静地失去覆盖 ——
+        # 那是本仓反复出现的失效形态，所以在这里把黄灯升级为失败。
+        run: python3 matrix-tools/scripts/verify_repo_dep_inventory.py --root . --fail-on-yellow --json-out repo-dep-inventory-report.json
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: repo-dep-claims-report
           path: repo-dep-claims-report.json
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repo-dep-inventory-report
+          path: repo-dep-inventory-report.json
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4

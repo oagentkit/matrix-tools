@@ -789,6 +789,30 @@
       "since": "2026-10-24",
       "note": "仓级依赖红线声明的漂移（2026-10-24 实测）：guardx/AGENTS.md 写着「本仓不得有外部依赖（require 段必须为空）」，而它的 go.mod 实测是 require github.com/oekit/pkg v0.22.1 ⇒ 那句话是假的；同一文件第 44 行又把 oekit/pkg 当「外部依赖」⇒ **同一份文件里两条指令互斥**。而且这不是「忘了改」：2026-10-19 22:48 的 3c0d845 之后 require 段确实为空（文档那一刻是真的），23:59 的 2b628b1 首次引入 oekit/pkg v0.16.0 ⇒ 文档从那一刻起变假，之后 4 次**有意的**地板抬升（v0.18.0 → v0.20.0 → v0.22.0 → v0.22.1，每次一个独立 PR）都没回改它。三个本该抓住它的机制逐个失效：① verify_repo_docs 是报告器（continue-on-error，恒不失败），比的是整文件 diff 而 13 个仓的 README/AGENTS.md 都有大量手写段落 ⇒ 噪音太大；② gen_docs 的合并模型要求生成区标记，而这 13 个仓的 README/AGENTS.md 一个都没有 ⇒ 生成器一律跳过；③ verify_repo_tiers 只判层位数字与层名，不判依赖红线。判据取「文档声明 vs go.mod 事实」：钉死了语义的（require 段为空 / 零第三方依赖）判红，没钉死语义的（「零外部依赖」——指「一条 require 都没有」还是「没有第三方依赖」？第一方基座 github.com/oekit/* 算哪一种？）判黄，缺 go.mod 判黄；CI 用 --fail-on-yellow 把黄灯升级为失败（黄灯＝该仓的依赖红线不再被机器核对＝安静地失去覆盖）。只判本仓自述，不判跨仓提及与否定句（同 verify_repo_tiers 的边界）。",
       "kind": "gate"
+    },
+    {
+      "id": "repo-dep-inventory",
+      "claim": "各模块仓 AGENTS.md / README.md 里声明的「本仓依赖的矩阵内仓」清单，必须与该仓 go.mod 的**直接**矩阵内依赖一致",
+      "judges": [
+        "verify_repo_dep_inventory.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓 AGENTS.md / README.md 的「本仓依赖的矩阵内仓」清单行（反引号包起来的仓名或全文路径）+ 各仓 go.mod require 段的**直接**部分（// indirect 不算，取数走 matrix_facts.parse_go_mod）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-24",
+      "note": "仓级依赖**清单**声明的漂移（2026-10-24 实测，issue matrix-tools#127）：obs/README.md 的清单写着「本仓依赖的矩阵内仓：`textx`、`guardx`」，而 obs/go.mod 的矩阵内直接依赖只有 guardx ⇒ **多列 textx**（textx 随 019c029「refactor!: obsx 迁出本仓」离开 go.mod，同一份 README 第 22 行已经记录了那次迁移，却漏改了上一行的清单；同仓 AGENTS.md 的同一行本来是对的 ⇒ 两个第一入口互相矛盾）。toolgate/README.md 与 toolgate/AGENTS.md 的清单都写着「`mcpkit`」，而 toolgate/go.mod 直接 require github.com/oagentkit/guardx v0.14.0（**无** // indirect 标记）⇒ **漏列 guardx**（该依赖由 5c49229「refactor!: invoke 迁出本仓」带入，而 invoke 链正是本仓 AGENTS.md 的核心不变量）。三个本该抓住它的机制逐个失效：① verify_import_direction.py（dependency-declaration 不变量）判的是 **modules.json 的 dependsOn ↔ go.mod**，实跑红 0/黄 0 ⇒ 数据源 13/13 一致、漂的是**文档层**；② verify_repo_dep_claims.py 判的是依赖**零性**红线（零第三方依赖 / require 段为空），不判「依赖了哪些仓」的清单；③ verify_repo_tiers.py 判层位数字与层名。⇒ 三条守卫都停在「文档 ↔ go.mod」这一层之前，本条补的就是这一层。判据：清单集合 == go.mod 直接矩阵内依赖（多列/漏列都判红）；认不出仓名、缺 go.mod、**有依赖却没有声明**判黄（认不出＝该仓不再被机器核对＝安静地失去覆盖，CI 用 --fail-on-yellow 升级为失败）。口径与 modules.json 的 dependsOn 同为「直接依赖」：toolgate/go.mod 里 `github.com/oagentkit/runtime v0.7.2 // indirect` 是被 mcpkit 拉进来的，不算本仓依赖。两个文件都判（AGENTS.md / README.md）——只判一个会让另一个安静地失去覆盖。只判本仓自述的清单行，不判散文里的跨仓提及；tier 0 的否定句「任何矩阵内模块都不得被本仓依赖」不是声明；反引号里的 `guardx/logredact` 是包路径不是仓名。",
+      "kind": "gate"
     }
   ],
   "retired": [
