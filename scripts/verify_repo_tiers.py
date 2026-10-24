@@ -1,12 +1,34 @@
 #!/usr/bin/env python3
-"""各模块仓 `AGENTS.md` 声明的层位 vs 矩阵单一数据源 `modules.json`。
+"""各模块仓 `AGENTS.md` / `README.md` 声明的层位 vs 矩阵单一数据源 `modules.json`。
 
 ## 守的不变量
 
-**每个模块仓的 `AGENTS.md` 声明的层位，必须与 `matrix-tools/modules.json` 一致。**
+**每个模块仓的 `AGENTS.md` 与 `README.md` 声明的层位，必须与 `matrix-tools/modules.json` 一致。**
 
-`AGENTS.md` 是仓级的第一入口（人读 + agent 读）。它写错层位，读者就会按错的层位
+这两个文件都是仓级的第一入口（人读 + agent 读）。它们写错层位，读者就会按错的层位
 去判断依赖方向——而分层是矩阵的硬不变量（tier N 不得依赖 tier > N）。
+
+## 为什么 `README.md` 也要守（实测 2026-10-24）
+
+`AGENTS.md` 那一侧的漂移被本守卫抓住并刷正了（queue/obs/skillkit/mcpkit/rag 5 个仓，
+见下节），但**同一批仓的 `README.md` 至今仍写着重定位之前的旧层位**——
+上一轮只修了 `AGENTS.md`，因为本守卫当时**只读 `AGENTS.md`**。
+
+实测同一形态的第二个入口：
+
+| 仓 | `README.md` 声明 | `modules.json` |
+|---|---|---|
+| `queue` | tier 0（基础层） | **tier 2** |
+| `obs` / `skillkit` / `mcpkit` / `rag` | tier 1（能力层，依赖 tier0） | **tier 2** |
+
+⇒ **同一个仓的两个第一入口互相矛盾**（`AGENTS.md` 说 tier 2、`README.md` 说 tier 1），
+比单个入口写错更糟：读者读到哪个就信哪个。
+
+所以本守卫对两份文档各认一套「自述层位」形态（见 `DOC_PROFILES`），
+判据、判定档位、`--write` 的契约完全共用——**不新造第二套守卫**。
+
+同仓的 `verify_repo_dep_claims.py` 本来就读两个文件（`DOC_FILES = ("AGENTS.md", "README.md")`），
+覆盖面不一致本身就是一条缺口。
 
 ## 为什么这条缺口此前没人守
 
@@ -30,12 +52,20 @@
 
 ## 判据：认「自述层位」，不认「提及层位」
 
-判据只管**本仓自述**的层位：
+判据只管**本仓自述**的层位。`AGENTS.md`：
 
 1. **规范行**：第 5 行的 `矩阵分层：**tier N（层名…）**` ——
    层位**数字**与**层名**都要与数据源一致；
 2. **正文自述行**：`本仓是 tier N` / `本仓 tier N`（以及紧跟其后的层名，如
    「本仓是 tier 0 基础层」）—— 数字与层名都要一致。
+
+`README.md`（同一套判据，两种形态）：
+
+1. **定位声明行**（规范行）：首部的 `oagentkit 模块矩阵 **tier N（层名…）**` ——
+   `guardx` 是同义变体 `oagentkit 模块矩阵的 **tier 0 安全层**`（同一正则可认）；
+   层位**数字**与**层名**都要与数据源一致；
+2. **`## 定位` 自述行**：`**tier N** — 层名…`（12 个仓有；`guardx` 无此形态 ⇒
+   **认出来就核、认不出不强制**——它是可选形态，不是必备形态）。
 
 **不判**的是「跨仓提及」：像 runtime 的「procx 被 tier1 的 mcpkit 使用」这种
 **谈论别的仓**的句子不在判据内（那是另一条不变量：提及的仓层位是否对）。
@@ -113,10 +143,63 @@ SELF_RE = re.compile(r"本仓(?:是|为|属于)?\s*tier\s*(\d+)")
 # ——「本仓是 tier 2，依赖 tier 1 的 alpha 集成层」就会误判。
 LABEL_RE = re.compile(r"[\s\*（(]{0,4}([一-鿿]{2,4}层)")
 
+# ── `README.md` 的两种自述形态 ──
+#
+# 定位声明行（规范行，13 仓全覆盖）：
+#   `… —— oagentkit 模块矩阵 **tier 2**（集成层，依赖 tier0/tier1 + 重第三方地板）。`
+#   `guardx` 的变体：`oagentkit 模块矩阵的 **tier 0 安全层**。`
+# ⇒ `模块矩阵` 与 `的` 可选，同一个正则覆盖两种写法。
+README_HEADER_RE = re.compile(r"oagentkit 模块矩阵(?:的)?\s*\**\s*tier\s*(\d+)")
+
+# `## 定位` 小节的自述行（12 仓有；guardx 没有 ⇒ 可选形态）：
+#   `**tier 2** — 集成层，依赖 tier0/tier1 + 重第三方地板。`
+#   `**tier 0，依赖方向的最底层。** 矩阵内没有任何模块可以反向依赖本仓，`
+README_SELF_RE = re.compile(r"^\*\*tier\s*(\d+)")
+
+# README 的层名模式：共享的 `LABEL_RE` 锚得太紧（层位数字后最多 4 个字符），
+# 认不出 `## 定位` 自述行里的层名 —— 那里层位数字与层名之间隔着一个破折号：
+#   `**tier 2** — 集成层，依赖 tier0/tier1 + 重第三方地板。`
+# （`**` + 空格 + `—` + 空格 = 5 个字符 ⇒ 超了共享模式 4 字符的窗口。）
+#
+# 放宽到 6 个字符并允许破折号后，实测 13 仓 README 抽出的层名全部合法：
+# 编排层 / 集成层 / 能力层 / 基础层 / guardx 的「安全层」；
+# `queue`（`**tier 0**，零矩阵内依赖…`）与 `textx`（`**tier 0，依赖方向的最底层。**`）
+# 抽不出层名 —— 这是对的：它们那两行**本来就没有**层名，不该硬认一个。
+README_LABEL_RE = re.compile(r"[\s\*（(—–\-]{0,6}([一-鿿]{2,4}层)")
+
+
+@dataclass(frozen=True)
+class DocProfile:
+    """一个仓级文档的「自述层位」形态。
+
+    两份文档各认各的形态，但**判据、判定档位、`--write` 契约完全共用**——
+    覆盖面不一致本身就是缺口（同仓的 `verify_repo_dep_claims.py` 就读两个文件）。
+    """
+
+    filename: str          # 相对仓根，如 "README.md"
+    header_re: re.Pattern  # 规范行（定位声明行）
+    self_re: re.Pattern    # 正文自述行
+    label_re: re.Pattern   # 层名模式（紧跟在层位数字之后）
+    hint: str = ""         # 「认不出声明」时给人的写法提示
+
+
+# 文档档位表：两份文档各认各的形态，判据完全共用。
+#
+# 「认不出声明」的口径对两份文档一致：**两种形态一个都没认出来**才算认不出
+# （`guardx` 只有定位声明行、没有 `## 定位` 自述行 ⇒ 照样算认出来了）。
+DOC_PROFILES = (
+    DocProfile("AGENTS.md", HEADER_RE, SELF_RE, LABEL_RE,
+               "规范行写法：> 矩阵分层：**tier N（层名…）**；"
+               "正文自述写法：本仓是 tier N"),
+    DocProfile("README.md", README_HEADER_RE, README_SELF_RE, README_LABEL_RE,
+               "定位声明行写法：… —— oagentkit 模块矩阵 **tier N（层名…）**；"
+               "`## 定位` 自述行写法：**tier N** — 层名…"),
+)
+
 
 @dataclass
 class Decl:
-    """一个仓的层位声明（从 `AGENTS.md` 里认出来的）。"""
+    """一个仓在一份文档里的层位声明。"""
 
     repo: str
     header_tier: int | None = None
@@ -149,19 +232,19 @@ def layer_labels(tiers_map: dict) -> dict[int, str]:
     return out
 
 
-def parse_decl(repo: str, text: str) -> Decl:
-    """从 `AGENTS.md` 全文里认出本仓的自述层位。"""
+def parse_decl(repo: str, text: str, prof: DocProfile) -> Decl:
+    """从一份仓级文档的全文里认出本仓的自述层位。"""
     d = Decl(repo=repo)
     for idx, line in enumerate(text.splitlines(), start=1):
-        m = HEADER_RE.search(line)
+        m = prof.header_re.search(line)
         if m and d.header_tier is None:
             d.header_tier = int(m.group(1))
             d.header_line = idx
-            lm = LABEL_RE.match(line, m.end(1))
+            lm = prof.label_re.match(line, m.end(1))
             if lm:
                 d.header_label = lm.group(1)
-        for sm in SELF_RE.finditer(line):
-            lm = LABEL_RE.match(line, sm.end(1))
+        for sm in prof.self_re.finditer(line):
+            lm = prof.label_re.match(line, sm.end(1))
             d.self_decls.append(
                 (int(sm.group(1)), lm.group(1) if lm else None, idx))
     return d
@@ -202,7 +285,7 @@ def _mismatches(d: Decl, tier: int, want_label: str | None,
 
 
 def _rewrite_label(text: str, start: int, want_label: str | None,
-                   known: set[str]) -> str:
+                   known: set[str], label_re: re.Pattern) -> str:
     """把**紧跟在 start 之后**的层名改成权威层名。
 
     只改**确实是个层名**（出自数据源那张映射）的那一个词——
@@ -210,33 +293,33 @@ def _rewrite_label(text: str, start: int, want_label: str | None,
     """
     if not want_label:
         return text
-    m = LABEL_RE.match(text, start)
+    m = label_re.match(text, start)
     if m and m.group(1) in known and m.group(1) != want_label:
         return text[:m.start(1)] + want_label + text[m.end(1):]
     return text
 
 
 def rewrite_text(text: str, tier: int, want_label: str | None,
-                 known: set[str]) -> str:
+                 known: set[str], prof: DocProfile) -> str:
     """把自述层位改成 (tier, 层名)——**只动层位数字与层名，其余逐字不动**。"""
     lines = text.splitlines(keepends=True)
     out: list[str] = []
     for line in lines:
-        m = HEADER_RE.search(line)
+        m = prof.header_re.search(line)
         if m:
             new = line[:m.start(1)] + str(tier) + line[m.end(1):]
-            m2 = HEADER_RE.search(new)
-            new = _rewrite_label(new, m2.end(1), want_label, known)
+            m2 = prof.header_re.search(new)
+            new = _rewrite_label(new, m2.end(1), want_label, known, prof.label_re)
             out.append(new)
             continue
         # 正文自述行：一遍扫过去，边拼边改（下标始终指向原串，不会错位）
         out_pieces: list[str] = []
         pos = 0
-        for sm in SELF_RE.finditer(line):
+        for sm in prof.self_re.finditer(line):
             out_pieces.append(line[pos:sm.start(1)])
             out_pieces.append(str(tier))
             pos = sm.end(1)
-            lm = LABEL_RE.match(line, pos)
+            lm = prof.label_re.match(line, pos)
             if lm and lm.group(1) in known and want_label and lm.group(1) != want_label:
                 out_pieces.append(line[pos:lm.start(1)])
                 out_pieces.append(want_label)
@@ -248,7 +331,7 @@ def rewrite_text(text: str, tier: int, want_label: str | None,
 
 def judge(root: Path, matrix_path: Path, write: bool = False) -> Report:
     """判定各仓层位声明与数据源是否一致。"""
-    rep = Report(title="各仓 AGENTS.md 层位声明")
+    rep = Report(title="各仓 README.md / AGENTS.md 层位声明")
     if not matrix_path.is_file():
         rep.red("modules.json", f"找不到矩阵数据源：{matrix_path}",
                 "路径相对矩阵根目录；确认 CI 布局里有 matrix-tools/modules.json")
@@ -283,46 +366,54 @@ def judge(root: Path, matrix_path: Path, write: bool = False) -> Report:
             rep.yellow(repo, f"数据源的 tiers 里没有 tier {tier} 的层名",
                        "modules.json 的 tiers 映射要覆盖本仓的层位")
 
-        path = root / repo / "AGENTS.md"
-        if not path.is_file():
-            rep.yellow(repo, f"没有 {repo}/AGENTS.md —— 该仓的层位声明无从核对",
-                       "模块仓应当有 AGENTS.md（本仓红线入口）；"
-                       "补上并在首部写「矩阵分层：**tier N（层名…）**」")
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            rep.yellow(repo, f"读不了 {repo}/AGENTS.md：{exc}")
-            continue
+        for prof in DOC_PROFILES:
+            # AGENTS.md 的报告 subject 保持仓名（历史口径），README 带上文件名
+            subject = repo if prof.filename == "AGENTS.md" else f"{repo}/{prof.filename}"
+            path = root / repo / prof.filename
+            if not path.is_file():
+                rep.yellow(subject, f"没有 {repo}/{prof.filename} —— 该仓的层位声明无从核对",
+                           "模块仓应当有 " + prof.filename
+                           + "（仓级第一入口）；补上并按下面的写法声明层位："
+                           + prof.hint)
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                rep.yellow(subject, f"读不了 {repo}/{prof.filename}：{exc}")
+                continue
 
-        d = parse_decl(repo, text)
-        if not d.recognized:
-            rep.yellow(repo, "认不出本仓的层位声明（既没有规范行，也没有自述行）",
-                       "规范行写法：> 矩阵分层：**tier N（层名…）**；"
-                       "正文自述写法：本仓是 tier N —— 认不出 ⇒ 这条仓不再被机器核对")
-            continue
+            d = parse_decl(repo, text, prof)
+            if not d.recognized:
+                rep.yellow(subject,
+                           f"认不出本仓在 {prof.filename} 里的层位声明"
+                           "（既没有规范行，也没有自述行）",
+                           prof.hint + " —— 认不出 ⇒ 这条仓不再被机器核对")
+                continue
 
-        bad = _mismatches(d, tier, want_label, known_labels)
-        if not bad:
-            checked += 1
-            continue
+            bad = _mismatches(d, tier, want_label, known_labels)
+            if not bad:
+                checked += 1
+                continue
 
-        if write:
-            new_text = rewrite_text(text, tier, want_label, known_labels)
-            if new_text != text:
-                path.write_text(new_text, encoding="utf-8")
-            rep.yellow(repo, "已按数据源改写层位数字/层名：" + "；".join(bad),
-                       "⚠️ --write 只改层位数字与层名：**同句的依赖语义措辞仍需人读一遍**")
-            continue
+            if write:
+                new_text = rewrite_text(text, tier, want_label, known_labels, prof)
+                if new_text != text:
+                    path.write_text(new_text, encoding="utf-8")
+                rep.yellow(subject,
+                           "已按数据源改写层位数字/层名：" + "；".join(bad),
+                           "⚠️ --write 只改层位数字与层名：**同句的依赖语义措辞仍需人读一遍**")
+                continue
 
-        rep.red(repo, "AGENTS.md 声明的层位与 modules.json 不一致：" + "；".join(bad),
-                f"modules.json 说本仓是 tier {tier}"
-                + (f"（{want_label}）" if want_label else "")
-                + "；改 AGENTS.md 的层位行与自述行"
-                + "（--write 可改数字与层名，语义措辞需手改）")
+            rep.red(subject,
+                    f"{prof.filename} 声明的层位与 modules.json 不一致：" + "；".join(bad),
+                    f"modules.json 说本仓是 tier {tier}"
+                    + (f"（{want_label}）" if want_label else "")
+                    + f"；改 {prof.filename} 的层位行与自述行"
+                    + "（--write 可改数字与层名，语义措辞需手改）")
 
-    rep.note(f"逐仓比对 {len(modules)} 个模块仓的 AGENTS.md 层位声明；"
-             f"一致 {checked} 个")
+    rep.note(f"逐仓比对 {len(modules)} 个模块仓的 "
+             + " + ".join(p.filename for p in DOC_PROFILES)
+             + f" 层位声明；一致 {checked} 处")
     return rep
 
 
@@ -354,6 +445,14 @@ def _mk_agents(root: Path, repo: str, body: str) -> Path:
     return p
 
 
+def _mk_readme(root: Path, repo: str, body: str) -> Path:
+    d = root / repo
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / "README.md"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
 _GOOD_ALPHA = """# alpha
 
 > 矩阵分层：**tier 0（基础层）**
@@ -369,6 +468,40 @@ _GOOD_BETA = """# beta
 
 - 依赖严格自底向上。本仓是 tier 2，只允许依赖 tier ≤ 2 的仓。
   ⚠️ 两者都是 tier 0，本仓 tier 2 —— 依赖方向合法。
+
+手写段落，必须逐字保留。
+"""
+
+# README 侧的「一致样本」：定位声明行 + `## 定位` 自述行。
+# ⚠️ 定位声明行是 README 的**必备**形态（13 仓全覆盖）；
+# `## 定位` 自述行是**可选**形态（`guardx` 没有）⇒ 守卫对它是「认出来就核」。
+_GOOD_README_ALPHA = """# alpha
+
+alpha 是什么 —— oagentkit 模块矩阵 **tier 0**（基础层）。
+
+## 定位
+
+**tier 0** — 基础层。
+
+手写段落，必须逐字保留。
+"""
+
+_GOOD_README_BETA = """# beta
+
+beta 是什么 —— oagentkit 模块矩阵 **tier 2**（集成层，依赖 tier0/tier1 + 重第三方地板）。
+
+## 定位
+
+**tier 2** — 集成层，依赖 tier0/tier1 + 重第三方地板。
+
+手写段落，必须逐字保留。
+"""
+
+# `guardx` 形态的样本：只有定位声明行（且层名是仓自定的「安全层」），
+# 没有 `## 定位` 自述行 ⇒ 守卫必须照样认出来、且不因层名不是数据源层名而误报。
+_GOOD_README_GUARDX = """# guardx
+
+guardx 是什么 —— oagentkit 模块矩阵的 **tier 0 安全层**。与矩阵其余仓的关系：
 
 手写段落，必须逐字保留。
 """
@@ -395,6 +528,8 @@ def selftest() -> int:
         matrix = _mk_matrix(root)
         _mk_agents(root, "alpha", _GOOD_ALPHA)
         _mk_agents(root, "beta", _GOOD_BETA)
+        _mk_readme(root, "alpha", _GOOD_README_ALPHA)
+        _mk_readme(root, "beta", _GOOD_README_BETA)
 
         # ① 全部一致 ⇒ 无红
         rep = judge(root, matrix)
@@ -458,6 +593,81 @@ def selftest() -> int:
         rep = judge(root, matrix)
         check("--write 后复核不判红", reds(rep), set())
 
+        # ── README 档位的反证样本 ────────────────────────────────
+        #
+        # README 与 AGENTS.md 是同一份不变量在两个第一入口上的两面，
+        # 所以 README 档位**必须**有等价的反证样本 —— 否则「覆盖面扩大了」
+        # 只是多认了几行文本，没有多抓一类缺陷。
+
+        # ⑧b 反证：README 定位声明行的层位数字错 ⇒ 必须判红
+        _mk_readme(root, "beta",
+                   _GOOD_README_BETA.replace("模块矩阵 **tier 2**",
+                                             "模块矩阵 **tier 1**"))
+        rep = judge(root, matrix)
+        check("README 定位声明行数字错 → 判红", "beta/README.md" in reds(rep), True)
+
+        # ⑧c 反证：README `## 定位` 自述行的层位数字错 ⇒ 必须判红
+        _mk_readme(root, "beta",
+                   _GOOD_README_BETA.replace("**tier 2** — 集成层",
+                                             "**tier 1** — 能力层"))
+        rep = judge(root, matrix)
+        check("README 定位自述行数字错 → 判红", "beta/README.md" in reds(rep), True)
+
+        # ⑧d 反证：README 层名错（数字对、层名是别的层的）⇒ 必须判红
+        _mk_readme(root, "beta",
+                   _GOOD_README_BETA.replace("（集成层，", "（基础层，"))
+        rep = judge(root, matrix)
+        check("README 层名错 → 判红", "beta/README.md" in reds(rep), True)
+
+        # ⑧e 反证：README 两种形态都认不出 ⇒ 判黄（不是红，也不是绿）
+        _mk_readme(root, "beta", "# beta\n\n这里没有任何层位声明。\n")
+        rep = judge(root, matrix)
+        check("README 认不出声明 → 判黄", "beta/README.md" in yellows(rep), True)
+        check("README 认不出声明 → 不判红", "beta/README.md" in reds(rep), False)
+
+        # ⑧f README 缺文件 ⇒ 判黄
+        (root / "beta" / "README.md").unlink()
+        rep = judge(root, matrix)
+        check("缺 README.md → 判黄", "beta/README.md" in yellows(rep), True)
+        check("缺 README.md → 不判红", "beta/README.md" in reds(rep), False)
+        _mk_readme(root, "beta", _GOOD_README_BETA)
+
+        # ⑧g README 里**谈论别的仓**的层位 ⇒ 不误报
+        _mk_readme(root, "beta",
+                   _GOOD_README_BETA.replace(
+                       "## 定位",
+                       "本仓依赖 tier 0 的 alpha 与 tier 1 的 gamma。\n\n## 定位"))
+        rep = judge(root, matrix)
+        check("README 跨仓提及不误报", reds(rep), set())
+
+        # ⑧h README --write：数字与层名都改，手写段落逐字不动
+        bad_readme = (_GOOD_README_BETA
+                      .replace("模块矩阵 **tier 2**", "模块矩阵 **tier 1**")
+                      .replace("（集成层，", "（基础层，")
+                      .replace("**tier 2** — 集成层", "**tier 1** — 基础层"))
+        pr = _mk_readme(root, "beta", bad_readme)
+        rep = judge(root, matrix, write=True)
+        check("--write 后 README 判红消失", "beta/README.md" in reds(rep), False)
+        after = pr.read_text(encoding="utf-8")
+        check("--write README 保留手写段落", "手写段落，必须逐字保留。" in after, True)
+        check("--write README 改了定位声明行",
+              "模块矩阵 **tier 2**" in after, True)
+        check("--write README 改了定位声明行的层名",
+              "（集成层，" in after, True)
+        check("--write README 改了定位自述行",
+              "**tier 2** — 集成层" in after, True)
+        rep = judge(root, matrix)
+        check("--write README 后复核不判红", reds(rep), set())
+
+        # ⑧i `guardx` 形态：只有定位声明行、层名是仓自定的「安全层」
+        #     （不在数据源的层名映射里）⇒ 既不判红也不判黄
+        _mk_readme(root, "alpha", _GOOD_README_GUARDX)
+        _mk_agents(root, "alpha", _GOOD_ALPHA)
+        rep = judge(root, matrix)
+        check("仓自定层名不判红", "alpha/README.md" in reds(rep), False)
+        check("仓自定层名不判黄", "alpha/README.md" in yellows(rep), False)
+        _mk_readme(root, "alpha", _GOOD_README_ALPHA)
+
         # ⑨ 判据本身坏掉时必须被发现（判红，而不是静默放行）：
         #    数据源缺该层位的层名 ⇒ 判黄（判不了），不是绿
         m2 = json.loads(matrix.read_text(encoding="utf-8"))
@@ -474,12 +684,15 @@ def selftest() -> int:
     print("✅ verify_repo_tiers 自测通过"
           "（一致→绿 / 层位数字错→红 / 层名错→红 / 自述行错→红 / "
           "认不出声明→黄 / 缺 AGENTS.md→黄 / 跨仓提及不误报 / 口语「底层」不误报 / "
-          "--write 只改层位行）")
+          "--write 只改层位行 / "
+          "README 定位声明行错→红 / README 定位自述行错→红 / README 层名错→红 / "
+          "README 认不出→黄 / 缺 README.md→黄 / README 跨仓提及不误报 / "
+          "仓自定层名不误报 / --write 改 README 层位行）")
     return 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="各仓 AGENTS.md 层位声明 vs modules.json")
+    ap = argparse.ArgumentParser(description="各仓 README.md / AGENTS.md 层位声明 vs modules.json")
     ap.add_argument("--root", default=".", help="矩阵根目录（各仓的父目录）")
     ap.add_argument("--matrix", default=None,
                     help="modules.json 路径（默认 <root>/matrix-tools/modules.json）")

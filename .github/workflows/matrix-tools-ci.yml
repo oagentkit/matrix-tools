@@ -820,15 +820,22 @@ jobs:
         continue-on-error: true
         run: python3 matrix-tools/scripts/verify_repo_docs.py --mirror .
 
-      - name: 各仓 AGENTS.md 层位声明（判红 + 判不了即失败）
-        # 这条守的是**仓级第一入口**：各仓 `AGENTS.md` 声明的层位必须与
-        # `modules.json`（矩阵单一数据源）一致。
+      - name: 各仓 README.md / AGENTS.md 层位声明（判红 + 判不了即失败）
+        # 这条守的是**仓级第一入口**：各仓 `README.md` 与 `AGENTS.md` 声明的层位
+        # 必须与 `modules.json`（矩阵单一数据源）一致。
         #
         # 为什么此前没人守（实测 2026-10-24）：queue/obs/skillkit/mcpkit/rag
         # 5 个仓写的都是重定位**之前**的旧层位（tier 0 / tier 1），而数据源是 tier 2。
         # 而三个本该抓住它的机制逐个失效：verify_repo_docs 是报告器（恒不失败）、
         # verify_profile_tiers 只守 org profile 一处生成区、gen_docs 因这 13 个仓的
-        # AGENTS.md **没有生成区标记**而一律跳过 ⇒ 没有任何自动路径能更新它们。
+        # AGENTS.md / README.md **没有生成区标记**而一律跳过 ⇒ 没有任何自动路径能更新它们。
+        #
+        # 为什么两个文件都要守（2026-10-24 追加）：`AGENTS.md` 那一侧的漂移被抓住并
+        # 刷正了，但**同一批仓的 `README.md` 至今仍写旧层位** —— 本守卫当时只读
+        # `AGENTS.md` ⇒ 一个仓的**两个第一入口互相矛盾**（AGENTS.md 说 tier 2、
+        # README.md 说 tier 1），比单个入口写错更糟。
+        # 同仓的 verify_repo_dep_claims 本来就读两个文件（DOC_FILES），覆盖面不一致
+        # 本身就是一条缺口。
         #
         # `--fail-on-yellow`：本守卫每次扫全矩阵，「认不出声明」＝
         # **这条仓的层位声明不再被机器核对**＝安静地失去覆盖 ——
