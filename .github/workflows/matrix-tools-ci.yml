@@ -439,10 +439,20 @@ jobs:
         #    共享判定 = 共同盲区：那个字段自己就会变成新的可写豁免。
         run: python3 scripts/verify_debt_mitigation.py --org oagentkit
 
-      - name: 依赖地板（tier0/tier1 必须无重量级第三方）+ depFloor 对账
-        # 一条脚本两件事：① 层位判定（tier0/tier1 地板必须为空）；
+      - name: 依赖地板（tier0/tier1 必须无重量级第三方）+ depFloor / heavyDeps 对账
+        # 一条脚本三件事：
+        # ① 层位判定（tier0/tier1 地板必须为空）；
         # ② 对账——矩阵 versions.json 登记的 depFloor 必须等于各仓真实
-        # go.mod 算出的地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）。
+        # go.mod 算出的地板（漏登记 / 多登记 / 内容漂移 / 取不到即红）；
+        # ③ 对账——矩阵 modules.json 登记的 heavyDeps（**手写**字段）必须等于
+        #    各仓 go.mod 实测的**第三方直接依赖**（漏登记 / 多登记 / 路径漂移即红）。
+        #
+        # ③ 为什么必须单独守（实测 2026-10-24）：`heavyDeps` 是**手写**的，
+        # 而同义的 `versions.json.depFloor` 是**自动生成**且已被 ② 守着
+        # ⇒ 有人据此以为「地板这件事有门禁」，其实手写的那一份没人守。
+        # 实测 13 个仓里 5 个的 heavyDeps 与 go.mod 对不上（obs 多登记 eino、
+        # skillkit/tools/agent 漏登记、llm 登记了不在模块图里的 eino-ext 根模块）。
+        # 它同时驱动 gen_docs.py 生成的 README「外部依赖地板」小节 ⇒ 登记错了，文档也是错的。
         run: python3 scripts/verify_dep_floor.py --org oagentkit
 
       - name: Go 地板（tier0 必须 1.24.x）+ CI go-version 与 go.mod 成对
