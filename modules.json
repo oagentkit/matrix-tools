@@ -182,9 +182,7 @@
         "langfuse",
         "audit"
       ],
-      "heavyDeps": [
-        "github.com/cloudwego/eino"
-      ],
+      "heavyDeps": [],
       "dependsOn": [
         "guardx"
       ],
@@ -214,6 +212,7 @@
         "lineage"
       ],
       "heavyDeps": [
+        "github.com/cloudwego/eino",
         "gopkg.in/yaml.v3",
         "github.com/Masterminds/semver/v3"
       ],
@@ -310,7 +309,7 @@
       "heavyDeps": [
         "github.com/cloudwego/eino",
         "github.com/meguminnnnnnnnn/go-openai",
-        "github.com/cloudwego/eino-ext",
+        "github.com/cloudwego/eino-ext/components/model/openai",
         "golang.org/x/time"
       ],
       "dependsOn": [
@@ -383,7 +382,8 @@
         "bashguard"
       ],
       "heavyDeps": [
-        "github.com/cloudwego/eino"
+        "github.com/cloudwego/eino",
+        "mvdan.cc/sh/v3"
       ],
       "dependsOn": [
         "textx",
@@ -422,7 +422,9 @@
         "clarify"
       ],
       "heavyDeps": [
-        "github.com/cloudwego/eino"
+        "github.com/cloudwego/eino",
+        "github.com/cloudwego/eino-ext/components/model/openai",
+        "gopkg.in/yaml.v3"
       ],
       "dependsOn": [
         "llm",
