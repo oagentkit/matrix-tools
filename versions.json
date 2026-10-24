@@ -2050,7 +2050,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.48",
+      "latest": "v1.8.49",
       "retiring": true,
       "breakingIndex": [
         {
@@ -3038,6 +3038,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.22.1",
               "to": "v0.23.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.49",
+          "date": "2026-10-24",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.23.1",
+              "to": "v0.24.0"
             }
           ]
         }
