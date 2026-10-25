@@ -108,7 +108,28 @@ EXPLICIT: list[tuple[re.Pattern[str], str]] = [
     # 不依赖这条措辞匹配。收窄不损失该类召回。
     (re.compile(r"(?im)^[\s>*\-•]*\**\s*breaking\b[\s\-_]*(?:change|changes)?\**\s*[:：]"),
      "行首 BREAKING: / BREAKING CHANGE: / BREAKING-CHANGE:"),
-    (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)\b", re.I), "BREAKING CHANGE 短语"),
+    # 「BREAKING CHANGE 短语」——**要求短语后紧跟冒号**（标记形态）。
+    #
+    # 为什么收窄（实测 2026-10-25）：不要求冒号时，它会把**转述别的版本**的
+    # 破坏性变更当成「本版是破坏性变更」。实测样本在 llm v0.18.0 的版本段里：
+    #
+    #   「v0.9.0（2026-10-19）把根包上移到 module 根，路径改成 github.com/oagentkit/llm，
+    #     并标了 BREAKING CHANGE。」
+    #
+    # 这一版是**纯新增**（llm/llm 兼容层），**不破坏**任何东西；句子里描述的是
+    # v0.9.0 那次包上移。而矩阵的 breakingIndex 记的是 **import 路径 / API 断裂**
+    #（机器按它写 import 直接编译不过）——把纯新增版登记成破坏性变更 = 对下游说谎。
+    #
+    # 收窄后仍保留 oracle 的「宽口径」本意：**行中**的标记行照收
+    #（「本版是 BREAKING CHANGE：因为 import 路径变了」照收），
+    # 只把「句中转述别版」这一类形态排除掉。冒号是 Conventional Commits 对
+    # BREAKING CHANGE 的规范形态要求，不是本仓自创的词表。
+    #
+    # 召回未降的实测（14 仓全量对拍）：收窄前被标记、收窄后不再被标记的版本
+    # **只有 llm v0.18.0 这一个**；矩阵已登记的破坏性变更版本**一个都没丢**
+    # （收窄只减不增，减掉的正是那一条转述）。
+    (re.compile(r"\bbreaking\b[\s\-_]*(?:change|changes)\b[ \t]*[:：]", re.I),
+     "BREAKING CHANGE 短语（后接冒号 = 标记形态）"),
     # ⚠️ 必须**同一行内**还有英文 breaking 关键词才算——裸 ⚠ 不算。
     #
     # 为什么收窄（实测 2026-10-20）：本 org 的 CHANGELOG 里 ⚠️ 是通用的「注意」标记，
@@ -372,13 +393,32 @@ breaking change: 小写的 breaking change 标记。
 这**不是**破坏性变更标记行——是散文里描述「地板追平对下游是隐式破坏性变更」
 的事实陈述。矩阵的 breakingIndex 记的是 import 路径 / API 断裂，
 地板追平不在其中（11 个仓的整段历史里没有一次地板追平进过索引）。
+
+## [v0.6.0] — 2026-10-25
+
+### 新增(x)：转述别的版本的破坏性变更
+
+v0.9.0（2026-10-19）把根包上移到 module 根，路径改成 github.com/oagentkit/llm，
+并标了 BREAKING CHANGE。
+
+本版是**纯新增**（补兼容层），不破坏任何东西——上面那句描述的是 v0.9.0 那次上移。
+
+## [v0.5.0] — 2026-10-25
+
+### 重构(y)：行中的破坏性标记（后接冒号）
+
+本版是 BREAKING CHANGE：因为 import 路径变了。
+
+生成器只认**行首**的标记行 ⇒ 收不到这一条；oracle 的宽口径收得到。
 """
 
 # 生成器（breaking_index.py）**至今仍收不到**的形态——反证就拿这些当样本：
 #   v0.11.0 粗体 **BREAKING**: / 项目符号里的 BREAKING CHANGE / 小写 breaking change
 #   v0.12.0 散文形态的 import 路径搬家 —— 这条生成器已在本轮补上（不再是盲区），
 #            但仍留在样本里：oracle 必须独立收得到它，不依赖生成器的修复。
-_OLD_PARSER_BLINDS = ["v0.11.0", "v0.12.0"]
+#   v0.5.0  行中的 BREAKING CHANGE: —— 生成器只认**行首**标记行，收不到；
+#           oracle 的宽口径收得到（2026-10-25 收窄「短语须后接冒号」后仍在）。
+_OLD_PARSER_BLINDS = ["v0.11.0", "v0.12.0", "v0.5.0"]
 
 
 def selftest() -> int:
@@ -397,6 +437,10 @@ def selftest() -> int:
     check("⚠️ + 破坏性关键词同现被收", "v0.8.0" in got, True)
     check("散文里的「隐式 breaking：」不算标记行（2026-10-21 收窄）",
           "v0.7.0" in got, False)
+    check("转述别的版本的 BREAKING CHANGE 不算本版破坏性（2026-10-25 收窄）",
+          "v0.6.0" in got, False)
+    check("行中的 BREAKING CHANGE: 标记行照收（宽口径仍在）",
+          "v0.5.0" in got, True)
 
     # 反证：拿**生成器**（breaking_index.py）跑同一份样本，确认它对某些形态
     # 仍然漏收 —— oracle 收得到、生成器收不到，才证明两者不在同一处盲区。
@@ -410,7 +454,7 @@ def selftest() -> int:
     check("生成器仍漏收粗体/项目符号/小写标记形态（反证成立）",
           "v0.11.0" in missed_by_gen, True)
     check("oracle 对生成器收不到的形态也收得到",
-          {"v0.11.0", "v0.12.0"} <= set(got), True)
+          {"v0.11.0", "v0.12.0", "v0.5.0"} <= set(got), True)
 
     # ---- 对账语义 ----
     empty = check_one("x", [], "# c\n", "ok")
