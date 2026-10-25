@@ -27,6 +27,24 @@ TIER_TITLE = {
 TIER_SLUG = {0: "foundation", 1: "capability", 2: "integration", 3: "orchestration"}
 
 
+def compat_by_repo(data: dict) -> dict[str, list[dict]]:
+    """账本里 kind == "compat" 的条目按仓归组。
+
+    账本（modules.json 的 retiringPackages）里混着两种东西：
+      - kind == "retired"：已退役的包（breaker）—— 那条路径已经没了；
+      - kind == "compat" ：过渡期兼容镜像（llm/llm）—— **路径仍然可用**。
+
+    llms.txt 是给 Agent 读的索引，只有后者需要挂在「包」清单旁边：
+    存量下游还钉在旧路径上，索引里查不到，它就会以为那条路径已经没了
+    （llm v0.9.0 那次「包上移」就是在 llms.txt 里被读到「原路径已移除」）。
+    """
+    out: dict[str, list[dict]] = {}
+    for entry in data.get("retiringPackages") or []:
+        if entry.get("kind") == "compat" and entry.get("repo"):
+            out.setdefault(entry["repo"], []).append(entry)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--matrix", required=True)
@@ -136,6 +154,7 @@ def main() -> int:
     L.append("依赖严格自底向上，四个能力层：")
     L.append("")
 
+    compat = compat_by_repo(d)
     for tier in sorted({m["tier"] for m in mods}):
         L.append(f"### {TIER_TITLE[tier]}")
         L.append("")
@@ -144,6 +163,12 @@ def main() -> int:
             L.append(f"- [{m['repo']}](https://github.com/{org}/{m['repo']}): "
                      f"{m['ghDescription']}")
             L.append(f"  - 包：{pkgs}")
+            for cp in compat.get(m["repo"], []):
+                L.append(
+                    f"  - 过渡期兼容镜像：`{cp['pkg']}` —— 可用 import 路径 "
+                    f"`{cp['importPath']}`（{cp.get('availableIn', '—')}）；"
+                    f"规范路径仍是 `{cp['canonicalPath']}`，新代码用它"
+                )
             if m.get("dependsOn"):
                 deps = "、".join(f"[{x}](https://github.com/{org}/{x})" for x in sorted(m["dependsOn"]))
                 L.append(f"  - 依赖：{deps}")

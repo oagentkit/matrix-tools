@@ -495,6 +495,7 @@
   ],
   "retiringPackages": [
     {
+      "kind": "retired",
       "pkg": "breaker",
       "replacement": "github.com/oekit/concurrency/breaker",
       "consumedBy": "llm/breaker.go —— 只做按模型名分桶 + 转发，不再有任何本地语义兜底",
@@ -504,7 +505,27 @@
         "20": "计数型触发（WithConsecutiveFailures）—— 已落地 v0.12.0",
         "25": "计数型只切状态、切不了放行决策 —— 已落地 v0.13.0，llm 侧兜底已删除"
       },
-      "status": "已完成：llm v0.4.0 起全量使用上游 GenBreaker"
+      "status": "已完成：llm v0.4.0 起全量使用上游 GenBreaker",
+      "issueRepo": "oekit/concurrency",
+      "timelineModule": "runtime"
+    },
+    {
+      "kind": "compat",
+      "pkg": "llm/llm",
+      "repo": "llm",
+      "importPath": "github.com/oagentkit/llm/llm",
+      "canonicalPath": "github.com/oagentkit/llm",
+      "availableIn": "llm v0.18.0 起",
+      "impl": "llm/llm/compat.go —— 镜像根包全部 71 个导出符号（31 type / 31 func / 2 var / 7 const）；类型用 type 别名、函数用 var 转发、常量原样转发，一致性由 llm/llm/compat_test.go 的 AST 比对强制",
+      "whyNotInPackages": "规范包清单的 import 路径规则把「包名末段 == 仓名」收口到 module 根（matrix_paths.new_import_path）；登记它会让 versions.json 给根包与它登记同一个 importPath",
+      "issueRepo": "oagentkit/llm",
+      "issueChain": {
+        "47": "需求：llm/llm 扁平化后缺兼容子包 —— 跨大版本升级的下游需整仓改 import 路径（已关闭）",
+        "48": "实现：补 llm/llm 兼容层 —— 恢复 v0.7.0~v0.8.0 的历史 import 路径（已合入 llm v0.18.0）"
+      },
+      "status": "过渡期兼容镜像 —— 包是活的（v0.18.0 起可 import），只为存量下游存在",
+      "plan": "新代码一律直接 import github.com/oagentkit/llm；本镜像随 0.x 版本线退役",
+      "timelineModule": "llm"
     }
   ],
   "droppedPackages": [
