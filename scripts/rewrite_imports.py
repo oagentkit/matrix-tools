@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """agentkit import 路径改写器。
 
-把单仓模块路径 git.enjoye.top/enjoydream/agentkit/<pkg> 按 modules.json 的模块矩阵
-改写成 github.com/{org}/{repo}/{pkg}，包名一律保留，只加模块前缀 —— 因此改写是纯前缀映射，
-可机械执行、可机械校验。
+把**历史** import 路径机械改写成**当前**路径。历史有两类：
+
+  ① 旧单仓路径 `git.enjoye.top/enjoydream/agentkit/<pkg>` → `github.com/{org}/{repo}/{pkg}`
+     （单仓 → 矩阵那次大迁移留下的，由 modules.json 的 packages 列表生成）；
+  ② 矩阵**内部**的历史路径（某仓发版时自己改了包路径，如 llm v0.9.0 把
+     `github.com/oagentkit/llm/llm` 收口成 `github.com/oagentkit/llm`）
+     —— 由 scripts/historical_paths.json 登记。
+
+两类路径都**曾经发布过**，下游可能正引用着 ⇒ 迁移必须能机械执行、可机械校验。
 
 对标 oekit 的 matrix-tools/scripts/ekit2oekit.py（ekit→oekit 迁移），同样提供 --print-rules。
 
@@ -12,13 +18,17 @@
     rewrite_imports.py --org <org> --check            # 只报告将要改什么，有改动则 exit 1
     rewrite_imports.py --org <org> --apply            # 真改写 .go 与 go.mod
     rewrite_imports.py --org <org> --manual           # 列出需人工处理的非 Go 文件
+    rewrite_imports.py --selftest                     # 自测（带反证样本）
     rewrite_imports.py --single github.com/o/agentkit --apply   # 单仓整体改名（不拆）
 
 设计约束:
   * 只改 import 块内的引号字符串，不碰注释、不碰其他字符串字面量 ——
     测试里断言模块路径、或文档里出现的旧路径必须原样保留。
   * 每个包必须命中映射表；未登记的包一律报错退出，不静默跳过。
-    静默跳过是这类脚本最危险���失败模式：改了一半，看起来成功了。
+    静默跳过是这类脚本最危险的失败模式：改了一半，看起来成功了。
+  * ⚠️ **扫描范围必须覆盖映射表里的全部旧路径**，不能只认旧单仓根：
+    只认旧单仓根时，「只 import 矩阵内部历史路径」的文件会被整个跳过 ⇒
+    改写器什么都不做却退出 0（静默空转）。前缀集合见 _old_prefixes()。
 """
 
 from __future__ import annotations
@@ -130,17 +140,23 @@ def rewrite_source(text: str, mapping: dict[str, str], org: str) -> tuple[str, l
 
 
 def _map(old: str, mapping: dict[str, str], org: str) -> str:
-    """精确匹配最长前缀；未登记的 agentkit 包在此暴露为错误（调用方负责计数）。"""
+    """精确匹配最长前缀；未登记的 agentkit 包在此暴露为错误（调用方负责计数）。
+
+    ⚠️ 键侧也要做 `{org}` 替换：历史路径表（historical_paths.json）里的键带 `{org}` 占位符，
+    因为同一张表要服务多个 org（姊妹矩阵 oekit 也用本工具）。
+    """
     if old == OLD_ROOT:
         return f"github.com/{org}/agentkit"
     best = None
+    best_key = None
     for src in mapping:
-        if old == src or old.startswith(src + "/"):
-            if best is None or len(src) > len(best):
-                best = src
+        key = src.replace("{org}", org)
+        if old == key or old.startswith(key + "/"):
+            if best is None or len(key) > len(best_key):
+                best, best_key = src, key
     if best is None:
         return old
-    return mapping[best].replace("{org}", org) + old[len(best):]
+    return mapping[best].replace("{org}", org) + old[len(best_key):]
 
 
 def walk(root: Path, suffixes: set[str] | None):
@@ -150,6 +166,95 @@ def walk(root: Path, suffixes: set[str] | None):
             p = Path(dirpath) / fn
             if suffixes is None or p.suffix in suffixes:
                 yield p
+
+
+def _old_prefixes(mapping: dict[str, str], org: str) -> list[str]:
+    """扫描时要认的「旧路径前缀」集合 = 旧单仓根 + 映射表里全部键。
+
+    键侧的 `{org}` 换成真实 org —— 因为文件里写的是具体 org 的路径。
+    ⚠️ 只放 OLD_ROOT 是不够的：那会让「只 import 矩阵内部历史路径」的文件被整个跳过
+    ⇒ 改写器静默空转（既不改写也不报错）。这个集合是那类文件的可见性保证。
+    """
+    return [OLD_ROOT] + [k.replace("{org}", org) for k in mapping]
+
+
+def _selftest() -> int:
+    """自测（带反证样本）。
+
+    「跑通即绿」的自测是摆设——它证明不了本工具能抓住它要防的东西。
+    所以这里每条断言都配一个**反证**：把被依赖的规则/前缀集合抽掉之后，
+    断言必须**变红**；否则这条断言本身没有牙齿。
+
+    覆盖三件事：
+      ① 矩阵内部的历史路径能被改写（llm/llm → llm）；
+      ② 旧单仓路径仍然照改（不回归）；
+      ③ 未登记的路径仍然**报错退出**（fail-loud 不许退化成静默跳过），
+         且扫描前缀集合覆盖历史路径（否则相关文件被整个跳过 ⇒ 静默空转）。
+    """
+    fails: list[str] = []
+    org = "oagentkit"
+    mapping, _ = load_matrix(default_matrix())
+    hist_key = "github.com/{org}/llm/llm"
+    hist_path = f"github.com/{org}/llm/llm"
+
+    def check(name: str, ok: bool, detail: str = "") -> None:
+        print(f"  {'✅' if ok else '❌'} {name}")
+        if not ok:
+            if detail:
+                print(f"      {detail}")
+            fails.append(name)
+
+    print("rewrite_imports 自测（每条断言配反证）\n")
+
+    # ① 矩阵内部的历史路径：llm/llm → llm
+    src = 'package p\n\nimport (\n\t"github.com/oagentkit/llm/llm"\n)\n'
+    out, hits = rewrite_source(src, mapping, org)
+    check("历史路径 github.com/oagentkit/llm/llm 被改写成 github.com/oagentkit/llm",
+          '"github.com/oagentkit/llm"' in out and hits == [hist_path],
+          f"实际输出：{out!r} hits={hits}")
+
+    # ① 反证：抽掉历史规则后，上面那条断言必须失效（证明它有牙齿）
+    naked = {k: v for k, v in mapping.items() if k != hist_key}
+    out_naked, hits_naked = rewrite_source(src, naked, org)
+    check("【反证】抽掉历史规则 ⇒ 改写失效（断言有牙齿）",
+          hist_path in out_naked and hits_naked == [],
+          f"实际输出：{out_naked!r} hits={hits_naked}")
+
+    # ② 旧单仓路径仍然照改（不回归）
+    legacy_src = 'package p\n\nimport (\n\t"git.enjoye.top/enjoydream/agentkit/llm"\n)\n'
+    legacy_out, legacy_hits = rewrite_source(legacy_src, mapping, org)
+    check("旧单仓路径仍被改写（不回归）",
+          '"github.com/oagentkit/llm"' in legacy_out and legacy_hits != [],
+          f"实际输出：{legacy_out!r}")
+
+    # ③ 未登记的路径：必须原样返回 ⇒ 由 main() 计入 unknown ⇒ exit 1（fail-loud）
+    unknown_path = "github.com/oagentkit/llm/nosuchpkg"
+    got = _map(unknown_path, mapping, org)
+    check("未登记的路径原样返回（由调用方报错退出，不静默跳过）",
+          got == unknown_path, f"实际返回：{got}")
+
+    # ③ 反证：未登记路径**不能**被历史规则误伤（llm/llm 前缀不得吃掉 llm/llmtest）
+    sibling = "github.com/oagentkit/llm/llmtest"
+    got_sibling = _map(sibling, mapping, org)
+    check("【反证】历史规则不得误伤同前缀的兄弟路径（llm/llmtest）",
+          got_sibling == sibling, f"实际返回：{got_sibling}")
+
+    # ③ 扫描前缀集合必须覆盖历史路径（否则只含历史路径的文件被整个跳过 ⇒ 静默空转）
+    prefixes = _old_prefixes(mapping, org)
+    check("扫描前缀集合覆盖历史路径（只含历史路径的文件不会被跳过）",
+          any(hist_path in p for p in prefixes),
+          f"前缀集合：{prefixes[:5]}…")
+
+    # ③ 反证：旧的「只看 OLD_ROOT」写法确实覆盖不到历史路径（这就是静默空转的根因）
+    check("【反证】旧的「只看 OLD_ROOT」写法覆盖不到历史路径（静默空转的根因）",
+          not any(hist_path in p for p in [OLD_ROOT]),
+          "反例不成立：说明前缀集合的必要性无从证明")
+
+    if fails:
+        print(f"\n❌ {len(fails)} 项不符：{fails}")
+        return 1
+    print("\n✅ 全部断言通过")
+    return 0
 
 
 def main() -> int:
@@ -164,7 +269,11 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="只报告，不写文件；有改动 exit 1")
     ap.add_argument("--apply", action="store_true", help="执行改写")
     ap.add_argument("--manual", action="store_true", help="列出需人工处理的非 Go 文件")
+    ap.add_argument("--selftest", action="store_true", help="跑自测（带反证样本）后退出")
     args = ap.parse_args()
+
+    if args.selftest:
+        return _selftest()
 
     if not args.org:
         print(f"错误：--org 不能为空（默认 {DEFAULT_ORG}）", file=sys.stderr)
@@ -182,7 +291,13 @@ def main() -> int:
 
     if args.single:
         # 单仓模式：所有包统一搬到新路径下的同名子目录
-        mapping = {k: f"{args.single}/{k[len(OLD_ROOT) + 1:]}" for k in mapping}
+        # ⚠️ 只有**旧单仓**的键能这么切；历史路径表里的键（矩阵内部路径）不是旧单仓路径，
+        # 早期写法 `k[len(OLD_ROOT) + 1:]` 会把它们切成垃圾 ⇒ 这里按前缀判定。
+        mapping = {
+            k: (f"{args.single}/{k[len(OLD_ROOT) + 1:]}"
+                if k == OLD_ROOT or k.startswith(OLD_ROOT + "/") else v)
+            for k, v in mapping.items()
+        }
 
     if args.print_rules:
         # 映射表由 matrix_paths.py 生成（本脚本与 llms.txt / versions.json 共用同一来源），
@@ -215,12 +330,19 @@ def main() -> int:
     unknown: set[str] = set()
     total_hits = 0
 
+    # 只扫「含有任一已知旧路径前缀」的文件。
+    # ⚠️ 早先写的是 `if OLD_ROOT not in text: continue` —— **只**认旧单仓根。
+    # 于是「只 import 矩阵内部历史路径」（如 github.com/oagentkit/llm/llm）的文件
+    # 被**整个跳过**：既不改写、也不报错 ⇒ 改写器「什么都没做」却退出 0
+    # ⇒ 下游拿到一个静默空转的迁移器，直到编译报 module not found 才发现。
+    prefixes = _old_prefixes(mapping, args.org)
+
     for p in walk(root, {".go"}):
         try:
             text = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        if OLD_ROOT not in text:
+        if not any(pref in text for pref in prefixes):
             continue
         new_text, hits = rewrite_source(text, mapping, args.org)
         for h in hits:
@@ -243,7 +365,8 @@ def main() -> int:
     print(f"# 模式={mode}  待改文件={len(changed_files)}  import 命中={total_hits}")
 
     if unknown:
-        print(f"\n!! 下列路径未登记在矩阵中，已跳过（必须补进 modules.json）：", file=sys.stderr)
+        print(f"\n!! 下列路径未登记在矩阵中，已跳过（必须补进 modules.json 的 packages，"
+              f"或 historical_paths.json 的历史路径表）：", file=sys.stderr)
         for u in sorted(unknown):
             print(f"   {u}", file=sys.stderr)
         return 1
