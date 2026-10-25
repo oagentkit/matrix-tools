@@ -1102,7 +1102,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.17.1",
+      "latest": "v0.18.0",
       "packages": [
         {
           "pkg": "llm",
@@ -2050,7 +2050,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.49",
+      "latest": "v1.8.50",
       "retiring": true,
       "breakingIndex": [
         {
@@ -3049,6 +3049,27 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.23.1",
               "to": "v0.24.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.50",
+          "date": "2026-10-25",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.20.4",
+              "to": "v0.21.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.24.0",
+              "to": "v0.26.0"
             }
           ]
         }
