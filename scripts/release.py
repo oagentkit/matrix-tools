@@ -276,11 +276,60 @@ def cmd_tag(args) -> int:
 # ---------------------------------------------------------------- sync-matrix
 
 
+def _floor_bumps(doc: dict) -> dict:
+    """versions.json 里的 floorBumps 登记 → {仓名: 条目列表}。"""
+    out: dict[str, list] = {}
+    for section in ("modules", "facades"):
+        for entry in doc.get(section, []):
+            repo = entry.get("repo")
+            if repo:
+                out[repo] = entry.get("floorBumps") or []
+    return out
+
+
+def sync_site_modules(mt: Path, site: Path, rep: Report) -> str:
+    """把矩阵源 modules.json 拷到站点 data/modules.json。
+
+    为什么必须由工具做（以前是**纯手工动作**）：
+    站点 AGENTS.md 写明「本仓 data/modules.json 是该文件的副本……内容必须逐字段一致」，
+    CONTRIBUTING 发版第 4 步也写着「同步站点 data/modules.json」——
+    但三处承诺一处机器校验都没有（2026-10-21 漏过一次：站点副本缺 llm/port，
+    当时没有任何反馈会报出来）。⇒ 这一步交给发布工具，才不会「忘了也没人报」。
+
+    纪律不变：**源先、副本后**——本函数只做本地拷贝，
+    源仓的 PR 先合、副本仓的 PR 后合（由操作者分两次提交）。
+
+    返回：copied / same / missing
+    """
+    src = mt / "modules.json"
+    dst = site / "data" / "modules.json"
+    if not src.is_file():
+        rep.yellow("站点", f"找不到矩阵源 {src}")
+        return "missing"
+    if not dst.is_file():
+        rep.yellow("站点", f"找不到站点副本 {dst}",
+                   "站点仓还没建，或 data/ 目录被删了")
+        return "missing"
+    if dst.read_bytes() == src.read_bytes():
+        rep.info("站点", "站点 data/modules.json 已与矩阵源一致")
+        return "same"
+    dst.write_bytes(src.read_bytes())
+    rep.info("站点", "已把矩阵源 modules.json 拷到站点 data/modules.json",
+             "两个仓一起提交（源先、副本后）")
+    return "copied"
+
+
 def cmd_sync_matrix(args) -> int:
     """刷新矩阵源 versions.json → 拷到站点副本 → 给出提交指引。
 
     这一步过去**不在任何 runbook 里**，而它缺失的后果是：
     源的 latest 陈旧没人查、站点副本与源漂移、跨仓门禁在时间窗里红。
+
+    两个曾经漏掉的义务（issue matrix-tools#133）：
+    ① floorBumps 必须**现算**（它要读各仓相邻两个 tag 处的 go.mod 差异），
+       以前这里不传本地根 ⇒ 生成器只能「搬运既有值」⇒ 门面每次抬地板，
+       矩阵源都会少一条「下游必须跑 go mod tidy」的登记。
+    ② 站点 data/modules.json 必须跟着拷（以前是纯手工动作，漏了没人报）。
     """
     root = Path(args.root).resolve()
     mt = root / "matrix-tools"
@@ -294,7 +343,8 @@ def cmd_sync_matrix(args) -> int:
 
     regen = mt / "versions.json.regen"
     p = run([sys.executable, str(mt / "scripts" / "gen_versions.py"),
-             "--org", args.org, "--out", str(regen)], check=False)
+             "--org", args.org, "--floor-root", str(root), "--out", str(regen)],
+            check=False)
     if p.returncode != 0:
         regen.unlink(missing_ok=True)
         rep.red("matrix-tools", f"gen_versions.py 失败：\n{p.stdout}\n{p.stderr}")
@@ -314,6 +364,28 @@ def cmd_sync_matrix(args) -> int:
     lb, la = latest_map(before), latest_map(after)
     changed = {k: (lb.get(k), la.get(k)) for k in set(lb) | set(la) if lb.get(k) != la.get(k)}
 
+    # floorBumps 的来源：生成器把「现算 / 搬运」打在 stdout。
+    # 「搬运」= 这次没算出来、沿用了旧值 ⇒ 旧值可能少条目（那正是 #133 的病根），
+    # 所以它要报成**黄灯**而不是普通信息，让操作者看得见。
+    fb_note = ""
+    for line in (p.stdout or "").splitlines():
+        if "floorBumps" in line and "来源" in line:
+            fb_note = line.strip().lstrip("# ").strip()
+    if not fb_note:
+        rep.yellow("matrix-tools", "生成器没打印 floorBumps 来源说明",
+                   "无法确认这次是现算还是搬运，先查 gen_versions.py")
+    elif "搬运" in fb_note:
+        rep.yellow("matrix-tools", fb_note,
+                   "各仓克隆的 tag 历史不全 ⇒ 抬地板条目可能被少算；"
+                   "把各仓 fetch --unshallow --tags 后重跑")
+    else:
+        rep.info("matrix-tools", fb_note)
+
+    fb_before, fb_after = _floor_bumps(before), _floor_bumps(after)
+    fb_changed = {k: (len(fb_before.get(k, [])), len(fb_after.get(k, [])))
+                  for k in set(fb_before) | set(fb_after)
+                  if fb_before.get(k, []) != fb_after.get(k, [])}
+
     site_copy = site / "docs" / "public" / "versions.json"
     site_latest = None
     if site_copy.is_file():
@@ -321,16 +393,22 @@ def cmd_sync_matrix(args) -> int:
 
     if args.dry_run:
         rep.info("matrix-tools", f"[dry-run] latest 变化：{changed or '（无）'}")
+        rep.info("matrix-tools", f"[dry-run] floorBumps 变化：{fb_changed or '（无）'}")
         rep.info("站点", f"[dry-run] 站点副本 latest：{site_latest}")
         regen.unlink(missing_ok=True)
         return emit(rep)
 
-    if changed:
+    # 写回条件：latest 变了**或** floorBumps 变了。
+    # 只看 latest 是不够的 —— 那正是「工具算对了却被丢掉」的老形态：
+    # 抬地板的登记差一条时 latest 可能没变（没发新版本），
+    # 于是算出来的正确结果会被直接丢掉（本次白跑）。
+    if changed or fb_changed:
         src.write_text(regen.read_text(encoding="utf-8"), encoding="utf-8")
-        rep.info("matrix-tools", f"已刷新 versions.json：{changed}",
+        rep.info("matrix-tools", f"已刷新 versions.json：latest {changed or '（无）'}；"
+                                 f"floorBumps {fb_changed or '（无）'}",
                  "提交它，并把刷新后的文件拷到站点 docs/public/versions.json")
     else:
-        rep.info("matrix-tools", "versions.json 的 latest 无变化")
+        rep.info("matrix-tools", "versions.json 的 latest 与 floorBumps 均无变化")
     regen.unlink(missing_ok=True)
 
     if site_copy.is_file():
@@ -344,6 +422,8 @@ def cmd_sync_matrix(args) -> int:
     else:
         rep.yellow("站点", f"找不到站点副本 {site_copy}",
                    "站点路径不对，或站点仓还没建")
+
+    sync_site_modules(mt, site, rep)
 
     return emit(rep)
 

@@ -90,6 +90,15 @@ jobs:
         # 自测必须带反证样本（抽掉规则后断言必须变红），否则「跑通即绿」。
         run: python3 scripts/rewrite_imports.py --selftest
 
+      - name: sync-matrix 自测（接线 + 降级路径 + 站点副本）
+        # release.py sync-matrix 的两个义务曾经**没有任何机器约束**：
+        # ① 不传本地根 ⇒ floorBumps 只能「搬运既有值」⇒ 门面每次抬地板，
+        #    矩阵源都少一条「下游必须跑 go mod tidy」的登记；
+        # ② 不拷 site/data/modules.json ⇒ 站点副本同步是纯手工动作，漏了没人报。
+        # 两条都不会让门禁变红 ⇒「谁改回去」不会被发现 ⇒ 用自测把接线钉住
+        # （含反证样本：抽掉 --floor-root 必须变红）。
+        run: python3 scripts/test_sync_matrix.py
+
   guards:
     name: Guards self-test
     # 守卫最危险的失效模式是「一直绿，但从没生效过」：

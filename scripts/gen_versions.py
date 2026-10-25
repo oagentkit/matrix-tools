@@ -23,6 +23,10 @@ tier / breakingIndex。结构变更后重跑即可刷新，无需手工维护。
     gen_versions.py                           # 读 modules.json，写 versions.json（不联网）
     gen_versions.py --org oagentkit           # 联网读各仓 tag，标注 latest
     gen_versions.py --root /path/to/oagentkit # 从本地各仓 CHANGELOG 抽 breakingIndex
+    gen_versions.py --org oagentkit --floor-root /path/to/oagentkit
+                                           # 只把 floorBumps 改成**本地现算**，
+                                           # breakingIndex / depFloor 仍走联网口径
+                                           # （本地克隆可能比远旧 ⇒ 别让矩阵源倒退）
 """
 
 from __future__ import annotations
@@ -106,14 +110,26 @@ def floor_bumps_map(args, data: dict) -> tuple[dict[str, list[dict]], str]:
     返回 (映射, 来源说明)。
     """
     repos = gen_floor_bumps.repo_list(data)
-    if args.root:
+    # 两个本地取数开关，**分工不同**：
+    #   --root       ：各仓本地克隆的父目录。它同时管两件事——读 CHANGELOG 抽
+    #                  breakingIndex、读 tag 历史算 floorBumps。
+    #   --floor-root ：**只**管 floorBumps 的本地现算，不碰 breakingIndex / depFloor。
+    # 为什么要有后者：把 --root 整体交给「刷新矩阵源」这条路径，会把 breakingIndex
+    # 的取数从**联网**切成**本地克隆**——而本地克隆可能比远旧（别的仓没 pull），
+    # 那时矩阵源的 breakingIndex 会**静默倒退**（丢掉远端已有的破坏性变更条目）。
+    # floorBumps 没这个问题：它只在本仓刚发版时才会变，而刚发版的那个仓本地克隆
+    # 一定是最新的 ⇒ 用本地算既准又不丢条目。
+    floor_root = getattr(args, "floor_root", None)
+    local_root = floor_root or args.root
+    if local_root:
         try:
-            computed = gen_floor_bumps.compute_all(Path(args.root), None, repos)
-            return computed, f"现算（--root {args.root}）"
+            computed = gen_floor_bumps.compute_all(Path(local_root), None, repos)
+            which = "--floor-root" if floor_root else "--root"
+            return computed, f"现算（{which} {local_root}）"
         except Exception as e:  # 取不到就退回去搬，不静默
             note = f"现算失败（{e}），改为搬运既有值"
     else:
-        note = "无 --root（算 tag 历史需要各仓克隆），搬运既有值"
+        note = "无 --root / --floor-root（算 tag 历史需要各仓克隆），搬运既有值"
 
     carried: dict[str, list[dict]] = {}
     src = Path(args.preserve_from) if args.preserve_from else None
@@ -139,6 +155,8 @@ def main() -> int:
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--org", help="给了就联网读各仓最新 tag")
     ap.add_argument("--root", help="各仓本地目录的父目录（用于读 CHANGELOG 抽 breakingIndex）")
+    ap.add_argument("--floor-root", help="各仓本地目录的父目录（**只**用于算 floorBumps；"
+                                         "不影响 breakingIndex / depFloor 的取数）")
     ap.add_argument("--preserve-from", default=str(DEFAULT_OUT),
                     help="搬运 floorBumps 的来源文件（默认：同目录的 versions.json）")
     ap.add_argument("--no-preserve", action="store_true",
