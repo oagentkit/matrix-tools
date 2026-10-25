@@ -5,16 +5,17 @@
     "本表覆盖的是**矩阵已经存在之后**、某个仓自己发版时改掉的包路径——例如 llm v0.9.0 把包从 llm/ 子目录上移到 module 根，import 路径 github.com/oagentkit/llm/llm → github.com/oagentkit/llm。",
     "这类路径**发布过**，所以下游可能正引用着它；而 packages 列表只登记**当前**路径 ⇒ 旧路径在 build_mapping 里查不到 ⇒ rewrite_imports.py 扫不到、也改不掉。",
     "⚠️ 早先的 rewrite_imports.py 只扫「含旧单仓根（OLD_ROOT）」的文件 ⇒ 纯 import 矩阵内部历史路径的文件被**整个跳过**：既不改写也不报错，改写器「什么都没做」却退出 0 ⇒ 下游拿到一个静默空转的迁移器，直到编译报 module not found 才发现。",
-    "⇒ 本表 + 改写器的扫描前缀扩展，是让「矩阵内部路径变更」也能被机械迁移的前提。"
+    "⇒ 本表 + 改写器的扫描前缀扩展，是让「矩阵内部路径变更」也能被机械迁移的前提。",
+    "⚠️ brokenIn / publishedIn 记的是**区间**，不是单点：llm/llm 在 v0.9.0 – v0.17.x 之间不可用，llm v0.18.0 起由兼容层恢复 ⇒ 写成单点版本号，下游会以为「这条路径已经彻底没了」，而它现在仍可 import。"
   ],
   "where": "为什么不放 modules.json：modules.json 是**当前**矩阵的唯一数据源（分层/包清单/依赖/元信息），且它的副本要同步到站点 data/modules.json（逐字段比对）；历史路径是**迁移辅助数据**，不是矩阵事实，放进去会让站点副本跟着动。matrix-tools/scripts/ 下已有同类先例（changelog_tag_debt.json / tag_floor_debt.json / facade_package_baseline.json / receipt_exemptions.json）。",
   "paths": [
     {
       "from": "github.com/{org}/llm/llm",
       "to": "github.com/{org}/llm",
-      "brokenIn": "llm v0.9.0",
-      "publishedIn": "llm v0.7.0 – v0.8.0",
-      "note": "llm v0.9.0「包上移至 module 根，import 路径不再重复末段」：包名 llm 恰好等于仓名 llm，留在 llm/ 子目录会产出 stutter 的公开路径（Go 惯例：包名不重复 import 路径末段）⇒ 路径收口到 module 根 github.com/{org}/llm。该路径规则写在唯一构造点 matrix_paths.new_import_path（末段==仓名时收口），并由 verify_import_paths.py 守。",
+      "brokenIn": "llm v0.9.0 – v0.17.x（llm v0.18.0 起由兼容层恢复）",
+      "publishedIn": "llm v0.7.0 – v0.8.0；llm v0.18.0 起由 llm/llm 兼容层重新提供",
+      "note": "llm v0.9.0「包上移至 module 根，import 路径不再重复末段」：包名 llm 恰好等于仓名 llm，留在 llm/ 子目录会产出 stutter 的公开路径（Go 惯例：包名不重复 import 路径末段）⇒ 路径收口到 module 根 github.com/{org}/llm。该路径规则写在唯一构造点 matrix_paths.new_import_path（末段==仓名时收口），并由 verify_import_paths.py 守。⚠️ llm v0.18.0（2026-10-25）在 llm/llm 子目录补了兼容层，这条路径**重新可用**（镜像根包全部 71 个导出符号；矩阵侧的登记位置是 modules.json 账本的 compatPackages 条目）⇒ 「这条路径已经彻底没了」是**错的**说法：它是「v0.9.0 – v0.17.x 之间不可用」，现在仍可 import。",
       "apiDrift": "经实测：该变更**只发生在 import 路径这一层**——v0.8.0 的 llm/llm 导出面（26 个类型 + 26 个函数 + 各类型方法）对着今天的根包 github.com/{org}/llm 编译**全绿**（Budget/CostTracker/CostRecord/ModelSummary/Price/TokenAccountant 是 port.* 的 type alias，方法照样可达）⇒ 下游只需改 import 路径，无需改代码。"
     }
   ]
