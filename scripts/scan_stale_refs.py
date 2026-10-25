@@ -27,7 +27,11 @@
 
 ⚠️ **误报是这类扫描的主要风险**，所以刻意保守：
   - 只认 `<repo>/<pkg>` 两段形式，不认单段（单段是仓名不是包）
-  - 排除 Markdown 链接 URL（`https://github.com/...`）—— 那是网页地址不是 import
+  - 排除 Markdown 链接 URL（`https://github.com/...`）—— 那是网页地址不是 import。
+    判据是**按匹配位置**判的：落在 URL 里的 token 不算包引用
+    （行级豁免仍在，但它有个洞：行里出现 "import" 一词时整行豁免会失效 ⇒
+    `https://github.com/oagentkit/llm/issues/47` 这类**网页地址**会被误报成陈旧包引用，
+    实测 2026-10-26 命中过）
   - 排除「已退役」章节里**有意记录**的历史路径（用 --allow-retired 标注）
 """
 
@@ -42,6 +46,8 @@ from pathlib import Path
 # 只匹配两段形式：oagentkit/<repo>/<pkg>。单段（oagentkit/agentkit）是仓名不是包。
 PKG_RE = re.compile(r"github\.com/oagentkit/([a-z0-9][a-z0-9-]*/[a-z][a-z0-9-]*)")
 URL_RE = re.compile(r"https?://")
+# URL 的**跨度**：用来判「这个匹配是不是落在 URL 里」。
+URL_SPAN_RE = re.compile(r"https?://\S+")
 
 # 基础设施仓：不在 modules.json 里，但确实存在
 INFRA = {".github", "matrix-tools", "agentkit"}
@@ -133,6 +139,26 @@ def in_retired_blockquote(lines: list[str], idx: int) -> bool:
     return any(k in block for k in RETIRED_MARKERS)
 
 
+def in_url_span(line: str, start: int) -> bool:
+    """该位置的匹配是否落在**URL 里面**。
+
+    为什么要按「匹配位置」判，而不是按整行判：
+    行级豁免（「这一行有 URL 就整行跳过」）有个洞 ——
+    只要行里还出现 "import" 这个词，整行豁免就失效，于是
+    `https://github.com/oagentkit/llm/issues/47` 这种**网页地址**
+    会被当成包引用报成「陈旧引用」（实测 2026-10-26：站点新增的 issue 链链接，
+    描述里带 "import" 一词 ⇒ 两处误报）。
+
+    而守卫自己的判据写得很清楚：「URL 是网页地址，不是 import」⇒
+    URL 里的 token 本来就不该算包引用。行级豁免**保持原样**
+    （避免把同一行里 URL 之外的路径也放过），只把「落在 URL 内」的匹配摘掉。
+    """
+    for m in URL_SPAN_RE.finditer(line):
+        if m.start() <= start < m.end():
+            return True
+    return False
+
+
 def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str, str]]:
     hits: list[tuple[str, int, str, str]] = []
     for md in sorted(root.rglob("*.md")):
@@ -166,6 +192,9 @@ def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str
             if in_retired_blockquote(lines, i):
                 continue
             for m in PKG_RE.finditer(line):
+                # URL 里的 token 是网页地址，不是 import 路径 ⇒ 不算陈旧引用
+                if in_url_span(line, m.start()):
+                    continue
                 full = f"github.com/oagentkit/{m.group(1)}"
                 if full in valid:
                     continue
@@ -240,6 +269,19 @@ def selftest() -> int:
         # ② Markdown 链接 URL → 不报
         write("delta/README.md",
               "详见 <https://github.com/oagentkit/alpha/deadlink>。\n")
+        # ② URL + 行内出现 "import" 一词 → 仍不报（网页地址不是 import 路径）
+        #   实测 2026-10-26 的误报形态：issue 链链接那一行，描述里带 "import" 一词，
+        #   行级豁免（「这行有 URL 就整行跳过」）因此失效，URL 里的 llm/issues/47
+        #   被当成陈旧包引用报了出来 —— 而它是一个**网页地址**。
+        write("epsilon/README.md",
+              "需求：llm/llm 扁平化后缺兼容子包 —— 下游需整仓改 import 路径，"
+              "见 [`#47`](https://github.com/oagentkit/llm/issues/47)。\n")
+        # ① 同一行既有 URL 又有裸死包 import → 必报
+        #   反证：URL 豁免只能摘掉「落在 URL 内」的匹配，不能把整行放过 ——
+        #   否则这一行就成了一条藏死包路径的免死金牌。
+        write("zeta/AGENTS.md",
+              'import "github.com/oagentkit/alpha/breaker" —— 见 '
+              "https://github.com/oagentkit/alpha/breaker/issues/1\n")
         # ② CHANGELOG.md → 不扫
         write("alpha/CHANGELOG.md",
               "BREAKING：`github.com/oagentkit/alpha/breaker` 不再存在。\n")
@@ -265,10 +307,16 @@ def selftest() -> int:
               "github.com/oagentkit/alpha/audit" in found, False)
         check("② URL 不误报",
               "github.com/oagentkit/alpha/deadlink" in found, False)
+        # ② URL + "import" 一词 → 不误报（实测 2026-10-26 的误报形态）
+        check("② URL+import 词不误报",
+              "github.com/oagentkit/llm/issues" in found, False)
+        # ① 同一行的裸死包 import → 仍必报（URL 豁免不得放过整行）
+        check("① 同行的裸死包仍报出",
+              "github.com/oagentkit/alpha/breaker" in found, True)
         check("② CHANGELOG.md 不扫",
               any(p == "alpha/CHANGELOG.md" for p in paths), False)
-        # 命中总数：恰好两条死包
-        check("命中总数恰好 2", len(hits), 2)
+        # 命中总数：恰好三条死包（alpha/ghost、alpha/AGENTS 的 breaker、zeta 的裸 import）
+        check("命中总数恰好 3", len(hits), 3)
 
     if fails:
         print("❌ scan_stale_refs 自测失败：")
