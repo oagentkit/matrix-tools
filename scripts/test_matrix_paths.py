@@ -23,7 +23,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from matrix_paths import OLD_ROOT, misleading, new_import_path, short_legacy  # noqa: E402
+from matrix_paths import (  # noqa: E402
+    OLD_ROOT,
+    build_historical_mapping,
+    misleading,
+    new_import_path,
+    short_legacy,
+)
 
 # (org, repo, modules.json 里的包路径, 期望的新 import 路径)
 # 包路径用的是 modules.json 里的真实形态（不带 agentkit/ 前缀）。
@@ -91,6 +97,27 @@ def main() -> int:
         print(f"      多出 {sorted(got_pairs - want_pairs)}")
         print(f"      缺少 {sorted(want_pairs - got_pairs)}")
         fails.append("misleading")
+
+    # 历史路径表：矩阵**内部**曾经发布过、现已退役的路径 → 当前路径。
+    # 这类路径不在 modules.json 的 packages 里（那里只登记**当前**路径），
+    # 所以它有自己的数据源（historical_paths.json）与自己的构造点。
+    # 期望值硬编码，不从被测实现推导。
+    hist = build_historical_mapping("oagentkit")
+    want_hist = {"github.com/oagentkit/llm/llm": "github.com/oagentkit/llm"}
+    ok = hist == want_hist
+    print(f"  {'✅' if ok else '❌'} build_historical_mapping('oagentkit') = {hist}")
+    if not ok:
+        print(f"      期望 {want_hist}")
+        fails.append("build_historical_mapping")
+
+    # 占位符形态：同一张表要服务多个 org（姊妹矩阵 oekit 也用改写器）
+    hist_ph = build_historical_mapping("{org}")
+    want_ph = {"github.com/{org}/llm/llm": "github.com/{org}/llm"}
+    ok = hist_ph == want_ph
+    print(f"  {'✅' if ok else '❌'} build_historical_mapping('{{org}}') = {hist_ph}")
+    if not ok:
+        print(f"      期望 {want_ph}")
+        fails.append("build_historical_mapping:placeholder")
 
     if fails:
         print(f"\n❌ {len(fails)} 项不符：{fails}")

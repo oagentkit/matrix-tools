@@ -38,6 +38,31 @@ from pathlib import Path
 OLD_ROOT = "git.enjoye.top/enjoydream/agentkit"
 DEFAULT_ORG = "oagentkit"
 
+# 矩阵**内部**的历史 import 路径表（曾经发布过、现已退役的路径 → 当前路径）。
+# 与旧单仓路径不是一类东西：旧单仓路径由 modules.json 的 packages 列表天然覆盖，
+# 矩阵内部的历史路径（某仓发版时自己改了包路径，如 llm v0.9.0）不覆盖 ⇒ 单独一张表。
+HISTORICAL_PATHS_FILE = Path(__file__).resolve().parent / "historical_paths.json"
+
+
+def load_historical_paths() -> list[dict]:
+    """读历史 import 路径表；文件缺失 ⇒ 空表（不报错，保持数据源可选）。"""
+    if not HISTORICAL_PATHS_FILE.is_file():
+        return []
+    data = json.loads(HISTORICAL_PATHS_FILE.read_text(encoding="utf-8"))
+    return list(data.get("paths", []))
+
+
+def build_historical_mapping(org: str) -> dict[str, str]:
+    """{历史路径: 当前路径}。路径模板里的 `{org}` 按 org 替换。
+
+    `org` 传字面量 `"{org}"` 时两侧都留占位符（rewrite_imports.py 在匹配时才替换，
+    因为它要同时服务多个 org）；传真实 org 时直接展开（--print-rules 的输出）。
+    """
+    out: dict[str, str] = {}
+    for entry in load_historical_paths():
+        out[entry["from"].replace("{org}", org)] = entry["to"].replace("{org}", org)
+    return out
+
 
 def leaf(pkg: str) -> str:
     """包路径的末段。`knowledge/rag` -> `rag`，`llm` -> `llm`。"""
@@ -72,12 +97,20 @@ def short_legacy(pkg: str) -> str:
 
 
 def build_mapping(modules: list[dict], org: str) -> dict[str, str]:
-    """返回 {旧完整 import 路径: 新 import 路径}。"""
+    """返回 {旧完整 import 路径: 新 import 路径}。
+
+    两类历史路径都在这里：
+    ① 旧单仓路径（`git.enjoye.top/enjoydream/agentkit/<pkg>`）—— 由 modules.json 的
+       packages 列表逐条生成；
+    ② 矩阵内部的历史路径（见 historical_paths.json）—— 某仓发版时自己改掉的包路径，
+       曾经发布过 ⇒ 下游可能正引用着 ⇒ 必须同样能机械改写。
+    """
     mapping: dict[str, str] = {}
     for mod in modules:
         repo = mod["repo"]
         for pkg in mod["packages"]:
             mapping[legacy_import_path(pkg)] = new_import_path(org, repo, pkg)
+    mapping.update(build_historical_mapping(org))
     return mapping
 
 

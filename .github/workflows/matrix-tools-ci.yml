@@ -82,6 +82,14 @@ jobs:
         # 规则写错时三处会**一致地错**，普通检查抓不到，所以要有独立断言。
         run: python3 scripts/test_matrix_paths.py
 
+      - name: import 改写器自测（带反证样本）
+        # 规则对 ≠ 改得动：改写器是「历史路径 → 当前路径」的**执行端**。
+        # 实测过的坑：改写器早先只扫「含旧单仓根」的文件 ⇒ 只 import 矩阵内部
+        # 历史路径（github.com/oagentkit/llm/llm）的文件被整个跳过 ⇒
+        # 改写器「什么都没做」却退出 0（静默空转），下游要到编译报错才发现。
+        # 自测必须带反证样本（抽掉规则后断言必须变红），否则「跑通即绿」。
+        run: python3 scripts/rewrite_imports.py --selftest
+
   guards:
     name: Guards self-test
     # 守卫最危险的失效模式是「一直绿，但从没生效过」：
