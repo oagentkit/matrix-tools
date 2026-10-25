@@ -228,6 +228,11 @@ python3 scripts/release.py --root <矩阵根> prewrite --repo agent --version v0
 python3 scripts/release.py --root <矩阵根> tag --repo agent --version v0.10.1
 
 # 3. 刷新矩阵源并同步站点副本（过去这一步不在任何 runbook 里）
+#    floorBumps 也在这里**现算**（它读各仓相邻两个 tag 处的 go.mod 差异），
+#    所以各仓克隆必须是**完整**的（不是浅克隆、tag 要齐）；
+#    取不到时工具会退化成「搬运既有值」，报告里会报**黄灯**——那意味着
+#    抬地板的登记可能少了几条，先把各仓 fetch --unshallow --tags 再重跑。
+#    它同时把站点两份副本都拷好：docs/public/versions.json 与 data/modules.json。
 python3 scripts/release.py --root <矩阵根> sync-matrix
 
 # 4. 刷新 floorBumps（**每个仓发版后都要做**）
@@ -250,7 +255,7 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 
 | job | 守什么 |
 |---|---|
-| `Scripts` | 语法 + `--help` 冒烟 + 路径规则自洽 |
+| `Scripts` | 语法 + `--help` 冒烟 + 路径规则自洽 + **sync-matrix 接线自测** |
 | `Guards self-test` | 每条守卫的自测（带反证样本） |
 | `changelog-coverage` | CHANGELOG 覆盖（独立 oracle，PR 只查本 PR 触及的仓） |
 | `matrix-truth` | breakingIndex / import 路径 / dep 地板 / Go 地板 / 欠账基线缓解状态（联网对账） |
