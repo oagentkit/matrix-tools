@@ -576,8 +576,24 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 发版时刻的依赖地板时效（各仓最新 tag）
+      - name: 发版时刻的依赖地板时效（各仓最新 tag · 窄口径）
+        # 窄口径：判**已发布 tag** 的地板时效 —— 「这个 tag 落下时地板新不新」。
         run: python3 scripts/verify_tag_floor.py --org oagentkit --latest-only
+
+      - name: 发版时刻的依赖地板时效（全矩阵 HEAD · 宽口径）
+        # 宽口径：判**各仓 HEAD**（也就是「下次发版会发出去的内容」）的地板，
+        # 相对**该 HEAD 时刻**的依赖最新版本，是否已落后。
+        #
+        # 为什么窄口径不够（实测 2026-10-27）：窄口径只看已发布的 tag ⇒
+        # 「某个仓 HEAD 的地板落后」这一整类**对 CI 完全不可见** ——
+        # 那些仓一旦发版，就会把落后地板发出去，而 tag 受 protect-tags ruleset
+        # 保护、打完不能重打 ⇒ 只能靠后续版本补齐。
+        # 实测宽口径一度报红 18 处（9 个仓），逐仓抬地板后归零；
+        # 现在挂上就是在守「不让它重新长出来」。
+        #
+        # ⚠️ 这一步**比窄口径严**：它对「刚 push 完、依赖又更新了」的仓会立刻判红。
+        # 那正是它该做的 —— 让欠账在 push 那一刻就暴露，而不是在发 tag 那一刻。
+        run: python3 scripts/verify_tag_floor.py --org oagentkit --ref HEAD
 
   facade-symbols:
     name: Facade symbols
