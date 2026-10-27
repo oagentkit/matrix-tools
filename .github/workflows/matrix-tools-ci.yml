@@ -99,6 +99,21 @@ jobs:
         # （含反证样本：抽掉 --floor-root 必须变红）。
         run: python3 scripts/test_sync_matrix.py
 
+      - name: 打 tag 前的地板时效门禁自测（接线 + 反证样本）
+        # 打 tag 的那一刻的依赖地板时效，2026-10-27 加进 release.py cmd_tag。
+        #
+        # 为什么值得单列一步：这道检查**不会让任何 CI job 变红**（它只在人/agent
+        # 真的执行 `release.py tag` 时生效）⇒ 属于「义务缺失」型修复 ——
+        # 把接线删掉、把判据改松，都没有别的门禁会报出来 ⇒ 必须用自测把接线钉住。
+        #
+        # 它防的具体形态（2026-10-26 实测）：发 tag 前跑
+        # `verify_tag_floor --latest-only` 是绿的，但它只判**已存在**的 tag，
+        # 即将新建的那个它看不见 ⇒ 一路绿灯打出了两个「发版时刻地板就已落后」的
+        # tag（textx v0.7.0 / queue v0.6.4），被 CI 当场照出来，而 tag 不能重打。
+        #
+        # 自测含**反证样本**：抽掉取数调用或抽掉报告调用，接线判定都必须变红。
+        run: python3 scripts/test_tag_floor_gate.py
+
   guards:
     name: Guards self-test
     # 守卫最危险的失效模式是「一直绿，但从没生效过」：

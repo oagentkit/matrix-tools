@@ -55,6 +55,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -210,6 +211,80 @@ def cmd_prewrite(args) -> int:
 # ---------------------------------------------------------------- tag
 
 
+def floor_gate_problems(root: Path, repo: str, ref: str = "HEAD",
+                         tags_of=None) -> list[dict]:
+    """打 tag **那一刻**的依赖地板时效：ref 处 go.mod 的第一方依赖地板，
+    相对「现在」的依赖最新版本，是否已落后。
+
+    ## 为什么用「现在」而不是 ref 的提交时刻
+
+    这一道检查要回答的问题是：**这个快照现在发出去，地板新不新**。
+    若改用 ref 的提交时刻（`verify_tag_floor --ref HEAD` 的口径），
+    一个「HEAD 很久没动、依赖后来更新了」的仓会被判绿 ——
+    而它今天发版就会把落后地板发出去。
+
+    ⇒ 两个口径问的是两个问题，缺一不可：
+      · `--ref HEAD`（when = ref 时刻）：这个提交落下时地板新不新；
+      · 本函数（when = 现在）：**现在**拿这个快照去发，地板新不新。
+
+    ## 为什么要在这里（而不是只靠 CI）
+
+    实测 2026-10-26：发 tag 前跑 `verify_tag_floor --latest-only` 是绿的，
+    但它只判**已存在**的 tag —— 即将新建的那个 tag 它压根看不见 ⇒
+    于是一路绿灯打出了两个「发版时刻地板就已落后」的 tag
+    （textx v0.7.0 钉 oekit/pkg v0.20.0 而最新已 v0.28.0；
+    queue v0.6.4 钉 oekit/concurrency v0.19.0 而最新已 v0.22.0），
+    被 CI 的 `Release floor` job 当场照出来。tag 受 ruleset 保护**不能重打**
+    ⇒ 只能补发 v0.7.1 / v0.6.5 还债。
+
+    ⇒ 打 tag 这个动作本身必须自己会拒绝，不能指望人记得先跑对口径的门禁。
+
+    ## 判定复用
+
+    取数与判定都复用 `verify_tag_floor`（那是同一件事的判据本体）：
+      · 版本清单一律以**远端**为准，本地克隆只贡献「发布日期精度」
+        （`deps_tags` 的 docstring 写明了为什么不能反过来）；
+      · 判不了一律算问题（硬规则 3：判不了 ≠ 没问题）。
+    """
+    import verify_tag_floor as vtf
+
+    gomod = vtf.local_go_mod(str(root), repo, ref)
+    if gomod is None:
+        return [{"dep": "*", "floor": "", "should_be": None, "released_at": None,
+                 "note": f"取不到 {repo}@{ref} 的 go.mod（判不了）"}]
+    floors = vtf.floors_from_go_mod(gomod)
+    if not floors:
+        return []          # 没有第一方依赖 ⇒ 没有地板可判
+
+    when = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if tags_of is None:
+        def tags_of(owner: str, drepo: str, min_version: str | None = None):
+            return vtf.deps_tags(owner, drepo, min_version, local_bases=(str(root),))
+    return vtf.check_ref(repo, ref, when, floors, tags_of)
+
+
+def report_floor_gate(rep: Report, repo: str, problems: list[dict]) -> None:
+    """把 floor_gate_problems 的结果写进报告。**有 problems 就返回 False**。"""
+    if not problems:
+        rep.info(repo, "打 tag 那一刻的依赖地板时效：通过")
+        return True
+    for pr in problems:
+        note = pr.get("note") or ""
+        if note:
+            rep.red(repo, f"依赖地板判不了：{note}",
+                    "判不了 ≠ 没问题——重试（可能是网络/限流）或修好取数；"
+                    "确实要跳过就显式加 --skip-floor-check \"<理由>\"")
+        else:
+            released = pr.get("released_at")
+            rep.red(repo,
+                    f"依赖地板已落后：{pr['dep']} 地板 {pr['floor']}，"
+                    f"打 tag 这一刻最新已是 {pr['should_be']}"
+                    + (f"（发布于 {released}）" if released else ""),
+                    "抬 go.mod 地板 → go mod tidy → 重新发版；"
+                    "tag 打完不能重打（ruleset 保护）")
+    return False
+
+
 def cmd_tag(args) -> int:
     """打 annotated tag：前置条件全满足才打。"""
     root = Path(args.root).resolve()
@@ -259,6 +334,21 @@ def cmd_tag(args) -> int:
         rep.red(args.repo, "CHANGELOG.md 与「事后重生成」不一致，打 tag 会留下不一致的快照",
                 "先跑：python3 scripts/gen_changelogs.py --repo "
                 f"{args.repo} --next-version {args.version} 并提交差异")
+        return emit(rep)
+
+    # 打 tag 那一刻的依赖地板时效（2026-10-27 加）
+    #
+    # 为什么放在打 tag 的**动作里**而不是只靠 CI：
+    # 上一轮亲手踩过 —— 发 tag 前跑 `verify_tag_floor --latest-only` 是绿的，
+    # 但它只判**已存在**的 tag，即将新建的那个它压根看不见 ⇒ 一路绿灯打出了
+    # 两个「发版时刻地板就已落后」的 tag，被 CI 当场照出来，而 tag 不能重打。
+    if args.skip_floor_check:
+        rep.yellow(args.repo,
+                   f"已显式跳过打 tag 前的依赖地板时效检查（理由：{args.skip_floor_check}）",
+                   "跳过意味着这个 tag 可能带着落后地板发出去——"
+                   "tag 受 ruleset 保护、打完不能重打，只能靠后续版本补齐")
+    elif not report_floor_gate(rep, args.repo,
+                                floor_gate_problems(root, args.repo, "HEAD")):
         return emit(rep)
 
     if args.dry_run:
@@ -521,6 +611,11 @@ def main() -> int:
     t = sub.add_parser("tag", help="打 annotated tag")
     t.add_argument("--repo", required=True)
     t.add_argument("--version", required=True)
+    t.add_argument("--skip-floor-check", default="", metavar="理由",
+                   help="显式跳过「打 tag 那一刻的依赖地板时效」检查。"
+                        "必须写理由（会原样记进输出）——"
+                        "跳过意味着这个 tag 可能带着落后地板发出去，"
+                        "而 tag 受 ruleset 保护、打完不能重打")
     t.set_defaults(func=cmd_tag)
 
     s = sub.add_parser("sync-matrix", help="刷新矩阵源并同步站点副本")
