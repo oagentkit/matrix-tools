@@ -225,6 +225,13 @@ require 段相容**。由 `scripts/verify_repo_dep_claims.py` 判定。
 python3 scripts/release.py --root <矩阵根> prewrite --repo agent --version v0.10.1
 
 # 2. PR 合并后，在 main 上打 tag（前置条件不满足会拒绝执行）
+#    ⚠️ 这里会先查一道**打 tag 那一刻的依赖地板时效**（2026-10-27 加）：
+#    该 tag 快照的 go.mod 地板，必须不落后于「此刻」的依赖最新版本。
+#    落后 ⇒ 直接拒绝打 tag（tag 受 ruleset 保护，打完不能重打，只能补发版本还债）。
+#    这道检查是必须的：`verify_tag_floor --latest-only` 只判**已存在**的 tag，
+#    看不见「即将新建的那个」⇒ 2026-10-26 实测：它一路绿灯，打出了两个
+#    发版时刻地板就已落后的 tag（textx v0.7.0 / queue v0.6.4），被 CI 当场照出来。
+#    确实要跳过（且能写清理由）时：--skip-floor-check "<理由>"（黄灯留痕）。
 python3 scripts/release.py --root <矩阵根> tag --repo agent --version v0.10.1
 
 # 3. 刷新矩阵源并同步站点副本（过去这一步不在任何 runbook 里）
