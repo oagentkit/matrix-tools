@@ -410,6 +410,29 @@ def entry_subject(line: str) -> str:
     return body
 
 
+def entry_raw_text(line: str) -> str:
+    """条目行去掉列表符后的**整行**文本（不切标签）。
+
+    生成器 `gen_changelogs.py` 的 `render_entry` 在 `CC_RE` 匹配失败（解析不出
+    conventional commit）时，把 subject **原样**渲成 bullet ⇒ 这时整行文本就是
+    提交主题本身（含主题里的全角冒号）。
+
+    而本文件的 `entry_type` / `entry_subject` 按「首个全角冒号」切标签——那条口径
+    只对 **typed** 条目成立（生成器渲成 `### 新增(invoke)：主题`）。中文提交的
+    subject 常带全角冒号（`feat(invoke)：…`）⇒ other 条目会被误读成 typed 条目
+    ⇒ 提交侧判 other、CHANGELOG 侧判 feat，两边对不上 ⇒ 门禁误报「漏条目」
+    （真实事故：guardx 2026-10-28）。
+
+    ⇒ other 类提交要按本函数的**整行文本**比对。
+    """
+    body = line
+    for prefix in ENTRY_PREFIXES:
+        if body.startswith(prefix):
+            body = body[len(prefix):].strip()
+            break
+    return body
+
+
 def body_line_present(section: list[str], want: str) -> bool:
     """该段里是否出现了这一行正文（先精确比，再退到空白折叠比）。"""
     target = _norm(want)
@@ -544,6 +567,15 @@ def check_repo(repo_dir: Path, repo: str) -> RepoReport:
             hit_type = None
             hit_any = False
             for ln in entries:
+                if ctype == "other":
+                    # 生成器把解析不出 conventional 的 subject **原样**渲成 bullet
+                    # ⇒ 期望主题可能自带全角冒号（中文正文常见，如 `feat(x)：…`），
+                    # 按「首个全角冒号」切标签会把它切掉 ⇒ 先按**整行文本全等**比对
+                    #（生成器就是原样渲染的，整行文本即主题本身）。
+                    if subject_n and _collapse(entry_raw_text(ln)) == subject_n:
+                        hit_type = ctype
+                        hit_any = True
+                        break
                 if subject_n and subject_n not in _collapse(entry_subject(ln)):
                     continue
                 hit_any = True
@@ -1029,6 +1061,48 @@ def selftest() -> int:
         rep = check_repo(repo, "demo")
         check("subject 回声: 回声行写进去也不判红", rep.problems, 0)
         _write_changelog(repo, GOOD_CHANGELOG)
+
+        # ⑩ 全角冒号 subject（解析不出 conventional ⇒ other 类）→ **不误报漏条目**
+        #
+        # 生成器把这种 subject **原样**渲成 bullet；而中文提交的 subject 常带全角
+        # 冒号（`feat(invoke)：…`）⇒ CHANGELOG 侧按「首个全角冒号」切标签会把主题
+        # 切掉 ⇒ 提交侧判 other、CHANGELOG 侧判 feat，两边对不上 ⇒ 误报「漏条目」
+        # （真实事故：guardx 2026-10-28，那条提交在仓里其实是合规的）。
+        #
+        # 这条样本是**反证**：判据没修 ⇒ 这里当场红。
+        repo2 = tmp / "demo2"
+        repo2.mkdir()
+        _git(repo2, "init", "-q", "-b", "main")
+        _git(repo2, "config", "user.email", "t@example.com")
+        _git(repo2, "config", "user.name", "T")
+        (repo2 / "f.go").write_text("package f\n")
+        _git(repo2, "add", "-A")
+        _git(repo2, "commit", "-q", "-m",
+             "feat(invoke)：动作层结论——缺第三格\n\n正文一行")
+        _git(repo2, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+        good2 = ("# demo2 CHANGELOG\n\n## [v0.1.0] — 2026-01-01\n\n"
+                 "- feat(invoke)：动作层结论——缺第三格\n\n正文一行\n")
+        _write_changelog(repo2, good2)
+        rep2 = check_repo(repo2, "demo2")
+        check("全角冒号: 原样渲染的条目算覆盖", rep2.problems, 0)
+        check("全角冒号: 不误报漏条目", len(rep2.missing_entries), 0)
+        # 反证：把那条条目删掉 → **必须**报出漏条目（判据没被放空成「永远绿」）
+        bad2 = good2.replace("- feat(invoke)：动作层结论——缺第三格\n", "")
+        _write_changelog(repo2, bad2)
+        rep2 = check_repo(repo2, "demo2")
+        check("全角冒号: 删掉条目必须报出漏条目", len(rep2.missing_entries), 1)
+        check("全角冒号: 漏的正是那条",
+              "动作层结论" in (rep2.missing_entries[0] if rep2.missing_entries else ""), True)
+        # 反证（第二条）：把那条条目**换成别的**条目 → 段里仍有条目行，但缺的是
+        # 这一条 ⇒ 必须报出漏条目。这条抓住「判据放空」（other 类恒判覆盖）——
+        # 删掉整条时段里没有任何条目行，放空与否都判不出差别。
+        other2 = good2.replace("- feat(invoke)：动作层结论——缺第三格\n",
+                                "- 其他(别的)：别的条目\n")
+        _write_changelog(repo2, other2)
+        rep2 = check_repo(repo2, "demo2")
+        check("全角冒号: 换成别的条目必须报出漏条目", len(rep2.missing_entries), 1)
+        check("全角冒号: 换条目时漏的仍是那条",
+              "动作层结论" in (rep2.missing_entries[0] if rep2.missing_entries else ""), True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1041,7 +1115,7 @@ def selftest() -> int:
         return 1
     print("✅ verify_changelog_coverage 自测通过"
           "（漏条目 / 正文缺失 / 零信息量不误报 / 类型不符 / 缺版本段 / 更丰富不误红 / "
-          "无待发版段不误红 / subject 回声不误红 / "
+          "无待发版段不误红 / subject 回声不误红 / 全角冒号 other 类不误报 / "
           "范围口径 repo 模式只查本仓且定时仍全矩阵）")
     return 0
 
