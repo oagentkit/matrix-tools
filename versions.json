@@ -178,7 +178,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.15.0",
+      "latest": "v0.16.0",
       "packages": [
         {
           "pkg": "fence",
@@ -308,6 +308,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.22.0",
               "to": "v0.22.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.16.0",
+          "date": "2026-10-28",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.22.1",
+              "to": "v0.29.1"
             }
           ]
         }
@@ -2088,7 +2099,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.52",
+      "latest": "v1.8.53",
       "retiring": true,
       "breakingIndex": [
         {
@@ -3145,6 +3156,32 @@
               "dep": "github.com/oagentkit/textx",
               "from": "v0.6.2",
               "to": "v0.7.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.53",
+          "date": "2026-10-28",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.15.0",
+              "to": "v0.16.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.22.0",
+              "to": "v0.22.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.28.0",
+              "to": "v0.29.1"
             }
           ]
         }
