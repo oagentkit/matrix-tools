@@ -2156,7 +2156,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.54",
+      "latest": "v1.8.55",
       "retiring": true,
       "breakingIndex": [
         {
@@ -3260,6 +3260,27 @@
               "dep": "github.com/oagentkit/tools",
               "from": "v0.10.4",
               "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.55",
+          "date": "2026-10-28",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.22.1",
+              "to": "v0.23.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.2",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.29.1",
+              "to": "v0.30.0"
             }
           ]
         }
