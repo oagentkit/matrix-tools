@@ -256,6 +256,14 @@ python3 scripts/gen_floor_bumps.py --root <各仓克隆父目录> \
 python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.10.1
 ```
 
+**破坏式发布必须写 `BREAKING CHANGE:` trailer**（写在**提交正文**里；多提交的 PR
+还要在 PR 正文里写）——矩阵对下游公开的破坏性变更清单（`versions.json` 的
+`breakingIndex`，站点与 llms.txt 直接引用）是从 CHANGELOG **自动抽取**的，
+而 CHANGELOG 正文来自提交正文 ⇒ 不写 trailer = 矩阵漏登记 = **对下游说谎**
+（实测 2026-10-28 mcpkit v0.9.0：两处破坏都没进索引，下游照矩阵升版 ⇒
+`allow: []` 的那个 server 静默变成零工具）。要求与兜底规则的原文见 org 规则仓
+[CONTRIBUTING §发版](https://github.com/oagentkit/.github/blob/main/CONTRIBUTING.md#发版)。
+
 ## 本仓自己的 CI
 
 `.github/workflows/matrix-tools-ci.yml`：
