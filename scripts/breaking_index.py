@@ -11,7 +11,7 @@ CHANGELOG 说「import 路径已变」——入口与事实不一致，下游只
 更糟的一类：矩阵自己的 `packages[].importPath` 登记的是变更**前**的旧路径。
 机器按它写 import，直接编译不过——而 breakingIndex 若为空，连「这里变过」都查不到。
 
-## 判定「破坏性」的四条依据（任一命中即算）
+## 判定「破坏性」的五条依据（任一命中即算）
 
 1. 小节标题带 conventional commit 的叹号（`### 重构(llm)!：…`）；
 2. 小节标题里出现 `Breaking` / `BREAKING`；
@@ -21,6 +21,12 @@ CHANGELOG 说「import 路径已变」——入口与事实不一致，下游只
 第 3 条是最可靠的一条：它由 commit body 里的 conventional commit trailer 渲染而来，
 与发版时写的语义同源。另两条是补充——有些破坏性变更的 commit 没写 trailer，
 但标题带了 `!`（发版时用 `!` 标了破坏性）。
+
+第 5 条是 2026-10-28 实测后补的：中文发布说明最常写的「行首声明」
+（`破坏性变更（…）：…`）不落在前四条依据的任何一条上 ⇒ 抽取器收不到 ⇒
+矩阵对下游说「无破坏性变更」（实测 mcpkit v0.9.0）。只认**行首**（句中散文是
+事实陈述，不是声明），排除否定形态（`破坏性变更：无`）与核对记录
+（`破坏性变更核对（…）`）。
 
 第 4 条是 2026-10-20 实测后补的：有一类破坏性变更**只写在散文里、没有显式标记**——
 `llm v0.12.0` 把 `github.com/oagentkit/obs/obsx` 迁到 `github.com/oagentkit/llm/obsx`，
@@ -63,6 +69,28 @@ SUB_HEADING = re.compile(r"^###\s+(?P<title>.+?)\s*$")
 
 # 破坏性 trailer 行：`BREAKING CHANGE: …` / `BREAKING：…` / `BREAKING: …`
 BREAKING_LINE = re.compile(r"^\s*BREAKING(?:\s+CHANGE)?\s*[：:]\s*(?P<text>.*)$")
+
+# 行首的破坏性**声明**（中文发布说明的常见写法）：`破坏性变更（…）：…`。
+#
+# 为什么需要它：第 3 条依据认的是**英文 trailer**（`BREAKING CHANGE:`），
+# 而中文发布说明最常写的是「行首声明」——它不落在四条依据的任何一条上 ⇒
+# 抽取器收不到 ⇒ 矩阵对下游说「无破坏性变更」（实测 mcpkit v0.9.0：
+# 段里明确写着「破坏式变更（0.x 阶段 minor 版）：…」，而 breakingIndex 是空的）。
+#
+# 为什么只认**行首**：句中的「…对下游是隐式破坏性变更」是**事实陈述**，不是声明
+# ——独立 oracle 早已因此收窄过自己那条（见其文件头注释）。行首声明与那种
+# 句中散文正好分得开。
+#
+# 为什么短语后必须跟标点（`：` / `（`）或行尾：否则「破坏性变更**核对**（均无影响）」
+# 这种**核对记录**会被当成声明（实测样本：guardx v0.5.0 的段里就有一行）。
+#
+# 为什么排除否定形态：「破坏性变更：无」说的是「这版**没有**破坏性变更」，
+# 把它算成破坏性就是对下游说谎。
+BREAKING_DECL_LINE = re.compile(
+    r"^\s{0,3}(?:[-*+>]\s*)?(?:\*\*)?(?:破坏性变更|破坏式变更)(?:\*\*)?\s*(?:[（(：:]|$)"
+)
+# 声明后面的否定词（去掉前导标点后比对）。
+DECL_NEGATION = re.compile(r"^(?:无|没有|不|非|暂无)")
 
 # 标题里的叹号（conventional commit 的破坏性标记）：`重构(llm)!：`
 BANG_IN_TITLE = re.compile(r"[a-zA-Z]!|!\s*[：:]")
@@ -153,7 +181,26 @@ def _is_breaking(title: str, body: list[str]) -> tuple[bool, str]:
     # 第 4 条依据：包在模块之间搬家（散文形态，无显式 trailer）
     if _moved_packages(body):
         return True, ""
+    # 第 5 条依据：正文里**行首**的破坏性声明（中文发布说明的常见写法）
+    if _decl_line(body):
+        return True, ""
     return False, ""
+
+
+def _decl_line(body: list[str]) -> str:
+    """正文里行首的破坏性声明行（没有则空串）。
+
+    否定形态（`破坏性变更：无`）不算——它说的是「这版没有破坏性变更」。
+    """
+    for line in body:
+        m = BREAKING_DECL_LINE.match(line)
+        if not m:
+            continue
+        rest = line[m.end():].lstrip("：:（( \t")
+        if DECL_NEGATION.match(rest):
+            continue
+        return line.strip()
+    return ""
 
 
 def _summary_with_continuation(body: list[str]) -> str:
@@ -178,6 +225,10 @@ def _summary_with_continuation(body: list[str]) -> str:
             if not s or s.startswith("- ") or s.startswith("#"):
                 break
             out.append(line.rstrip())
+    if not out:
+        # 没有 trailer 行时：行首的破坏性声明就是摘要（它是发版人自己写的
+        # 「这版破坏了 + 怎么改」——机器读者要的就是这句）。
+        return _decl_line(body)
     return "\n".join(out).strip()
 
 
@@ -308,12 +359,46 @@ def selftest() -> int:
     )
     check("同仓两包不误判", len(same_repo), 0)
 
+    # 第 5 条依据：正文里**行首**的破坏性声明（中文发布说明的常见写法）
+    decl = extract(
+        "## [v0.9.0] — 2026-10-28\n\n"
+        "### 新增(mcp)：工具暴露名带 server 命名空间\n\n"
+        "破坏式变更（0.x 阶段 minor 版）：模型侧看到的工具名变成 `server.原始名`。\n"
+        "历史 checkpoint 里的 tool_call 名字与新名对不上。\n"
+    )
+    check("行首声明被收", len(decl), 1)
+    if decl:
+        check("行首声明的摘要就是那句声明",
+              decl[0]["summary"],
+              "破坏式变更（0.x 阶段 minor 版）：模型侧看到的工具名变成 `server.原始名`。")
+    # 负向样本：句中的散文是**事实陈述**，不是声明
+    prose = extract(
+        "## [v0.5.0] — 2026-10-28\n\n"
+        "### 杂务(deps)：依赖地板追平\n\n"
+        "地板抬高对下游是隐式破坏性变更：不跑 go mod tidy 就红。\n"
+    )
+    check("句中散文不误判", len(prose), 0)
+    # 负向样本：否定形态说的是「这版没有破坏性变更」
+    negated = extract(
+        "## [v0.5.0] — 2026-10-28\n\n"
+        "### 杂务：版本例行发布\n\n"
+        "破坏性变更：无\n"
+    )
+    check("否定形态不误判", len(negated), 0)
+    # 负向样本：核对记录不是声明
+    checklist = extract(
+        "## [v0.5.0] — 2026-10-28\n\n"
+        "### 杂务：版本例行发布\n\n"
+        "破坏性变更核对（均无影响）：逐条看过。\n"
+    )
+    check("核对记录不误判", len(checklist), 0)
+
     if fails:
         print("❌ breaking_index 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ breaking_index 自测通过（四条判定依据 + 负向样本 + 非版本段边界）")
+    print("✅ breaking_index 自测通过（五条判定依据 + 负向样本 + 非版本段边界）")
     return 0
 
 

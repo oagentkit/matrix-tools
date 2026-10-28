@@ -147,6 +147,39 @@ EXPLICIT: list[tuple[re.Pattern[str], str]] = [
      "⚠ + BREAKING 同现"),
 ]
 
+# 中文发布说明的**行首**破坏性声明（`破坏性变更（…）：…`）。
+#
+# 为什么需要：抽取器认的是**英文 trailer**（`BREAKING CHANGE:`），中文说明最常写的
+# 是行首声明 ⇒ 两边都收不到 ⇒ 矩阵对下游说「无破坏性变更」（实测 mcpkit v0.9.0：
+# 段里写着「破坏式变更（0.x 阶段 minor 版）：…」，而 breakingIndex 是空的）。
+#
+# 为什么只认**行首**：句中的「…对下游是隐式破坏性变更」是**事实陈述**，不是声明
+# ——本 oracle 早已因此收窄过自己那条（见 EXPLICIT 里的注释）。行首声明与那种
+# 句中散文正好分得开。
+#
+# 为什么短语后必须跟标点：`破坏性变更核对（均无影响）` 是**核对记录**，不是声明
+# （实测样本：guardx v0.5.0 的段里就有一行）。
+#
+# 实现与抽取器**各写各的**（那边剥标点后比对否定词，这里把标点折进正则）——
+# 两边共用一个判定函数就是共同盲区。
+CN_DECL = re.compile(
+    r"^\s{0,3}(?:[-*+>]\s*)?(?:\*\*)?(?:破坏性变更|破坏式变更)(?:\*\*)?\s*[（(：:]"
+)
+# 声明后面的否定词（去掉前导标点与空白后比对）。
+CN_DECL_NEG = re.compile(r"^(?:无|没有|不|非|暂无)")
+
+
+def cn_declared(line: str) -> bool:
+    """该行是否是**行首**的破坏性声明（中文形态）。"""
+    m = CN_DECL.match(line)
+    if not m:
+        return False
+    tail = line[m.end():].lstrip("：:（( \t")
+    if not tail:
+        return False            # 光有短语、没有内容 ⇒ 不是声明
+    return not CN_DECL_NEG.match(tail)   # 否定形态（「破坏性变更：无」）不算
+
+
 # 信号 B：同一个包出现在 ≥2 个不同模块下 → 包在模块间搬家
 OAGENT_PATH = re.compile(r"github\.com/oagentkit/([A-Za-z0-9_.\-/]+)")
 
@@ -200,6 +233,9 @@ def signals_for(sec: dict) -> list[dict]:
                 sig.append({"kind": "explicit", "detail": label,
                             "lineno": i, "line": line.strip()[:160]})
                 break
+        if cn_declared(line):
+            sig.append({"kind": "explicit", "detail": "行首的破坏性变更声明（中文）",
+                        "lineno": i, "line": line.strip()[:160]})
         if SUB_LINE.match(line):
             h = line.strip()
             if re.match(r"^###\s*breaking\b", h, re.I):
@@ -412,6 +448,30 @@ v0.9.0（2026-10-19）把根包上移到 module 根，路径改成 github.com/oa
 生成器只认**行首**的标记行 ⇒ 收不到这一条；oracle 的宽口径收得到。
 """
 
+# 中文行首声明的样本：正例 + 两个负例（否定形态 / 核对记录）。
+_CN_DECL_FIXTURE = """# demo CHANGELOG
+
+## [v0.3.0] — 2026-10-28
+
+### 新增(mcp)：工具暴露名带 server 命名空间
+
+破坏式变更（0.x 阶段 minor 版）：模型侧看到的工具名变成 `server.原始名`。
+历史 checkpoint 里的 tool_call 名字与新名对不上。
+
+## [v0.2.0] — 2026-10-28
+
+### 杂务：版本例行发布
+
+破坏性变更：无
+
+## [v0.1.0] — 2026-10-28
+
+### 杂务：版本例行发布
+
+破坏性变更核对（均无影响）：逐条看过。
+"""
+
+
 # 生成器（breaking_index.py）**至今仍收不到**的形态——反证就拿这些当样本：
 #   v0.11.0 粗体 **BREAKING**: / 项目符号里的 BREAKING CHANGE / 小写 breaking change
 #   v0.12.0 散文形态的 import 路径搬家 —— 这条生成器已在本轮补上（不再是盲区），
@@ -455,6 +515,20 @@ def selftest() -> int:
           "v0.11.0" in missed_by_gen, True)
     check("oracle 对生成器收不到的形态也收得到",
           {"v0.11.0", "v0.12.0", "v0.5.0"} <= set(got), True)
+
+    # ---- 中文行首声明（本 oracle 的独立实现）----
+    cn = flagged_versions(_CN_DECL_FIXTURE)
+    check("行首的中文破坏性声明被收", "v0.3.0" in cn, True)
+    check("否定形态（破坏性变更：无）不误判", "v0.2.0" in cn, False)
+    check("核对记录（破坏性变更核对（…））不误判", "v0.1.0" in cn, False)
+    # 同一份样本，抽取器（独立实现）必须得出**相同结论**——两边实现各写各的，
+    # 但口径必须一致；不一致就是共同盲区。
+    try:
+        import breaking_index as _bi
+        gen_cn = {e["version"] for e in _bi.extract(_CN_DECL_FIXTURE)}
+        check("抽取器与 oracle 对中文声明的结论一致", gen_cn == cn, True)
+    except Exception:  # pragma: no cover
+        pass
 
     # ---- 对账语义 ----
     empty = check_one("x", [], "# c\n", "ok")
