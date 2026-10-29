@@ -173,7 +173,9 @@ def matrix_repos(root: Path) -> list[str]:
     不扫目录 —— 目录里可能躺着别人的克隆。
     """
     repos: list[str] = []
-    mtx = root / "matrix-tools"
+    # 根目录**本身**可能就是 matrix-tools（CI 里 checkout 出来就是这个仓）⇒
+    # 两处都找，找不到才算没有。
+    mtx = root if (root / "modules.json").exists() else root / "matrix-tools"
     mod = mtx / "modules.json"
     if mod.exists():
         try:
@@ -200,6 +202,100 @@ def matrix_repos(root: Path) -> list[str]:
             seen.add(r)
             out.append(r)
     return out
+
+
+def api_report(root: Path, org: str, repos: list[str]) -> tuple[list[tuple[str, list[tuple[str, str, str]], list[str]]], list[str]]:
+    """**不经本地克隆**的报告：各仓 go.mod 从 GitHub API 读。
+
+    → ([(仓, [(依赖, 现地板, 目标)], [判不了的依赖])], [读不到的仓])
+
+    为什么要有这一路：CI 里没有克隆（克隆 14 个仓 + 装 Go 工具链很贵），
+    而**检测**不需要克隆（go.mod 与依赖的最新 tag 都能从 API 拿）。
+    检测与修复分开 ⇒ 检测可以很便宜地每小时跑。
+    """
+    out: list[tuple[str, list[tuple[str, str, str]], list[str]]] = []
+    unreadable: list[str] = []
+    for repo in repos:
+        text = repo_meta.fetch_file(org, repo, "go.mod")
+        if not text:
+            unreadable.append(repo)
+            continue
+        requires = first_party_requires(text)
+        if not requires:
+            continue
+        latest, unknown = latest_versions(list(requires), org)
+        stale = stale_floors(requires, latest)
+        if stale:
+            out.append((repo, stale, unknown))
+    return out, unreadable
+
+
+# 跟踪 issue 的标题前缀（**必须稳定** ⇒ 靠它去重，而不是每次开新单）。
+TRACKING_TITLE_PREFIX = "[地板] 依赖地板落后"
+
+
+def open_tracking_issue(org: str, tracking_repo: str, report, unreadable: list[str]) -> str:
+    """开/更新跟踪 issue（去重：同名开着就更新它，而不是每次开新单）。
+
+    → 一句话说明（做了什么 / 没做什么）。
+    """
+    lines: list[str] = []
+    total = 0
+    for repo, stale, unknown in report:
+        total += len(stale)
+        lines.append(f"### {repo}")
+        for path, cur, tgt in stale:
+            lines.append(f"- `{path}`：`{cur}` → **`{tgt}`**")
+        for path in unknown:
+            lines.append(f"- `{path}`：取不到最新版本（判不了，不动）")
+        lines.append("")
+
+    body = "\n".join(lines)
+    if total == 0:
+        body = "✅ 各仓第一方依赖地板都是最新的（无待抬）。"
+
+    # 找同名的开着单：有 ⇒ 更新（评论 + 若已无落后则关闭）；没有 ⇒ 开新的。
+    existing = subprocess.run(
+        ["gh", "issue", "list", "--repo", f"{org}/{tracking_repo}", "--state", "open",
+         "--search", f"in:title {TRACKING_TITLE_PREFIX}", "--json", "number,title",
+         "--limit", "5"], capture_output=True, text=True)
+    nums: list[int] = []
+    if existing.returncode == 0:
+        try:
+            for it in json.loads(existing.stdout or "[]"):
+                if it.get("title", "").startswith(TRACKING_TITLE_PREFIX):
+                    nums.append(int(it["number"]))
+        except Exception:
+            pass
+
+    if total == 0:
+        if nums:
+            subprocess.run(["gh", "issue", "comment", str(nums[0]), "--repo", f"{org}/{tracking_repo}",
+                            "--body", "✅ 地板已追平（本次巡检无待抬项），关单。"], capture_output=True, text=True)
+            subprocess.run(["gh", "issue", "close", str(nums[0]), "--repo", f"{org}/{tracking_repo}",
+                            "--reason", "completed"], capture_output=True, text=True)
+            return f"已更新并关闭跟踪 issue #{nums[0]}（地板已追平）"
+        return "无待抬项，也没有开着���跟踪 issue"
+
+    comment = (f"巡检发现 **{total}** 处第一方依赖地板落后：\n\n{body}\n"
+               f"### 怎么修\n\n"
+               f"一条命令（默认只报告；`--apply` 才落地并开 PR）：\n\n"
+               f"```bash\n"
+               f"python3 scripts/bump_dep_floors.py --root <矩阵根> --apply\n"
+               f"```\n\n"
+               f"它会逐仓改 go.mod → build/vet/test 全绿才提交 → 推新分支 → 开 PR（**不合并**）。")
+    if nums:
+        r = subprocess.run(["gh", "issue", "comment", str(nums[0]), "--repo", f"{org}/{tracking_repo}",
+                            "--body", comment], capture_output=True, text=True)
+        if r.returncode != 0:
+            return f"更新失败：{(r.stderr or r.stdout).strip()[:160]}"
+        return f"已更新跟踪 issue #{nums[0]}（{total} 处落后）"
+    r = subprocess.run(["gh", "issue", "create", "--repo", f"{org}/{tracking_repo}",
+                        "--title", f"{TRACKING_TITLE_PREFIX}：{total} 处",
+                        "--body", comment], capture_output=True, text=True)
+    if r.returncode != 0:
+        return f"创建失败：{(r.stderr or r.stdout).strip()[:160]}"
+    return (r.stdout or r.stderr).strip()[:200]
 
 
 def git(repo: Path, *args: str, check: bool = True) -> str:
@@ -294,28 +390,36 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
 
 只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
 """
+    # 提交信息与 PR 正文先落盘。⚠️ **PR 正文文件必须活到 gh pr create 之后**——
+    # 提前删掉 ⇒ `gh pr create --body-file <不存在>` ⇒ **提交与分支都推了、PR 却没开**
+    # （本轮端到端实测抓到的第二个 bug）。
     msg_path = repo_dir / ".git" / "DEPS_FLOOR_MSG"
     msg_path.write_text(msg, encoding="utf-8")
     body_path = repo_dir / ".git" / "DEPS_FLOOR_BODY"
     body_path.write_text(body, encoding="utf-8")
-    git(repo_dir, "add", "-A")
-    git(repo_dir, "commit", "-q", "-F", str(msg_path))
-    msg_path.unlink(missing_ok=True)
-    body_path.unlink(missing_ok=True)
-    if push:
-        git(repo_dir, "push", "-q", "-u", "origin", branch)
-
-    if not push:
-        return True, f"已在本地提交（分支 {branch}，**未推远端**）"
-    if not open_pr:
-        return True, f"已在本地提交并推到分支 {branch}（未开 PR）"
     title = f"chore(deps): 依赖地板追到最新——{floors[0][0]} {floors[0][2]}"
-    pr = subprocess.run(["gh", "pr", "create", "--repo", f"{org}/{repo}", "--base", "main",
-                         "--head", branch, "--title", title, "--body-file", str(body_path)],
-                        capture_output=True, text=True)
-    if pr.returncode != 0:
-        return True, f"已推到分支 {branch}，但开 PR 失败：{(pr.stderr or pr.stdout).strip()[:160]}"
-    return True, pr.stdout.strip()
+    try:
+        git(repo_dir, "add", "-A")
+        git(repo_dir, "commit", "-q", "-F", str(msg_path))
+        if push:
+            git(repo_dir, "push", "-q", "-u", "origin", branch)
+
+        if not push:
+            return True, f"已在本地提交（分支 {branch}，**未推远端**）"
+        if not open_pr:
+            return True, f"已在本地提交并推到分支 {branch}（未开 PR）"
+        pr = subprocess.run(["gh", "pr", "create", "--repo", f"{org}/{repo}", "--base", "main",
+                             "--head", branch, "--title", title, "--body-file", str(body_path)],
+                            capture_output=True, text=True)
+        if pr.returncode != 0:
+            # 提交与分支已经推出去了，但 PR 没开 ⇒ 算**失败**。报「成功」会让调用方
+            # 以为这轮做完了，而矩阵里多了一个没人看的分支（本轮实测踩过）。
+            return False, (f"已推到分支 {branch}，但**开 PR 失败** ⇒ "
+                           f"{(pr.stderr or pr.stdout).strip()[:160]}")
+        return True, pr.stdout.strip()
+    finally:
+        msg_path.unlink(missing_ok=True)
+        body_path.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -327,6 +431,12 @@ def main() -> int:
     ap.add_argument("--no-pr", action="store_true", help="落地但不��� PR")
     ap.add_argument("--no-push", action="store_true",
                     help="落地但**不推远端**（本地试跑；隐含 --no-pr）")
+    ap.add_argument("--api-report", action="store_true",
+                    help="**不经本地克隆**的报告（go.mod 从 GitHub API 读）——CI 里用")
+    ap.add_argument("--open-tracking-issue", action="store_true",
+                    help="把落后的清单开/更新成跟踪 issue（去重：同名开着就更新它）")
+    ap.add_argument("--tracking-repo", default="matrix-tools",
+                    help="跟踪 issue 开在哪个仓（默认 matrix-tools）")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -336,6 +446,30 @@ def main() -> int:
         return 1
 
     stamp = datetime.datetime.now().strftime("%Y%m%d")
+    if args.api_report:
+        report, unreadable = api_report(root, args.org, repos)
+        if report:
+            print(f"⚠️ 落后 {sum(len(s) for _r, s, _u in report)} 处，涉及 {len(report)} 个仓：\n")
+            for repo, stale, unknown in report:
+                print(f"  {repo}:")
+                for path, cur, tgt in stale:
+                    print(f"    {path}: {cur} → {tgt}")
+                for path in unknown:
+                    print(f"    {path}: 取不到最新版本（判不了，不动）")
+                print()
+        else:
+            print("✅ 各仓第一方依赖地板都是最新的（无待抬）")
+        if unreadable:
+            print(f"ℹ️ 读不到 go.mod 的仓（跳过）：{', '.join(unreadable)}")
+        if args.open_tracking_issue:
+            print("=== 跟踪 issue ===")
+            msg = open_tracking_issue(args.org, args.tracking_repo, report, unreadable)
+            print("  " + msg)
+            # 开/更新失败 ⇒ **非零退出**：静默失败比红更糟（门禁一旦开始骗人，
+            # 就没人再看它了）。
+            if msg.startswith(("创建失败", "更新失败")) or "失败" in msg:
+                return 1
+        return 0
     report: list[tuple[str, list[tuple[str, str, str]], list[str]]] = []
     total = 0
     for repo in repos:
