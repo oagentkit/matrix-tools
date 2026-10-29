@@ -1,0 +1,123 @@
+name: Dep floor fix
+
+# 「自动开依赖地板 PR」的**手动触发**通道（巡检在 dep-floor-watch.yml）。
+#
+# 为什么不能直接用 GITHUB_TOKEN 自动开 PR：
+#   GitHub 的既定行为 —— 用 GITHUB_TOKEN 推的提交**不触发**那个仓的 CI；
+#   用 GITHUB_TOKEN 开的 PR 也**不触发** pull_request 检查
+#   ⇒ 自动 PR 会变成「没有 CI 的 PR」，直接破坏本矩阵「PR 必须 CI 全绿才能合」
+#     的硬约定 ⇒ 自动**只到跟踪 issue 为止**。
+#   ⇒ 解法是 **PAT**（个人访问令牌）：用 PAT 推的提交会正常触发目标仓的 CI。
+#
+# 所以本工作流的契约是：
+#   secret `DEP_FLOOR_PAT` 存在 ⇒ 能在各仓开出**带 CI 的**地板 PR；
+#   不存在 ⇒ **明确失败**并说清楚怎么配（不静默跳过 —— 静默跳过会让人以为跑过了）。
+#
+# 为什么是手动触发而不是每小时自动落地：
+#   落地一轮要克隆十几个仓 + 每个仓跑 build / vet / test（实测人工一轮约 2 小时）
+#   ⇒ 不是每小时能承受的量。定时巡检只做检测 → 开跟踪 issue；
+#   修复由本工作流**按需手动**触发一次。
+#
+# 硬边界：施作器**永不合并** ⇒ 本工作流也不合并（PR 照常由各仓自己的 CI 把关，
+# 人审完再合）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      report_only:
+        description: '只报告不开 PR（默认真落地）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dep-floor-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    name: 抬依赖地板并开 PR（PAT ⇒ PR 有 CI）
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: 校验 PAT（GITHUB_TOKEN 不行 ⇒ 必须 PAT）
+        env:
+          PAT: ${{ secrets.DEP_FLOOR_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PAT" ]; then
+            echo "::error::没有 secret DEP_FLOOR_PAT ⇒ 无法开「有 CI 的」PR。" >&2
+            echo "::error::原因：GITHUB_TOKEN 推的提交不触发目标仓 CI ⇒ PR 会没有 CI 检查。" >&2
+            echo "::error::配法：仓库 Settings → Secrets and variables → Actions → New repository secret" >&2
+            echo "::error::      名字 DEP_FLOOR_PAT，值是一个对该 org 有 contents:write 与 pull_requests:write 的 PAT。" >&2
+            exit 1
+          fi
+          echo "✅ DEP_FLOOR_PAT 已配置"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: 克隆矩阵各仓（PAT 凭据 ⇒ 推的提交会触发 CI）
+        env:
+          PAT: ${{ secrets.DEP_FLOOR_PAT }}
+        run: |
+          set -euo pipefail
+          mkdir -p matrix
+          # 仓清单**直接问施作器**（它自己的 matrix_repos()）⇒ 克隆清单与
+          # 「待会儿要处理的清单」**同一个来源**，不可能对不上。
+          # （在 workflow 里再写一份仓名 = 清单写两遍 = 迟早漂移。）
+          python3 - <<'PY' > /tmp/repos.txt
+          import pathlib, sys
+          sys.path.insert(0, "scripts")
+          from bump_dep_floors import matrix_repos
+          for r in matrix_repos(pathlib.Path(".")):
+              print(r)
+          PY
+          echo "矩阵各仓：$(wc -l < /tmp/repos.txt) 个"
+          while read -r r; do
+            [ -z "$r" ] && continue
+            git clone --quiet "https://x-access-token:${PAT}@github.com/oagentkit/${r}.git" "matrix/${r}"
+            # 把带凭据的 URL 换回干净 URL ⇒ 提交里不会留下 token
+            git -C "matrix/${r}" remote set-url origin "https://github.com/oagentkit/${r}.git"
+            echo "  cloned $r"
+          done < /tmp/repos.txt
+
+      - name: 施作器落地（改 go.mod → 验证 → 提交 → 推分支 → 开 PR，不合并）
+        env:
+          # gh 用 PAT ⇒ 开的 PR 会触发 pull_request 检查（GITHUB_TOKEN 不会）
+          GH_TOKEN: ${{ secrets.DEP_FLOOR_PAT }}
+          REPORT_ONLY: ${{ inputs.report_only }}
+        run: |
+          set -euo pipefail
+          # 推分支时用带凭据的 URL（PAT）—— clone 时已换回干净 URL，这里临时注入
+          while read -r r; do
+            [ -z "$r" ] && continue
+            git -C "matrix/${r}" remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/oagentkit/${r}.git"
+          done < /tmp/repos.txt
+          if [ "$REPORT_ONLY" = "true" ]; then
+            python3 scripts/bump_dep_floors.py --root matrix
+          else
+            python3 scripts/bump_dep_floors.py --root matrix --apply
+          fi
+
+      - name: 巡检结论
+        if: always()
+        run: |
+          {
+            echo "### 依赖地板自动修复"
+            echo ""
+            echo "- 施作器：\`matrix-tools/scripts/bump_dep_floors.py\`（\`--apply\`）"
+            echo "- 模式：${{ inputs.report_only && '只报告' || '落地并开 PR' }}"
+            echo "- **不合并**：PR 由各仓自己的 CI 把关（PAT 推的提交会触发 CI）"
+            echo "- 落后清单与修复命令在 matrix-tools 的跟踪 issue（标题前缀 \`[地板] 依赖地板落后\`）"
+          } >> "$GITHUB_STEP_SUMMARY"

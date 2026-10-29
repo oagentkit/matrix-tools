@@ -296,6 +296,37 @@ test 全绿，**红 ⇒ 跳过那个仓**；推到**新分支**，不动 main；
 > `notInvariants.tools` 里（不是不变量）。它的自测接在 CI 的
 > `Guards self-test` job（与 `gen_*` 的自测同处）。
 
+### 自动开地板 PR ⇒ 要 PAT，且**手动触发**
+
+「让 bot 自动把地板抬了、把 PR 开好」这件事，**技术上能做，但有两个硬前提**，
+缺一个就会破掉本矩阵的约定：
+
+1. **必须用 PAT，不能用 `GITHUB_TOKEN`**。GitHub 的既定行为：用 `GITHUB_TOKEN`
+   推的提交**不触发**那个仓的 CI，用它开的 PR 也**不触发** `pull_request`
+   检查 ⇒ 自动 PR 会变成「**没有 CI 的 PR**」⇒ 直接破坏「PR 必须 CI 全绿才能合」
+   这条硬约定。所以：定时巡检只做到「开跟踪 issue」为止，**不做**自动 PR。
+2. **只能手动触发，不能进每小时 cron**。落地一轮要克隆 14 个仓 + 每个仓跑
+   build / vet / test（实测人工一轮约 2 小时）⇒ 不是每小时能承受的量。
+
+于是有两条工作流，分工写死：
+
+| 工作流 | 触发 | 做什么 | 会不会开 PR |
+|---|---|---|---|
+| `dep-floor-watch.yml` | 每小时 cron（`41 * * * *`） | API 报告模式（不克隆、很便宜）⇒ 开/更新跟踪 issue | **不会** |
+| `dep-floor-fix.yml` | **手动**（workflow_dispatch） | 克隆 14 仓 ⇒ 施作器 `--apply` ⇒ 改 go.mod / 验证 / 提交 / 推分支 / 开 PR | 会，**但永不合并** |
+
+`dep-floor-fix.yml` 的契约：
+
+- secret **`DEP_FLOOR_PAT`** 存在 ⇒ 开出的 PR **带 CI**（PAT 推的提交会触发目标仓 CI）；
+- 不存在 ⇒ 工作流**明确失败**并说明怎么配（**不静默跳过** —— 静默跳过会让人
+  以为跑过了，而「以为跑过了」比「没跑」更贵）；
+- 仓清单**直接问施作器**（`matrix_repos()`）⇒ 克隆清单与待处理清单同一个来源，
+  不会漂移。
+
+配法：仓库 Settings → Secrets and variables → Actions → New repository secret，
+名字 `DEP_FLOOR_PAT`，值是对该 org 有 `contents:write` + `pull_requests:write` 的
+个人访问令牌。**不配也不影响现有行为**（巡检照常开跟踪 issue）。
+
 ## 本仓自己的 CI
 
 `.github/workflows/matrix-tools-ci.yml`：
