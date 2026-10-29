@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""第一方依赖地板**施作器**：把各仓落后的地板抬到最新可用版本，并开 PR。
+
+## 为什么要有这个工具
+
+矩阵的依赖地板是**跑步机**：`oekit` 基座（pkg / concurrency / logx）与矩阵自身的
+模块都在高频发版（实测 2026-10-28 一天内 pkg 发了 4 版、concurrency 发了 3 版）。
+每发一版，依赖它的仓的地板就落后一格 ⇒ 门禁 `verify_tag_floor --ref HEAD`
+（宽口径：判「各仓 HEAD 相对该时刻的依赖最新版本」）立刻判红。
+
+手工处理一轮要 20+ 个仓、30+ 个 PR（实测 2026-10-29 用了约 2 小时），
+而且**基座发版节奏快过人工节奏** ⇒ 下一轮又落后。本工具把这件事变成一条命令。
+
+## 口径（与门禁的关系）
+
+- **事实共享**：go.mod 的 require 解析走 `matrix_facts.parse_go_mod`，
+  依赖的最新版本走 `repo_meta.latest_tag` —— 与门禁**同一份事实**。
+- **判定独立**：版本比较、第一方筛选、「落后」的判法都在**本文件**里实现，
+  **不 import `verify_tag_floor.py`** —— 守卫之间互相 import 判定函数，
+  会变成「一处漏收、处处漏收」的共同盲区（matrix-tools/AGENTS.md 硬规则）。
+- 本工具的判定比门禁**更宽**：门禁判「在该仓 HEAD 提交时刻是否已落后」，
+  本工具判「**此刻**是否落后」⇒ 刚发过版的依赖也会被抬（抬到更新版本永远安全）。
+
+## 用法
+
+```bash
+# ① 只报告（默认，不写任何东西）
+python3 scripts/bump_dep_floors.py --root <矩阵根>
+
+# ② 落地：改 go.mod → 验证 → 提交 → 推分支 → 开 PR（**不合并**）
+python3 scripts/bump_dep_floors.py --root <矩阵根> --apply
+
+# 只看某几个仓
+python3 scripts/bump_dep_floors.py --root <矩阵根> --repo guardx --repo tools
+```
+
+## 安全边界
+
+- 默认**只报告**；`--apply` 才写文件、才推分支、才开 PR；**任何情况下都不合并**；
+- 每个仓动手前要求**工作树干净**（有未提交改动就跳过并报告，不覆盖别人的东西）；
+- 改完必须 `go build` / `go vet` / `go test -race` 全绿，**红 ⇒ 跳过那个仓**（不提交）；
+- 推到的是**新分支**（`chore/deps-floor-<stamp>`），不动 `main`；
+- 取不到依赖的最新版本 ⇒ 判「判不了」并跳过（**不拿本地清单冒充事实**）。
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+import matrix_facts  # noqa: E402  事实层：go.mod 解析
+import repo_meta  # noqa: E402  事实层：远端 tag / 版本排序
+
+# 第一方模块前缀（**本文件自己的实现**，不 import 门禁的判定函数）。
+#
+# 为什么只认这两个 org：矩阵自己的模块（github.com/oagentkit/*）与基座
+# （github.com/oekit/*，oagentkit 的模块大量以 oekit/pkg、oekit/concurrency
+# 为基座）。第三方依赖（eino、mcp-go…）**不归本工具管** —— 升级它们是另一件事
+# （会牵动 go 指令地板与 API 兼容性），不该混在「追地板」里。
+FIRST_PARTY_OWNERS = ("oagentkit", "oekit")
+
+# 模块路径 → (owner, repo)；取不到就返回 None。
+_MODULE_RE = re.compile(r"^github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)$")
+
+
+def split_module(path: str) -> tuple[str, str] | None:
+    """`github.com/oagentkit/guardx` → `("oagentkit", "guardx")`；不像第一方 ⇒ None。"""
+    m = _MODULE_RE.match(path.strip())
+    if not m:
+        return None
+    owner, repo = m.group("owner"), m.group("repo")
+    if owner not in FIRST_PARTY_OWNERS:
+        return None
+    return owner, repo
+
+
+def parse_version(v: str) -> tuple[int, ...] | None:
+    """`v0.31.0` → `(0, 31, 0)`；解析不了 ⇒ None。
+
+    **必须按数字比**：字符串比较会把 `v0.9.0` 判成大于 `v0.10.0`
+    （"9" > "1"）⇒ 门禁与施作器会同时把版本关系判反。
+    """
+    m = re.match(r"^v(\d+)(?:\.(\d+))?(?:\.(\d+))?", v.strip())
+    if not m:
+        return None
+    return tuple(int(x) if x else 0 for x in m.groups(default="0"))
+
+
+def version_lt(a: str, b: str) -> bool | None:
+    """a < b ⇒ True；a >= b ⇒ False；任一解析不了 ⇒ None（判不了）。"""
+    va, vb = parse_version(a), parse_version(b)
+    if va is None or vb is None:
+        return None
+    return va < vb
+
+
+def stale_floors(requires: dict[str, str], latest: dict[str, str]) -> list[tuple[str, str, str]]:
+    """落后的地板 → [(依赖路径, 现地板, 目标版本)]，按路径排序。
+
+    `requires` 是 {模块路径: 现地板}，`latest` 是 {模块路径: 远端最新 tag}。
+    目标版本取不到 ⇒ **不产出**（判不了 ≠ 落后，由调用方按「判不了」报告）。
+    """
+    out: list[tuple[str, str, str]] = []
+    for path in sorted(requires):
+        cur = requires[path]
+        tgt = latest.get(path)
+        if not tgt:
+            continue
+        lt = version_lt(cur, tgt)
+        if lt is None:
+            continue
+        if lt:
+            out.append((path, cur, tgt))
+    return out
+
+
+def first_party_requires(go_mod_text: str) -> dict[str, str]:
+    """go.mod → {第一方模块路径: 现地板}。
+
+    解析走事实层（`matrix_facts.parse_go_mod`）——**不自写第二份解析器**：
+    自写的那份只认 require **块**形式，单行 `require X v` 形式会被静默丢弃
+    ⇒ 六个仓的第一方依赖对本工具**完全不可见**（事实层踩过的坑，见其 docstring）。
+    """
+    parsed = matrix_facts.parse_go_mod(go_mod_text or "")
+    out: dict[str, str] = {}
+    for item in sorted(parsed.get("requires", ())):
+        parts = item.split()
+        if len(parts) < 2:
+            continue
+        path, ver = parts[0], parts[1]
+        if split_module(path):
+            out[path] = ver
+    return out
+
+
+def latest_versions(paths: list[str], org_default: str) -> tuple[dict[str, str], list[str]]:
+    """→ ({模块路径: 远端最新 tag}, [取不到的模块路径])。
+
+    版本清单**一律以远端为准**（本地克隆只贡献日期精度）——本地清单可能是陈旧的，
+    而陈旧清单会让本工具「看不见」新版本（比门禁更危险：门禁只判红，本工具会
+    静默不抬）。取不到 ⇒ 列入「判不了」，由调用方报告。
+    """
+    got: dict[str, str] = {}
+    unknown: list[str] = []
+    for path in paths:
+        parts = split_module(path)
+        if not parts:
+            continue
+        owner, repo = parts
+        try:
+            tag = repo_meta.latest_tag(owner, repo)
+        except Exception:
+            tag = None
+        if tag:
+            got[path] = tag
+        else:
+            unknown.append(path)
+    return got, unknown
+
+
+def matrix_repos(root: Path) -> list[str]:
+    """矩阵里的仓（13 个模块 + 门面）。
+
+    数据源是矩阵的**单一数据源**（modules.json 与 versions.json 的 facades），
+    不扫目录 —— 目录里可能躺着别人的克隆。
+    """
+    repos: list[str] = []
+    mtx = root / "matrix-tools"
+    mod = mtx / "modules.json"
+    if mod.exists():
+        try:
+            data = json.loads(mod.read_text(encoding="utf-8"))
+            for m in data.get("modules", []) or []:
+                r = m.get("repo")
+                if r:
+                    repos.append(r)
+        except Exception:
+            pass
+    vers = mtx / "versions.json"
+    if vers.exists():
+        try:
+            data = json.loads(vers.read_text(encoding="utf-8"))
+            for f in data.get("facades", []) or []:
+                r = f.get("repo")
+                if r:
+                    repos.append(r)
+        except Exception:
+            pass
+    seen, out = set(), []
+    for r in repos:
+        if r not in seen:
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+def git(repo: Path, *args: str, check: bool = True) -> str:
+    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    if check and p.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} 失败：{(p.stderr or p.stdout).strip()[:200]}")
+    return (p.stdout or "").strip()
+
+
+def go(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["go", *args], cwd=str(repo), capture_output=True, text=True)
+
+
+def apply_repo(repo_dir: Path, repo: str, floors: list[tuple[str, str, str]],
+               org: str, stamp: str, open_pr: bool, push: bool = True) -> tuple[bool, str]:
+    """把一个仓的地板抬上去并开 PR。→ (成功?, 说明)。
+
+    任何一步红 ⇒ **不动那个仓**（不提交、不推、不开 PR），并把原因报出来。
+    """
+    if git(repo_dir, "status", "--porcelain", check=False):
+        return False, "工作树不干净（有人正在改这个仓）⇒ 跳过"
+    git(repo_dir, "fetch", "origin", "--tags")
+    git(repo_dir, "checkout", "main")
+    git(repo_dir, "reset", "--hard", "origin/main")
+    branch = f"chore/deps-floor-{stamp}"
+    git(repo_dir, "checkout", "-B", branch)
+
+    for path, _cur, tgt in floors:
+        # ⚠️ 必须用**完整模块路径**（github.com/oekit/pkg）——`go mod edit` 认的是
+        # module path，不是仓库短名。写成 `oekit/pkg@v…` 会被 `go mod tidy` 当成
+        # 一个没人 import 的模块**悄悄删掉** ⇒ 提交时空 ⇒ 工具「跑通了」却什么都没改
+        # （本轮端到端实测抓到的真 bug：所以下面还要复核改完的 go.mod）。
+        r = go(repo_dir, "mod", "edit", f"-require={path}@{tgt}")
+        if r.returncode != 0:
+            return False, f"go mod edit {path}@{tgt} 失败：{(r.stderr or '').strip()[:160]}"
+    r = go(repo_dir, "mod", "tidy")
+    if r.returncode != 0:
+        return False, f"go mod tidy 失败：{(r.stderr or '').strip()[:200]}"
+    # 复核：改完的 go.mod 里地板必须真的到目标版本（防「编辑被回滚」这类静默 no-op）。
+    try:
+        after = first_party_requires((repo_dir / "go.mod").read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return False, f"复核 go.mod 失败：{e}"
+    missed = [f"{p} 仍是 {after.get(p)}（要 {t}）" for p, _c, t in floors if after.get(p) != t]
+    if missed:
+        return False, "编辑未生效（被 tidy 回滚？）⇒ 跳过：" + "; ".join(missed)
+
+    for step, args in (("build", ("build", "./...")), ("vet", ("vet", "./...")),
+                       ("test", ("test", "-race", "-count=1", "./..."))):
+        r = go(repo_dir, *args)
+        if r.returncode != 0:
+            return False, f"{step} 失败 ⇒ 跳过（不改这个仓）：{(r.stderr or r.stdout).strip()[:200]}"
+    r = go(repo_dir, "mod", "tidy", "-diff")
+    if r.returncode != 0:
+        return False, "go mod tidy -diff 有漂移 ⇒ 跳过"
+
+    rows = "\n".join(f"| `{p}` | `{c}` | `{t}` |" for p, c, t in floors)
+    msg = f"""chore(deps): 依赖地板追到最新——{floors[0][0]} {floors[0][2]}
+
+| 依赖 | 现地板 | 抬到 |
+|---|---|---|
+{rows}
+
+## 为什么
+
+矩阵的**发版时刻地板时效**门禁（`verify_tag_floor --ref HEAD`）要求：各仓 HEAD
+（= 下次发版会发出去的内容）的依赖地板，相对那一刻的依赖最新版本，不能已落后。
+oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落后一格就会判红。
+
+## 兼容性实测
+
+本工具在提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）
+与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。
+
+只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
+"""
+    body = f"""## 依赖地板抬升
+
+| 依赖 | 现地板 | 抬到 |
+|---|---|---|
+{rows}
+
+## 为什么
+
+矩阵的**发版时刻地板时效**门禁（`verify_tag_floor --ref HEAD`）要求：各仓 HEAD（= 下次发版会发出去的内容）的依赖地板，相对那一刻的依赖最新版本，不能已落后。
+
+本 PR 由 `matrix-tools/scripts/bump_dep_floors.py` 生成（地板施作器）：基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，人工追平赶不上发版节奏。
+
+## 兼容性实测
+
+提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）与 `go mod tidy -diff`（无漂移）⇒ **零行为差异**。
+
+只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
+"""
+    msg_path = repo_dir / ".git" / "DEPS_FLOOR_MSG"
+    msg_path.write_text(msg, encoding="utf-8")
+    body_path = repo_dir / ".git" / "DEPS_FLOOR_BODY"
+    body_path.write_text(body, encoding="utf-8")
+    git(repo_dir, "add", "-A")
+    git(repo_dir, "commit", "-q", "-F", str(msg_path))
+    msg_path.unlink(missing_ok=True)
+    body_path.unlink(missing_ok=True)
+    if push:
+        git(repo_dir, "push", "-q", "-u", "origin", branch)
+
+    if not push:
+        return True, f"已在本地提交（分支 {branch}，**未推远端**）"
+    if not open_pr:
+        return True, f"已在本地提交并推到分支 {branch}（未开 PR）"
+    title = f"chore(deps): 依赖地板追到最新——{floors[0][0]} {floors[0][2]}"
+    pr = subprocess.run(["gh", "pr", "create", "--repo", f"{org}/{repo}", "--base", "main",
+                         "--head", branch, "--title", title, "--body-file", str(body_path)],
+                        capture_output=True, text=True)
+    if pr.returncode != 0:
+        return True, f"已推到分支 {branch}，但开 PR 失败：{(pr.stderr or pr.stdout).strip()[:160]}"
+    return True, pr.stdout.strip()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="第一方依赖地板施作器（默认只报告）")
+    ap.add_argument("--root", required=True, help="矩阵根目录（各仓克隆的父目录）")
+    ap.add_argument("--org", default="oagentkit", help="组织名（默认 oagentkit）")
+    ap.add_argument("--repo", action="append", default=[], help="只处理这些仓（可重复）")
+    ap.add_argument("--apply", action="store_true", help="真的落地（改文件/提交/推分支/开 PR）")
+    ap.add_argument("--no-pr", action="store_true", help="落地但不��� PR")
+    ap.add_argument("--no-push", action="store_true",
+                    help="落地但**不推远端**（本地试跑；隐含 --no-pr）")
+    args = ap.parse_args()
+
+    root = Path(args.root).resolve()
+    repos = args.repo or matrix_repos(root)
+    if not repos:
+        print("❌ 矩阵清单读不到（matrix-tools/modules.json 与 versions.json 都没找到？）")
+        return 1
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d")
+    report: list[tuple[str, list[tuple[str, str, str]], list[str]]] = []
+    total = 0
+    for repo in repos:
+        repo_dir = root / repo
+        gomod = repo_dir / "go.mod"
+        if not gomod.exists():
+            continue
+        try:
+            text = gomod.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        requires = first_party_requires(text)
+        if not requires:
+            continue
+        latest, unknown = latest_versions(list(requires), args.org)
+        stale = stale_floors(requires, latest)
+        if stale:
+            total += len(stale)
+            report.append((repo, stale, unknown))
+
+    if not report:
+        print("✅ 各仓第一方依赖地板都是最新的（无待抬）")
+        return 0
+
+    print(f"⚠️ 落后 {total} 处，涉及 {len(report)} 个仓：\n")
+    for repo, stale, unknown in report:
+        print(f"  {repo}:")
+        for path, cur, tgt in stale:
+            print(f"    {path}: {cur} → {tgt}")
+        for path in unknown:
+            print(f"    {path}: 取不到最新版本（判不了，不动）")
+        print()
+
+    if not args.apply:
+        print("（只报告模式；加 --apply 落地）")
+        return 0
+
+    print("=== --apply：逐仓落地 ===")
+    ok = 0
+    for repo, stale, _unknown in report:
+        repo_dir = root / repo
+        try:
+            good, why = apply_repo(repo_dir, repo, stale, args.org, stamp,
+                                   not (args.no_pr or args.no_push),
+                                   push=not args.no_push)
+        except Exception as e:  # noqa: BLE001
+            good, why = False, f"异常：{e}"
+        print(f"  {repo}: {'✅' if good else '❌'} {why}")
+        ok += 1 if good else 0
+    print(f"\n落地完成：{ok}/{len(report)} 个仓成功")
+    return 0
+
+
+# ---------------------------------------------------------------- 自测
+
+def selftest() -> int:
+    fails: list[str] = []
+
+    def check(name: str, got, want) -> None:
+        if got != want:
+            fails.append(f"{name}: 期望 {want!r}，实得 {got!r}")
+
+    # 版本比较：必须按数字比（字符串比较会把 v0.9.0 判成大于 v0.10.0）
+    check("v0.9.0 < v0.10.0", version_lt("v0.9.0", "v0.10.0"), True)
+    check("v0.10.0 > v0.9.0", version_lt("v0.10.0", "v0.9.0"), False)
+    check("相等不算落后", version_lt("v0.31.0", "v0.31.0"), False)
+    check("解析不了判不了", version_lt("abc", "v1.0.0"), None)
+
+    # 第一方筛选
+    check("oagentkit 模块算第一方", split_module("github.com/oagentkit/guardx"), ("oagentkit", "guardx"))
+    check("oekit 基座算第一方", split_module("github.com/oekit/pkg"), ("oekit", "pkg"))
+    check("第三方不算", split_module("github.com/cloudwego/eino"), None)
+    check("非 github 路径不算", split_module("golang.org/x/sync"), None)
+
+    # 落后判定
+    req = {"github.com/oagentkit/guardx": "v0.15.0", "github.com/oekit/pkg": "v0.31.0"}
+    latest = {"github.com/oagentkit/guardx": "v0.17.0", "github.com/oekit/pkg": "v0.31.0"}
+    check("只挑出落后的", stale_floors(req, latest),
+          [("github.com/oagentkit/guardx", "v0.15.0", "v0.17.0")])
+    check("取不到目标版本就不产出", stale_floors(req, {}), [])
+
+    # go.mod 解析：事实层要同时认「单行 require」与「require 块」两种形态
+    single = "module x\n\ngo 1.26.0\n\nrequire github.com/oekit/pkg v0.20.0\n"
+    block = ("module x\n\ngo 1.26.0\n\nrequire (\n\tgithub.com/oekit/concurrency v0.19.0\n)\n")
+    check("单行 require 认得出", first_party_requires(single), {"github.com/oekit/pkg": "v0.20.0"})
+    check("require 块认得出", first_party_requires(block),
+          {"github.com/oekit/concurrency": "v0.19.0"})
+    mixed = single + "\nrequire (\n\tgithub.com/oekit/logx v0.8.0\n)\n"
+    check("两种形态同时认", len(first_party_requires(mixed)), 2)
+
+    if fails:
+        print("❌ bump_dep_floors 自测失败：")
+        for f in fails:
+            print(f"   - {f}")
+        return 1
+    print("✅ bump_dep_floors 自测通过"
+          "（版本按数字比 / 第一方筛选 / 落后判定 / go.mod 两种 require 形态）")
+    return 0
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        raise SystemExit(selftest())
+    raise SystemExit(main())
