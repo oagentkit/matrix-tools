@@ -1,0 +1,73 @@
+name: Dep floor watch
+
+# 依赖地板**巡检**（只检测，不修复）。
+#
+# 为什么需要这条：依赖地板是**跑步机**——`oekit` 基座（pkg / concurrency / logx）
+# 与矩阵模块都在高频发版（实测 2026-10-28 一天内 pkg 发了 4 版、concurrency 发了 3 版）
+# ⇒ 每发一版，依赖它的仓的地板就落后一格 ⇒ 门禁 `verify_tag_floor --ref HEAD`
+# 立刻判红 ⇒ 人工追平赶不上发版节奏（实测 2026-10-29 手工一轮 30+ 个 PR / 约 2 小时）。
+#
+# 这条工作流**只做检测**：每小时跑一次施作器的 **API 报告模式**（不克隆仓库、
+# 不需要 Go 工具链 ⇒ 很便宜）；发现落后就在本仓开/更新一个**跟踪 issue**
+#（含修复命令与逐条清单）。
+#
+# **修复**由 `scripts/bump_dep_floors.py --apply` 完成（它自己会 build/vet/test
+# 验证、推新分支、开 PR、**不合并**）⇒ PR 照常有各仓自己的 CI，
+# 人/巡检 bot 审完再合 ⇒ 「自动检测 + 一条命令修复 + 照常评审」三段都在。
+#
+# 为什么不直接在 CI 里自动开 PR：CI 用 GITHUB_TOKEN 推的提交**不会触发
+# 那个仓的 CI**（GitHub 的既定行为）⇒ 自动 PR 会变成「没有 CI 的 PR」，
+# 破坏本矩阵「PR 必须 CI 全绿才能合」的约定 ⇒ 自动只到「跟踪 issue」为止。
+
+on:
+  schedule:
+    # 每小时（基座是小时级发版 ⇒ 天级巡检会漏）。
+    # 与 matrix-tools 的 '17 6 * * *'（全矩阵 CHANGELOG 覆盖硬失败归属地）错开。
+    - cron: '41 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # 开/更新跟踪 issue 需要写 issue 的权限（**只在本仓**）。
+  issues: write
+
+concurrency:
+  group: dep-floor-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    name: Dependency floors (地板跑步机巡检)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: 施作器 API 报告 + 跟踪 issue
+        # API 模式：**不克隆**各仓（go.mod 与依赖的最新 tag 都从 GitHub API 读）
+        # ⇒ 这条巡检很便宜，可以每小时跑。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/bump_dep_floors.py \
+            --root . \
+            --api-report \
+            --open-tracking-issue \
+            --tracking-repo matrix-tools
+
+      - name: 巡检结论
+        if: always()
+        run: |
+          {
+            echo "### 依赖地板巡检"
+            echo ""
+            echo "- 施作器：\`matrix-tools/scripts/bump_dep_floors.py\`"
+            echo "- 检测口径：**此刻**各仓第一方依赖（\`github.com/oagentkit/*\` 与 \`github.com/oekit/*\`）的地板是否已是最新版本"
+            echo "- 修复命令：\`python3 scripts/bump_dep_floors.py --root <矩阵根> --apply\`"
+            echo "- 落后清单与修复命令都在本仓的跟踪 issue 里（标题前缀 \`[地板] 依赖地板落后\`）"
+          } >> "$GITHUB_STEP_SUMMARY"
