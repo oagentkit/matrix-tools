@@ -264,6 +264,38 @@ python3 scripts/release.py --root <矩阵根> doctor --repo agent --version v0.1
 `allow: []` 的那个 server 静默变成零工具）。要求与兜底规则的原文见 org 规则仓
 [CONTRIBUTING §发版](https://github.com/oagentkit/.github/blob/main/CONTRIBUTING.md#发版)。
 
+### 依赖地板是跑步机 ⇒ 有施作器
+
+`oekit` 基座（pkg / concurrency / logx）与矩阵模块**都在高频发版**（实测 2026-10-28
+一天内 pkg 发了 4 版、concurrency 发了 3 版）⇒ 每发一版，依赖它的仓的地板就落后
+一格 ⇒ 门禁 `verify_tag_floor --ref HEAD`（宽口径：判「各仓 HEAD 相对该时刻的依赖
+最新版本」）**立刻判红**。
+
+手工追平一轮要 20+ 个仓、30+ 个 PR（实测 2026-10-29 约 2 小时），而且**基座发版
+节奏快过人工节奏** ⇒ 下一轮又落后。所以有施作器：
+
+```bash
+# ① 只报告（默认，不写任何东西）
+python3 scripts/bump_dep_floors.py --root <矩阵根>
+
+# ② 落地：改 go.mod → 验证 → 提交 → 推分支 → 开 PR（**不合并**）
+python3 scripts/bump_dep_floors.py --root <矩阵根> --apply
+```
+
+**口径**：事实（go.mod 的 require 解析、依赖的最新 tag）走共享层
+（`matrix_facts` / `repo_meta`）；**判定独立实现**（版本比较、第一方筛选），
+**不 import `verify_tag_floor.py`** —— 守卫之间互相 import 判定函数会变成
+「一处漏收、处处漏收」的共同盲区。
+
+**安全边界**：默认只报告；`--apply` 才写文件 / 提交 / 推分支 / 开 PR，**任何情况下
+都不合并**；动手前要求**工作树干净**（不覆盖别人的东西）；改完必须 build / vet /
+test 全绿，**红 ⇒ 跳过那个仓**；推到**新分支**，不动 main；取不到最新版本 ⇒ 判
+「判不了」并跳过（不拿本地清单冒充事实）。
+
+> ⚠️ 本工具是**工具层**，不是守卫 ⇒ 登记在 `scripts/invariants.json` 的
+> `notInvariants.tools` 里（不是不变量）。它的自测接在 CI 的
+> `Guards self-test` job（与 `gen_*` 的自测同处）。
+
 ## 本仓自己的 CI
 
 `.github/workflows/matrix-tools-ci.yml`：

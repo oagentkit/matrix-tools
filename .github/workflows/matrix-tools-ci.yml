@@ -225,6 +225,14 @@ jobs:
         # 误判 → 登记里塞满假的「要 tidy」。
         run: python3 scripts/gen_floor_bumps.py --selftest
 
+      - name: 依赖地板施作器自测
+        # 地板是**跑步机**（基座一天发几版）⇒ 人工追平赶不上 ⇒ 有施作器。
+        # 自测覆盖三件最容易错的地方：版本必须**按数字**比（字符串比会把 v0.9.0
+        # 判成大于 v0.10.0）、第一方筛选（第三方依赖不归它管）、
+        # go.mod 的两种 require 形态（单行 `require X v` 与 require 块，
+        # 自写解析器只认块形式 ⇒ 六个仓的第一方依赖对本工具完全不可见）。
+        run: python3 scripts/bump_dep_floors.py --selftest
+
       - name: 依赖地板抬高对账门禁自测（独立 oracle）
         # 反证：自测里把 oracle 的「新增依赖」那一路阉割后，
         # 结论必须变——否则自测没有区分力，门禁是「一直绿、从没生效过」。

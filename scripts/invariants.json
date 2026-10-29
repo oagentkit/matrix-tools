@@ -843,6 +843,7 @@
       "rewrite_imports.py",
       "create_repos.py",
       "release.py",
+      "bump_dep_floors.py",
       "publish_repo.sh",
       "test_matrix_paths.py",
       "breaking_index.py"
