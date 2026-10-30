@@ -100,6 +100,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import matrix_facts  # noqa: E402  事实层：仓清单取数（与 verify_dep_floors 共用）
 import repo_meta  # noqa: E402
 
 DEFAULT_MATRIX = HERE.parent / "modules.json"
@@ -339,10 +340,14 @@ def main() -> int:
     # 要检查的仓：矩阵模块（有层位）+ 门面仓（无层位，只记账与对账）。
     # 门面仓也要进对账：它的 depFloor 同样写在 versions.json 里，同样不能是
     # 「没人守的字段」。
-    targets: list[tuple[str, int | None]] = [(m["repo"], m["tier"]) for m in data["modules"]]
-    for r in data.get("infraRepos", []):
-        if r.get("goModule"):
-            targets.append((r["repo"], None))
+    #
+    # ⚠️ 取数走**事实层**（matrix_facts.go_module_targets）——与
+    # verify_dep_floors.py 共用同一份「哪些仓是 Go module」的判定，
+    # 结构上就不可能两条守卫的覆盖面不一致（此前各写各的谓词：goModule vs
+    # topics 含 deprecated/facade，改数据源一个字段就可能让某个仓从
+    # 其中一条的视野里消失，而两条各自看起来都正常）。
+    targets: list[tuple[str, int | None]] = matrix_facts.Matrix(
+        path=Path(args.matrix), data=data).go_module_targets()
 
     versions: dict = {}
     vpath = Path(args.versions)

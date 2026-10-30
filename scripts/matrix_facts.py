@@ -86,6 +86,44 @@ class Matrix:
     def repos(self) -> list[str]:
         return [m["repo"] for m in self.modules]
 
+    def go_module_targets(self) -> list[tuple[str, int | None]]:
+        """矩阵里所有**是 Go module** 的仓 → [(仓名, 层位)]。
+
+        层位对 `modules[]` 里的仓有值；对 `infraRepos[]` 里的 Go module
+        （当前只有门面 `agentkit`）是 `None` —— 它不是矩阵成员，没有层位概念，
+        但它的 go.mod 同样钉着一整排依赖，同样要被地板门禁扫到。
+
+        ## 为什么这条取数要**只有一份**（实测 2026-10-31）
+
+        此前两条地板守卫各写各的取仓谓词：
+        - `verify_dep_floor.py`：modules[] + `infraRepos[].goModule` 为真；
+        - `verify_dep_floors.py`：modules[] + `infraRepos[].topics` 含 deprecated/facade。
+
+        当时两边集合**恰好相同**（门面两个字段都满足）⇒ 看着没问题；
+        但两个谓词不同 ⇒ 改数据源的一个字段，就可能让某个仓从其中一条守卫的
+        视野里消失，而**两条各自看起来都正常**。
+        （与「计划与执行共用同一套不完整规则 ⇒ 两边一起漏 ⇒ 报成功而实际没做」同族。）
+
+        ⇒ 正确解法不是加一条「两个集合必须相同」的检查，而是**消除重复**：
+        「哪些仓是 Go module」是**事实**（不是判定），事实层共享是安全的，
+        且结构上就不可能再不一致。
+        """
+        out: list[tuple[str, int | None]] = []
+        for m in self.modules:
+            repo = m.get("repo")
+            if repo:
+                tier = m.get("tier")
+                out.append((repo, int(tier) if tier is not None else None))
+        for r in self.data.get("infraRepos", []):
+            repo = r.get("repo")
+            if repo and r.get("goModule"):
+                out.append((repo, None))
+        return out
+
+    def all_go_repos(self) -> list[str]:
+        """所有 Go module 仓的仓名（顺序同 `go_module_targets`）。"""
+        return [repo for repo, _ in self.go_module_targets()]
+
     def tier_of(self, repo: str) -> int | None:
         for m in self.modules:
             if m["repo"] == repo:
@@ -414,6 +452,29 @@ require github.com/oekit/pkg v0.18.0
     check("CI go-version 双引号", parse_ci_go_version('go-version: "1.26"'), "1.26")
     check("CI 无 go-version", parse_ci_go_version("runs-on: ubuntu-latest"), None)
 
+    # ---- go_module_targets：仓清单取数的**唯一来源**（2026-10-31）----
+    #
+    # 此前两条地板守卫各写各的取仓谓词（goModule vs topics 含 deprecated/facade）
+    # ⇒ 改数据源一个字段就可能让某个仓从其中一条守卫的视野里消失，
+    # 而两条各自看起来都正常。⇒ 消除重复，两边共用事实层这一份。
+    m = Matrix(path=Path("/x"), data={
+        "modules": [{"repo": "a", "tier": 0}, {"repo": "b", "tier": 2}],
+        "infraRepos": [
+            {"repo": "facade", "goModule": True, "topics": ["deprecated", "facade"]},
+            {"repo": "notgo", "goModule": False, "topics": ["ci"]},
+            # 故意给一个「是 Go module 但 topics 里没有 deprecated/facade」的仓
+            # —— 旧谓词（按 topics）会漏掉它，新谓词（按 goModule）不会。
+            {"repo": "newgo", "goModule": True, "topics": ["ci"]},
+            {"repo": "norepo"},        # 没有 repo 字段 ⇒ 必须跳过（不 KeyError）
+        ],
+    })
+    check("go module 仓清单", m.all_go_repos(), ["a", "b", "facade", "newgo"])
+    check("模块有层位、infra 无层位",
+          m.go_module_targets(),
+          [("a", 0), ("b", 2), ("facade", None), ("newgo", None)])
+    check("非 Go module 的 infra 不进清单", "notgo" in m.all_go_repos(), False)
+    check("没有 repo 字段的 infra 被跳过", len(m.all_go_repos()), 4)
+
     check("包目录", _package_dirs_from_paths(
         ["llm.go", "llm/wrap/wrap.go", "go.mod", "README.md"]),
         {".", "llm"})
@@ -433,7 +494,7 @@ require github.com/oekit/pkg v0.18.0
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ matrix_facts 自测通过（go.mod / CI 版本 / 包目录 / import 归集）")
+    print("✅ matrix_facts 自测通过（go.mod / CI 版本 / 包目录 / import 归集 / Go module 仓清单）")
     return 0
 
 
