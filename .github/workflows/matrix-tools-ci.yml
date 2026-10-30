@@ -883,7 +883,12 @@ jobs:
 
       - name: 门面不得新增包（规则级）
         # 判据取自门面自己的 README 废弃声明 + git 历史，**不依赖**冻结快照。
-        run: python3 matrix-tools/scripts/verify_facade_no_new_packages.py --facade agentkit
+        #
+        # `--fail-on-yellow`：黄灯 = 「读不出门面的废弃承诺 ⇒ 判不了」。
+        # 这条判据的**触发前提**就是那句措辞——把它改成同义表述（「不再维护」等），
+        # 整条规则级判定会静默失效而 CI 照样全绿 ⇒ 兜底冻结快照盲区的那条网自己消失了。
+        # 黄灯升级为失败 ⇒ 措辞一改就有人被叫住。
+        run: python3 matrix-tools/scripts/verify_facade_no_new_packages.py --facade agentkit --fail-on-yellow
 
       - name: 门面包覆盖与迁移映射
         # 含 MIGRATION.md ↔ alias.go 的对应校验——实测「port 包有转发但迁移表漏行」
