@@ -54,11 +54,24 @@ Go 的依赖面按 **module** 结算：消费方 import 某仓的**任意一个�
 
 ## 两种口径：`floor_of` 与 `third_party_of` 不是一回事
 
-- `floor_of` = **消费方模块图继承到的东西**（含 `oekit/logx` —— 它不在基座白名单里，
-  因为 logx 带 hertz）⇒ 门禁 `tier0/tier1` 与 `versions.json.depFloor` 用这个口径；
+- `floor_of` = **消费方模块图继承到的东西**（direct + indirect，含 `oekit/logx`
+  —— 它不在基座白名单里，因为 logx 带 hertz）
+  ⇒ 门禁 `tier0/tier1` 与 `versions.json.depFloor` 用这个口径；
 - `third_party_of` = **第三方直接依赖**（排除全部 `oekit/*` 第一方基座与 `oagentkit/*` 矩阵内仓）
   ⇒ `modules.json.heavyDeps` 用这个口径
   （基座是「第一方基座」，不是「外部依赖」——各仓 README 的「外部依赖地板」小节也是这么写的）。
+
+**为什么一个全量、一个只收 direct**（2026-10-30 口径修正）：
+两者回答的是**不同的问题**——
+`floor_of` 答「**消费方** import 它会继承到什么」（Go 的依赖面按 module 结算，
+indirect 同样进消费方模块图）⇒ 必须全量；
+`third_party_of` 答「**本仓自己**主动拉了哪些重第三方」（用来判层位是否合理、
+对账各仓 README 的「外部依赖地板」小节）⇒ 只看主动选择的那几条。
+
+修正前 `floor_of` 只收 direct，而它自己的字段说明写着「整条 require 就进消费方模块图」
+—— **说明与实现互相矛盾**。实测 toolgate 真实第三方依赖 36 个、字段只记 2 个，
+而矩阵自己的 breakingIndex 写着「让消费方白吃 34 个第三方模块」
+⇒ 同一个事实，矩阵说 34，机器可读字段说 2。修正后 tier0/tier1 仍全空，红线不受影响。
 
 两个口径各有消费者 ⇒ 各写一份实现、各自写清 docstring；
 **不要把一个口径悄悄套到另一个载体上**（那会把「登记口径」与「门禁口径」搅在一起，
@@ -145,10 +158,28 @@ def requires(gomod_text: str) -> list[tuple[str, bool]]:
 
 
 def floor_of(reqs: list[tuple[str, bool]]) -> list[str]:
-    """重量级第三方**直接**依赖（地板清单）——本仓地板口径的唯一实现。
+    """重量级第三方依赖（地板清单）——本仓地板口径的唯一实现。
 
-    排除第一方矩阵内仓（看层位，不看地板）与基座白名单；只收直接依赖，
-    indirect 不算（间接依赖是传递进来的，不是本仓自己拉的）。
+    排除第一方矩阵内仓（看层位，不看地板）与基座白名单；
+    **direct 与 indirect 都收**。
+
+    ## 为什么 indirect 也要收（2026-10-30 口径修正）
+
+    Go 的依赖面按 **module** 结算：import 本仓任一包，本仓 go.mod 里的
+    **整条 require** 都进消费方的模块图 —— 间接依赖同样进，
+    消费方构建时也要下载、也要链接、也要吃它的传递依赖。
+    所以「这个包会把多少重依赖拖进我的项目」这个问题，
+    答案必须是**整条 require**，不是「我自己直接拉的那几条」。
+
+    实测（修正前）：toolgate 的 go.mod 有 36 个第三方依赖（33 个是 indirect），
+    而 `versions.json` 的 depFloor 只记 **2** 个 —— 下游拿到的信息少了 17 倍。
+    同仓的 breakingIndex 早就写着「它在带 eino 家族的重仓里让消费方
+    **白吃 34 个第三方模块**」，而机器可读的那份字段写的是 2 ⇒
+    **同一个事实，矩阵说 34，字段说 2**。
+
+    修正后各仓 tier0/tier1 仍是空的（实测 guardx/runtime/textx/promptx
+    四个仓在新口径下都是 0 条）⇒ 地板红线不受影响，只是把「说了什么」
+    改成「事实是什么」。
 
     gen_versions.py 写 versions.json 的 depFloor 也走这里——同一份实现，
     免得「生成器算一套、门禁算另一套」，两套各写一遍就会各漂各的。
@@ -159,8 +190,7 @@ def floor_of(reqs: list[tuple[str, bool]]) -> list[str]:
             continue
         if dep in ALLOWED:
             continue
-        if not indirect:
-            floor.append(dep)
+        floor.append(dep)
     return floor
 
 
@@ -169,12 +199,22 @@ def third_party_of(reqs: list[tuple[str, bool]]) -> list[str]:
 
     与 `floor_of` 的区别（两个口径各有消费者，别互相套用）：
 
-    - `floor_of` = 消费方模块图**继承到**的东西 ⇒ 含 `oekit/logx`
-      （它不在基座白名单里，因为 logx 带 hertz）⇒ 门禁 `tier0/tier1` 用它；
-    - `third_party_of` = **第三方**（非第一方基座、非矩阵内仓）的直接依赖
+    - `floor_of` = 消费方模块图**继承到**的东西（含 indirect）⇒ 含 `oekit/logx`
+      （它不在基座白名单里，因为 logx 带 hertz）⇒ 门禁 `tier0/tier1` 用它，
+      `versions.json.depFloor` 也用它；
+    - `third_party_of` = **第三方**（非第一方基座、非矩阵内仓）的**直接**依赖
       ⇒ `modules.json.heavyDeps` 用它 —— 基座是「第一方基座」，不是「外部依赖」。
 
-    同样：只收**直接**依赖（indirect 是传递进来的，不是本仓自己拉的）。
+    ## 为什么 heavyDeps 还是只收直接依赖（2026-10-30）
+
+    heavyDeps 回答的是另一个问题：**「这个仓自己主动拉了哪些重第三方」**
+    —— 用来判层位是否合理（tier2 才允许有）、以及各仓 README 的
+    「外部依赖地板」小节要对账。它是**本仓的主动选择**，不是消费方的继承面。
+
+    而 depFloor 回答的是**消费方**的问题：「我 import 它会继承到什么」。
+    Go 的依赖面按 module 结算 ⇒ indirect 同样进消费方模块图 ⇒ 必须全量。
+
+    ⇒ 两个口径都是对的，只是问的问题不同；**别互相套用**。
     """
     out: list[str] = []
     for dep, indirect in reqs:
@@ -187,7 +227,7 @@ def third_party_of(reqs: list[tuple[str, bool]]) -> list[str]:
 
 def check_module(repo: str, tier: int | None,
                  reqs: list[tuple[str, bool]]) -> tuple[list[str], list[str]]:
-    """→ (问题列表, 地板清单[仅直接依赖])
+    """→ (问题列表, 地板清单[整条 require 的重量级第三方])
 
     tier=None 表示「不按层位判红，只记账」——门面仓（agentkit）没有层位概念，
     它只作为地板的**事实陈述**被记录与对账。
@@ -417,6 +457,30 @@ require github.com/oekit/concurrency v0.17.1
                                                  ("github.com/oagentkit/obs", False)])
     check("门面不判层位", probs, [])
     check("门面地板照记", floor, ["github.com/cloudwego/eino"])
+
+    # ── 口径修正（2026-10-30）：indirect 必须进地板 ──
+    #
+    # 为什么这一条曾长期没有断言：修正前 floor_of 只收 direct，
+    # 而自测样本里**每一个** indirect 标记都是 False ⇒
+    # 「indirect 算不算地板」这个决定口径的分支，从来没被测过。
+    # 于是口径与自己的字段说明（"整条 require 就进消费方模块图"）长期矛盾，
+    # 实测 toolgate 的真实第三方依赖 36 个、对外字段只记 2 个。
+    check("indirect 也进地板（口径修正的核心断言）",
+          floor_of([("github.com/cloudwego/eino", True)]),
+          ["github.com/cloudwego/eino"])
+    check("direct + indirect 一起进地板",
+          floor_of([("github.com/cloudwego/eino", False),
+                    ("github.com/bytedance/sonic", True)]),
+          ["github.com/cloudwego/eino", "github.com/bytedance/sonic"])
+    # indirect 同样会触发 tier0 红线（它同样进消费方模块图）
+    probs, floor = check_module("x", 0, [("github.com/cloudwego/eino", True)])
+    check("tier0 带 indirect 的 eino 也被抓", len(probs), 1)
+    check("tier0 indirect 的地板被记", floor, ["github.com/cloudwego/eino"])
+    # 但 heavyDeps 口径（third_party_of）仍是「只收直接依赖」——两者别互相套用
+    check("third_party 仍只收直接依赖（不随 floor_of 改口径）",
+          third_party_of([("github.com/cloudwego/eino", False),
+                          ("github.com/bytedance/sonic", True)]),
+          ["github.com/cloudwego/eino"])
 
     # 地板口径唯一实现：gen_versions.py 也走它（免得两份各算各的）
     check("floor_of 与 check_module 同口径", floor_of([("github.com/cloudwego/eino", False),

@@ -1,5 +1,5 @@
 {
-  "$comment": "agentkit → 模块矩阵机器可读定义。拆分判据：框架耦合度 + 依赖地板 + 消费方集合。自底向上分层，tier 小的先发版。结构变更后重跑 scripts/split/verify_split.py 校验。ghDescription 与 topics 是建仓元数据的单一数据源，由 scripts/split/create_repos.py 消费。 | 层位判据（2026-10-19 起按此执行）：**层 = 依赖地板**——tier0/tier1 不得有重量级第三方直接依赖；带 eino/milvus/mcp-go/驱动的仓一律 tier2 起。门禁：scripts/verify_dep_floor.py。",
+  "$comment": "agentkit → 模块矩阵机器可读定义。拆分判据：框架耦合度 + 依赖地板 + 消费方集合。自底向上分层，tier 小的先发版。结构变更后重跑 scripts/verify_import_direction.py 校验（层级方向 + 依赖声明对账）。ghDescription 与 topics 是建仓元数据的单一数据源，由 scripts/create_repos.py 消费。 | 层位判据（2026-10-19 起按此执行）：**层 = 依赖地板**——tier0/tier1 不得有重量级第三方直接依赖；带 eino/milvus/mcp-go/驱动的仓一律 tier2 起。门禁：scripts/verify_dep_floor.py。 | 分层表有三处载体（profile README / 各模块仓 AGENTS.md+README.md / 门面 agentkit README.md），三处都必须与本文件的 tier 一致——门禁分别是 verify_profile_tiers.py（.github 仓）、verify_repo_tiers.py、verify_facade_tier_table.py。",
   "schemaVersion": 1,
   "sourceModule": "git.enjoye.top/enjoydream/agentkit",
   "defaultOrg": "oagentkit",
@@ -453,7 +453,7 @@
   "infraRepos": [
     {
       "repo": "agentkit",
-      "role": "门面仓——46 包 re-export 零逻辑，发 v1.0.0 后按 README 写死的期限退役",
+      "role": "门面仓——只做 re-export 零逻辑（转发包集合已冻结，见 matrix-tools/scripts/facade_package_baseline.json），发 v1.0.0 后按 README 写死的期限退役",
       "ghDescription": "【门面仓·已迁移】本项目已拆分为 github.com/oagentkit/* 共 13 个独立发版仓，此仓仅保留 re-export 兼容层，v1.x 后退役",
       "topics": [
         "go",

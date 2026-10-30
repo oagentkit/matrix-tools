@@ -142,6 +142,75 @@ def imported_modules(script: Path) -> set[str]:
     return out
 
 
+def generator_to_judge_coupling(registry: dict, scripts_dir: Path, report) -> None:
+    """生成器 → 守卫 的耦合必须逐条披露，未披露 ⇒ 红灯。
+
+    ## 判据
+
+    找出所有**生成器**（`gen_*.py` / `breaking_index.py` / `rewrite_imports.py`）
+    import 了哪些**守卫**（登记在 `inv["judges"]` 里的脚本），
+    再看这些耦合有没有写进对应不变量的 `sharedWith`。
+
+    守卫名从**登记表**读，不是靠文件名前缀猜——登记表才是「哪些脚本是守卫」的权威。
+
+    ## 为什么这个方向也要查（实测 2026-10-30）
+
+    第 3 条查的是「守卫 → 生成器」，用的是 `inv["judges"]` 里的脚本。
+    **生成器 → 守卫**没人查，而它更危险：
+
+        gen_versions.py import verify_dep_floor，用它的 floor_of() 写
+        versions.json 的 depFloor；而 verify_dep_floor 的对账又用 floor_of()
+        核对 versions.json ⇒ 对账成了**恒真式**（两边永远相等），
+        floor_of 的任何 bug 双盲。
+
+    这正是「共享判断逻辑 ⇒ 共同盲区」的镜像形态。
+    """
+    invs = registry.get("invariants", []) if registry else []
+
+    # 登记表里出现的全部守卫脚本 → 它们对应的不变量（用于查 sharedWith）
+    # 键用**模块名**（去 .py 后缀）：imported_modules 返回的就是模块名，
+    # 用带后缀的脚本名做键会一个都匹配不上（实测踩过：交集恒为空 ⇒ 判据从不触发）。
+    judge_to_inv: dict[str, set[str]] = {}
+    for inv in invs:
+        for j in inv.get("judges", []):
+            stem = j[:-3] if j.endswith(".py") else j
+            judge_to_inv.setdefault(stem, set()).add(inv.get("id", "?"))
+
+    generator_files = sorted(
+        p for p in scripts_dir.glob("*.py")
+        if p.stem in GENERATOR_STEMS or p.name.startswith("gen_")
+    )
+
+    for gen in generator_files:
+        imported = imported_modules(gen)
+        judges = sorted(m for m in imported if m in judge_to_inv)
+        if not judges:
+            continue
+        for j in judges:
+            # 这个守卫参与的所有不变量里，是否有任一条披露了这条耦合。
+            # 披露的是**被 import 的那个模块名**（= 守卫），不是生成器自己——
+            # 第 3 条的 sharedWith 记的也是「这个判据脚本耦合了哪个模块」。
+            declared_any = False
+            for inv_id in judge_to_inv[j]:
+                inv = next((x for x in invs if x.get("id") == inv_id), None)
+                if not inv:
+                    continue
+                declared = {s.get("module") for s in inv.get("sharedWith", [])}
+                if j in declared:
+                    declared_any = True
+                    break
+            if not declared_any:
+                report.red(
+                    "generator-coupling",
+                    f"生成器 {gen.name} import 了守卫 {j}.py，"
+                    f"但没有在任何不变量的 sharedWith 里披露",
+                    "生成器复用守卫 ⇒ 对账可能变成恒真式"
+                    "（生成器算的，门禁拿同一个函数算，永远相等）——"
+                    "「共享判断逻辑 ⇒ 共同盲区」的镜像形态。"
+                    "要么把耦合写进对应不变量的 sharedWith 并写明理由，"
+                    "要么把取数下沉到事实层、两边各自实现判定")
+
+
 def selftest_invoked(ci_text: str, script: str) -> bool:
     """CI 里是否有一步**以 --selftest 调用**了这个判据脚本。
 
@@ -525,6 +594,27 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                     "「门禁与被检对象共享判断逻辑」是矩阵踩过两次的坑，"
                     "披露是最低限度的防线")
 
+    # 3b：**生成器不得 import 守卫**（耦合的另一个方向）
+    #
+    # 为什么方向也要管（实测 2026-10-30）：第 3 条只查「守卫 → 生成器」，
+    # 查的是 `inv["judges"]` 里的脚本。**生成器 → 守卫**这个方向完全没人查，
+    # 而它比前一个方向更危险：
+    #
+    #   gen_versions.py import verify_dep_floor，用它的 floor_of() 写 versions.json 的
+    #   depFloor；而 verify_dep_floor 的对账又用 floor_of() 去核对 versions.json。
+    #   ⇒ 对账成了**恒真式**：生成器算的，门禁拿同一个函数算，永远相等。
+    #   floor_of 的任何 bug（口径错、解析漏、过滤过头）**双盲**——
+    #   而 depFloor 是矩阵**对外发布**的消费依据。
+    #
+    # 形态上是「共享判断逻辑 ⇒ 共同盲区」的镜像：
+    # 前一个方向是门禁复用生成器，这个方向是生成器复用门禁，
+    # 两者都会让「判定」与「被判定对象」共用同一套实现。
+    #
+    # 处置同第 3 条：**披露制**。耦合必须写进 sharedWith 并写明理由，
+    # 由人 review「这次 import 是否影响了判定」。未披露 ⇒ 红灯。
+    generator_to_judge_coupling(registry, scripts_dir, report)
+
+
     # 4：硬规则 2——每条守卫都要能自证还活着（AGENTS.md 硬规则 2）
     #
     # 「每条守卫都要有 --selftest，而且自测必须带反证样本」这条规则此前**只是文档**：
@@ -638,6 +728,13 @@ def selftest() -> int:
         (scripts / "verify_elsewhere.py").write_text(
             "ap = None  # --selftest\n", encoding="utf-8")
         (scripts / "gen_changelogs.py").write_text("x = 1\n", encoding="utf-8")
+        # 反证样本 ⑩：**生成器 import 守卫**（耦合的另一个方向）
+        # gen_genjudge.py import verify_ok.py（一个已登记的守卫），
+        # 而登记表里没有任何不变量披露这条耦合 ⇒ 必须判红。
+        # 这正是线上真实形态：gen_versions.py import verify_dep_floor.py，
+        # 而 dep-floor 登记成 oracle=independent / sharedWith=[]。
+        (scripts / "gen_genjudge.py").write_text(
+            "import verify_ok\nx = 1\n", encoding="utf-8")
 
         # workflow：ci.yml 的 `on:` **故意没有 schedule**（反证「登记了却不存在」）；
         # ci2.yml 的 `on:` 有 schedule，但 only-push 用 if 排除它（反证「if 排除了
@@ -767,6 +864,9 @@ def selftest() -> int:
         misplaced_hint = " ".join(f.hint or "" for f in rep.reds if f.subject == "misplaced")
         check("修法文案指出真判定在哪个 job", "ci.yml :: c" in misplaced_hint, True)
 
+        # ⑩ 生成器 → 守卫 的耦合未披露 ⇒ 判红（耦合的另一个方向）
+        check("生成器 import 守卫未披露被抓出", "generator-coupling" in subjects, True)
+
         # 反证：把 --selftest 的 CI 接线去掉 ⇒ 必须转红（证明这条判定有区分力）
         write_ci1(
             "      - run: python3 scripts/verify_ok.py\n"
@@ -780,6 +880,13 @@ def selftest() -> int:
             {"module": "gen_changelogs", "why": "只取事实"},
             {"module": "matrix_facts", "why": "只取事实"},
         ]
+        # 反证样本 ⑩ 的补齐：把「生成器 import 守卫」这条耦合**披露**掉
+        # （披露后应当转绿——披露制就是「写了理由就放行，由人 review」）
+        for inv in registry["invariants"]:
+            if inv["id"] == "ok":
+                inv["sharedWith"] = [
+                    {"module": "verify_ok", "why": "反证样本：披露生成器→守卫的耦合"},
+                ]
         # 把孤儿脚本登记进不变量**并且**接进 CI（两者缺一都会红）
         registry["invariants"][0]["judges"].append("verify_orphan.py")
         registry["invariants"][0]["ci"].append(

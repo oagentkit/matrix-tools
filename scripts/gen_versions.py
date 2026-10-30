@@ -75,7 +75,11 @@ def gomod_text(root: str | None, org: str | None, repo: str) -> str | None:
 
 
 def dep_floor(root: str | None, org: str | None, repo: str) -> list[str]:
-    """某仓的重量级第三方直接依赖（消费者 import 它任一包就会被拖进来的那些）。
+    """某仓的重量级第三方依赖（消费者 import 它任一包就会被拖进来的那些）。
+
+    口径：**direct + indirect 全部** —— Go 的依赖面按 module 结算，
+    本仓 go.mod 的整条 require 都进消费方的模块图（2026-10-30 口径修正；
+    修正前只收 direct ⇒ 实测 toolgate 的 36 个第三方依赖只对外报了 2 个）。
 
     口径与门禁 verify_dep_floor.py **同源**（走它的 floor_of 唯一实现），
     不在这里另立一套——两份实现各写一遍，迟早各漂各的。
@@ -174,8 +178,10 @@ def main() -> int:
                      f"权威输出：rewrite_imports.py --print-rules",
         "$breakingIndexRule": "由各仓 CHANGELOG.md 自动抽取（判定规则见 scripts/breaking_index.py）。"
                               "对账门禁：scripts/verify_breaking_index.py。",
-        "$depFloorRule": "每仓的重量级第三方直接依赖（Go 的依赖面按 module 结算：import 本仓任一包，"
-                         "本仓的整条 require 就进消费方的模块图）。"
+        "$depFloorRule": "每仓的重量级第三方依赖（direct + indirect 全部）："
+                         "Go 的依赖面按 module 结算——import 本仓任一包，"
+                         "本仓 go.mod 的整条 require 都进消费方的模块图，"
+                         "间接依赖同样进、同样要下载链接。"
                          "tier0/tier1 必须为空 —— 门禁：scripts/verify_dep_floor.py。",
         "$floorBumpsRule": "「依赖地板抬高」= 相邻两个 tag 之间 go.mod 的 require 版本抬高"
                            "（或新增依赖）。对下游是**隐式破坏性变更**：不跑 go mod tidy "
