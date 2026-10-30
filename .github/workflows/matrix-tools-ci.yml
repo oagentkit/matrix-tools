@@ -363,18 +363,13 @@ jobs:
         # 嵌套字段被改 / packages 顺序乱 ⇒ 必报；完全一致 ⇒ 不报。
         run: python3 scripts/verify_modules_copy.py --selftest
 
-      - name: 全量自测（兜底：防止有自测脚本漏接进 CI）
-        # 上面这些步骤是**逐条写死的** ⇒ 新增一个自测脚本时，接线要靠人记 ⇒ 必然漏。
-        # 这一步自动发现 `scripts/test_*.py` + 所有支持 `--selftest` 的守卫并全跑一遍。
-        #
-        # 为什么这不是「重复劳动」：本地清单与 CI 清单**都是靠人记的**，两边都会漏。
-        # 2026-10-31 实测：改了 gen_versions.floor_bumps_map 的取值（加 org 字段），
-        # 本地清单漏了 scripts/test_*.py ⇒ 本地全绿，CI 的 Scripts job 却报
-        # AttributeError 红了一轮 ⇒ 清单漂移是**真会咬人**的。
-        #
-        # 集合等价性已核对：selftest_all 发现的 43 个脚本**全部**在上面逐条出现过
-        # ⇒ 不引入新的环境依赖（pyyaml / Go 都已在本 job 装好）。
-        run: python3 scripts/selftest_all.py
+      # 注：`scripts/selftest_all.py`（本地一条命令跑全量自测）**不在本 job 跑**。
+      # 原因：它发现的 43 个脚本在上面的步骤里**已逐条跑过** ⇒ 在 CI 上是重复劳动，
+      # 却让本 job 多花数分钟（job 的 timeout 是 5 分钟 ⇒ 有超时风险）。
+      # CI 侧「新增自测脚本不许漏接线」由另一条机制兜底：
+      # `verify_inventory` 的红线要求每个**已登记**的判据脚本的 `--selftest`
+      # 必须在 CI 里被真的调用过 ⇒ 新脚本若要登记为判据，不进 CI 就会被当场判红。
+      # 本地侧则一律用 `python3 scripts/selftest_all.py`（清单机器可执行，不靠人记）。
 
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
