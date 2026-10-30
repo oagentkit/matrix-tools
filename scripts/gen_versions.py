@@ -126,8 +126,12 @@ def floor_bumps_map(args, data: dict) -> tuple[dict[str, list[dict]], str]:
     floor_root = getattr(args, "floor_root", None)
     local_root = floor_root or args.root
     if local_root:
+        # 对账要联网（远端 tag 集合是基准）⇒ 传 org 进去。
+        # 没给 --org 时用数据源的 defaultOrg —— 否则本地 tag 完整性**无法核对**，
+        # 陈旧 tag 会被静默当成「相邻 tag 对」，漏算的历史条目直接落进对外产物。
+        org = args.org or data.get("defaultOrg")
         try:
-            computed = gen_floor_bumps.compute_all(Path(local_root), None, repos)
+            computed = gen_floor_bumps.compute_all(Path(local_root), org, repos)
             which = "--floor-root" if floor_root else "--root"
             return computed, f"现算（{which} {local_root}）"
         except Exception as e:  # 取不到就退回去搬，不静默

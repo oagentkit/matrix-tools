@@ -124,10 +124,14 @@ def api_tags(org: str, repo: str) -> list[tuple[str, str]]:
 
     日期用 tag 指向的**提交日期**近似（API 拿不到 annotated tag 的 tagger 时间），
     口径差异写在输出里，不藏。
+
+    **分页取全量**：GitHub 的 list 端点默认只回第一页（30 条）⇒
+    `per_page=100` 之外还必须翻页，否则「远端 tag 集合」本身就是残缺的，
+    而它正是本地 tag 完整性对账的**基准**（基准残缺 ⇒ 对账失效）。
     """
     import repo_meta
 
-    raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
+    raw = repo_meta.gh_api_paginated(f"repos/{org}/{repo}/tags")
     if not raw:
         raise RuntimeError(f"{org}/{repo} 的 tag 列表取不到")
     try:
@@ -252,22 +256,76 @@ def repo_list(matrix: dict) -> list[str]:
     return repos
 
 
+def check_local_tags_complete(repo: str, local: list[tuple[str, str]],
+                              remote: list[tuple[str, str]]) -> list[str]:
+    """本地 tag 集合是否覆盖远端的 root tag 集合；返回缺失的 tag 列表。
+
+    ## 为什么要有这条对账（实测 2026-10-30）
+
+    floorBumps 按「**相邻**两个 root tag 处的 go.mod 差异」算 ⇒
+    本地 tag 集合一旦残缺，**相邻对就是错的** ⇒ 抬地板的版本被跳过 ⇒
+    算出来的条目**变少**，而工具**不报错**（它只是按手头的 tag 算，输出「看起来正常」）。
+
+    实测：本地 tag 陈旧（skillkit 缺 3 / toolgate 缺 5 / mcpkit 缺 3 个）
+    ⇒ floorBumps 漏算 **35 条**（151 → 116）⇒ 若这结果被写进 versions.json
+    ⇒ **数据回退被发布出去**（下游看不到真实的地板抬升历史）。
+
+    而 `gen_versions.py` 的退路（「现算失败就退回去搬既有值」）只在**抛错**时才走
+    ⇒ 本地 tag 残缺时**不抛错** ⇒ 错值直接落盘。
+    ⇒ 所以这里必须**抛错**，让那条退路接住。
+
+    ## 口径
+
+    - 比的是 **root tag**（`vX.Y.Z`）——嵌套 tag（`audit/v0.1.0`）不参与相邻对计算；
+    - 只判「本地缺」（远端有、本地没有）⇒ 那是本地陈旧；
+      本地多出来的（远端已删的 tag）不判——tag 不可重打，本地多一个不影响相邻对
+      （多出来的 tag 反而会让相邻对更细，只会算出**更多**条目，不会漏）。
+    """
+    local_names = {t for t, _ in local if ROOT_TAG_RE.match(t)}
+    remote_names = {t for t, _ in remote if ROOT_TAG_RE.match(t)}
+    return sorted(remote_names - local_names)
+
+
 def compute_all(root: Path | None, org: str | None, repos: list[str]) -> dict[str, list[dict]]:
     """→ {仓名: floorBumps 列表}。
 
     取数只有两种模式：本地克隆（--root）或联网（--org）。
     取不到的仓**不静默跳过**——抛错，让调用方判「判不了」。
+
+    ## 本地模式必须先核对 tag 完整性
+
+    本地克隆的 tag 集合可能比远端旧（浅克隆已由 `local_tags` 拦住，
+    但「不是浅克隆、只是 tag 少」这条没拦）⇒ 相邻 tag 对算错 ⇒ 静默漏算。
+    ⇒ 本地模式且给了 org 时，先做「本地 ⊇ 远端 root tag」对账，缺则**抛错**
+    （让 gen_versions 的「搬运既有值」退路接住，而不是把错值写进对外产物）。
+
+    没给 org ⇒ 无法核对 ⇒ **不静默**：在返回值里带上说明由调用方展示。
     """
     out: dict[str, list[dict]] = {}
+    unverifiable: list[str] = []
     for repo in repos:
         if root is not None:
             d = root / repo
             tags = local_tags(d)
+            if org:
+                remote = api_tags(org, repo)
+                missing = check_local_tags_complete(repo, tags, remote)
+                if missing:
+                    raise RuntimeError(
+                        f"{repo} 的本地 tag 陈旧，缺 {missing} —— "
+                        "floorBumps 按「相邻两个 tag 的 go.mod 差异」算，"
+                        "tag 残缺会**静默漏算**地板抬高的历史条目。"
+                        f"修法：git -C {d} fetch --tags origin")
+            else:
+                unverifiable.append(repo)
             out[repo] = floor_bumps_for_repo(repo, tags, lambda ref: local_go_mod(d, ref))
         else:
             tags = api_tags(org, repo)
             out[repo] = floor_bumps_for_repo(
                 repo, tags, lambda ref, r=repo: api_go_mod(org, r, ref))
+    if unverifiable:
+        print(f"⚠️  未给 --org ⇒ 无法核对本地 tag 完整性，"
+              f"下列仓的 floorBumps 可能漏算：{unverifiable}")
     return out
 
 
@@ -387,6 +445,25 @@ def selftest() -> int:
     check("v0.9.10 > v0.9.9", ver_key("v0.9.10") > ver_key("v0.9.9"), True)
     check("预发布小于正式版", ver_key("v1.0.0-rc1") < ver_key("v1.0.0"), True)
     check("+incompatible 不算预发布", ver_key("v1.0.0+incompatible") > ver_key("v0.9.9"), True)
+
+    # ── tag 完整性对账（2026-10-30 实测事故的根因）──
+    #
+    # 形态：本地 tag 集合残缺 ⇒ floorBumps 按「相邻 tag 对」算 ⇒ 漏算历史条目，
+    # 而工具**不报错** ⇒ 错值被写进对外产物（实测漏算 35 条）。
+    local3 = [("v0.1.0", "2026-01-01"), ("v0.2.0", "2026-02-01"), ("v0.3.0", "2026-03-01")]
+    remote3 = local3 + [("v0.4.0", "2026-04-01")]
+    check("本地缺远端有的 tag → 被判出",
+          check_local_tags_complete("x", local3, remote3), ["v0.4.0"])
+    check("本地完整 → 无缺口",
+          check_local_tags_complete("x", local3, local3), [])
+    # 本地多出来的（远端已删的 tag）不判缺口：多一个 tag 只会让相邻对更细，
+    # 不会漏算；tag 不可重打，本地多一个是常态而非错误。
+    check("本地多出的 tag 不判缺口",
+          check_local_tags_complete("x", local3 + [("v0.9.9", "2026-09-09")], local3), [])
+    # 嵌套 tag 不参与相邻对计算 ⇒ 不该算缺口
+    check("嵌套 tag 不算缺口",
+          check_local_tags_complete("x", local3,
+                                    local3 + [("audit/v0.1.0", "2026-04-01")]), [])
 
     # go.mod 解析：块形式与单行形式都要收；行尾注释要剥掉
     gomod = (
