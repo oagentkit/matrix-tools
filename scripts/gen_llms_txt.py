@@ -14,9 +14,82 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from matrix_paths import OLD_ROOT, misleading  # noqa: E402  路径规则与 rewrite_imports.py 同源
+from matrix_paths import (  # noqa: E402  路径规则与 rewrite_imports.py 同源
+    OLD_ROOT,
+    build_mapping,
+    misleading,
+    new_import_path,
+)
 
 OLD_ROOT_SHORT = OLD_ROOT.rsplit("/", 1)[-1]  # agentkit，用于文档里写短路径
+
+# 门面包集合的**权威登记**：门面冻结基线。
+#
+# 为什么不能拿矩阵包数（npkg）当代门面包数：
+#   门面按废弃承诺**冻结**——矩阵后来新增的包（guardx/wire、guardx/sandbox、
+#   guardx/toolfail、llm/decision）它**不转发**（这是正确行为，不是欠账）。
+#   但生成器曾拿 npkg 填「门面 N 包 re-export」，于是 llms.txt 宣称门面 52 包、
+#   门面实际只有 48 包 ⇒ AI Agent 照 llms.txt 去门面找那 4 个包，必然 404。
+#   对外生成物在撒谎，比门禁判红更糟——门禁会报，人读版不会。
+#
+# 所以门面包数一律从冻结基线取；矩阵包数与门面包数是**两个不同的数**。
+FACADE_BASELINE = HERE / "facade_package_baseline.json"
+
+
+def facade_package_names() -> list[str]:
+    """门面转发包名清单（取自冻结基线）。
+
+    判不了（基线缺失/结构异常）返回空列表 —— 调用方必须把它当成
+    「判不了」而不是「0 个包」，由 judge 层决定红还是黄。
+    """
+    if not FACADE_BASELINE.is_file():
+        return []
+    try:
+        data = json.loads(FACADE_BASELINE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out: list[str] = []
+    for item in data.get("packages", []):
+        if isinstance(item, dict):
+            name = item.get("package") or item.get("name")
+        else:
+            name = item
+        if name:
+            out.append(str(name))
+    return out
+
+
+def packages_without_facade(mods: list[dict]) -> list[tuple[str, str]]:
+    """矩阵里有、门面上**没有**转发等价物的包 → [(矩阵包名, 真实 import 路径)]。
+
+    ## 为什么要在对外文档里点名这些包
+
+    门面按废弃承诺**冻结** ⇒ 矩阵后来新增的包它不转发（**正确行为**，不是欠账）。
+    但下游读 llms.txt 时，如果只看到「门面 48 包 re-export」，
+    他会以为「矩阵所有包都能从门面走」⇒ 需要某个新包时去门面 import ⇒ 404。
+
+    ⇒ 必须显式说清「这几个包**没有**门面等价物，直接依赖真实模块」。
+    这让「矩阵有、门面无」这件事从「隐含的坑」变成「写在脸上的事实」。
+
+    ## 口径
+
+    门面目录名 = 包路径的**末段**（拆分时的 import 改写规则：包名一律保留，
+    只加模块前缀）⇒ 判定用末段比；对外路径用 `matrix_paths.new_import_path`
+    生成（它处理了「末段与仓名相同要收口到 module 根」这条唯一例外，
+    例如 `llm/decision` → `github.com/oagentkit/llm/decision`，不是 `llm/llm/decision`）。
+    """
+    facade_names = set(facade_package_names())
+    if not facade_names:
+        return []
+    out: list[tuple[str, str]] = []
+    for mod in mods:
+        repo = mod["repo"]
+        for pkg in mod.get("packages", []):
+            leaf = pkg.split("/")[-1]
+            if leaf in facade_names:
+                continue
+            out.append((pkg, new_import_path("{org}", repo, pkg)))
+    return out
 
 TIER_TITLE = {
     0: "基础层 · 零重量级第三方地板（纯 stdlib / 第一方基座）",
@@ -58,6 +131,21 @@ def main() -> int:
     org = d["defaultOrg"]
     mods = sorted(d["modules"], key=lambda m: (m["tier"], m["repo"]))
     npkg = sum(len(m["packages"]) for m in mods)
+    # 门面包数：**独立于矩阵包数**，取自门面冻结基线。
+    # 门面冻结 ⇒ 矩阵新增的包它不转发 ⇒ 门面包数 < 矩阵包数，两个数不能混用。
+    facade_pkgs = facade_package_names()
+    nfacade = len(facade_pkgs)
+    if nfacade == 0:
+        # 判不了 ≠ 没问题：基线读不到就写「0 包 re-export」，
+        # 等于对外发布一条假陈述。宁可生成失败。
+        print(f"❌ 读不到门面冻结基线，无法确定门面包数：{FACADE_BASELINE}")
+        return 1
+    # 矩阵有、门面无转发等价物的包（要在对外文档里点名，见函数 docstring）
+    no_facade_pkgs = packages_without_facade(mods)
+    # 旧→新映射条数：**不是**矩阵包数。rewrite_imports 的规则集 =
+    #   矩阵包（52）+ historical_paths.json 里的历史路径（已发布过、下游可能仍引用）
+    # ⇒ 用同一个 build_mapping 求，条数与 `rewrite_imports.py --print-rules` 天然一致。
+    nmapping = len(build_mapping(d["modules"], org))
 
     # 破坏性变更：**从 versions.json 取**，不自己抽 CHANGELOG。
     #
@@ -178,7 +266,7 @@ def main() -> int:
     L.append("## 门面仓（迁移过渡 · 已废弃）")
     L.append("")
     L.append(f"- [agentkit](https://github.com/{org}/agentkit): 原单仓 "
-             f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面，{npkg} 包 re-export。"
+             f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面，{nfacade} 包 re-export。"
              f"**已废弃**：v1.x 退役条件已满足，只保留兼容转发、不接受新功能，"
              f"**新代码不要引它**。归档待旧单仓 "
              f"`git.enjoye.top/enjoydream/agentkit` 下线后执行；在此之前本仓继续可用，"
@@ -186,6 +274,11 @@ def main() -> int:
     L.append(f"- 完整旧→新包路径映射见该仓 [MIGRATION.md](https://github.com/{org}/agentkit/blob/main/MIGRATION.md)。")
     L.append(f"- 门面**包集合已冻结**：矩阵新增的包不再要求门面跟上（见 "
              f"`scripts/facade_package_baseline.json` 与 `scripts/verify_facade_frozen.py`）。")
+    if no_facade_pkgs:
+        L.append(f"- **以下 {len(no_facade_pkgs)} 个矩阵包没有门面等价物**"
+                 f"（门面冻结在它们之前，不转发新包是正确行为）：")
+        for pkg, path in no_facade_pkgs:
+            L.append(f"  - `{path.replace('{org}', org)}` —— 直接依赖真实模块，**不要**去门面 import")
     L.append("")
     L.append("## 基建")
     L.append("")
@@ -217,7 +310,7 @@ def main() -> int:
             "包名末段与仓名相同时**收口到 module 根**（不重复末段），"
             "直觉会以为要写成 `llm/llm`。"
             if same else "")
-    L.append(f"  {tail}完整 {len(traps)} 条易踩对照、及全部 {npkg} 条映射见 "
+    L.append(f"  {tail}完整 {len(traps)} 条易踩对照、及全部 {nmapping} 条映射见 "
              f"[matrix-tools/scripts/rewrite_imports.py --print-rules]"
              f"(https://github.com/{org}/matrix-tools)，"
              f"机器可读映射见 [versions.json](https://{org}.github.io/versions.json) 的 "

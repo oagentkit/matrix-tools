@@ -184,6 +184,30 @@
       "kind": "gate"
     },
     {
+      "id": "facade-tier-table",
+      "claim": "门面仓 README.md 的全矩阵分层表必须与 matrix-tools/modules.json 逐 tier 逐仓一致",
+      "judges": [
+        "verify_facade_tier_table.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "门面 README.md 生成区（<!-- oagentkit:generated:begin/end -->）里的 tier 表原文 + modules.json 的 tier 与包名集合（独立解析，不复用任何生成器）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-10-30",
+      "note": "矩阵里有三张分层表，只有一张有门禁（实测 2026-10-30）：① .github/profile/README.md 的模块矩阵表（verify_profile_tiers.py 守着）② 各模块仓 AGENTS.md/README.md 的「本仓是 tier N」自述（verify_repo_tiers.py 守着）③ 门面仓 agentkit/README.md 的全矩阵分层表 —— 无门禁。而门面那张表写的还是重定位之前的旧分层（tier0 含 queue、tier1 含 obs/skillkit/mcpkit/rag），与 modules.json 实际（tier0=3 仓、tier2=8 仓）整体错了一层 ⇒ 同一份分层矩阵，profile 说一套、门面 README 说另一套，读者读门面 README 会按旧世界理解依赖方向。三个本该抓住它的机制逐个失效：verify_repo_tiers 判的是「本仓自述层位」，门面没有那种形态；verify_profile_tiers 的 --profile 参数写死 org profile；gen_docs.py 的生成范围只有 13 个模块仓，门面不在其中（且门面 README 是手写丰富的那个，不能整体覆盖）⇒ 这张表既没有自动更新路径，也没有任何门禁能发现它漂了。修法：给门面 README 加生成区标记（契约：这块内容归生成器管）+ 本守卫逐 tier 逐仓比对（判据独立解析表格原文，不复用生成器）。",
+      "kind": "gate"
+    },
+    {
       "id": "facade-release-floor",
       "claim": "门面的第一方依赖地板必须与各模块最新 tag 一致",
       "judges": [
@@ -484,8 +508,14 @@
       "judges": [
         "verify_dep_floor.py"
       ],
-      "oracle": "independent",
-      "sharedWith": [],
+      "oracle": "shared-with-generator",
+      "sharedWith": [
+        {
+          "module": "verify_dep_floor",
+          "by": "gen_versions.py",
+          "why": "gen_versions.py 用 verify_dep_floor.floor_of() 写 versions.json 的 depFloor，而本守卫的对账也用 floor_of() 核对 versions.json ⇒ 对账是**恒真式**（生成器算的，门禁拿同一个函数算，永远相等），floor_of 的任何 bug 双盲。实测 2026-10-30：本条此前登记成 oracle=independent / sharedWith=[]，而实际存在这条耦合 —— 登记表门禁只查「守卫→生成器」方向，生成器→守卫这个方向没人查（已由 verify_inventory 的 generator-coupling 判据补上）。本条的独立 oracle 是 verify_dep_floors.py（另有一套独立解析口径 + 联网对账远端最新 tag）；本守卫负责的是 heavyDeps ↔ go.mod 的登记对账。"
+        }
+      ],
       "facts": "各仓 go.mod 的 require 段 + modules.json 的 heavyDeps",
       "ci": [
         {

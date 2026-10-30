@@ -120,35 +120,41 @@ def selftest() -> int:
             failures.append(f"{desc}：{path} 豁免={got}，期望 {want_exempt}")
         print(f"  {status:<4} {desc}")
 
+    # 端到端反证：**扫不到**必须判红，不得当成「未发现违规」（实测 2026-10-30）
+    #
+    # 旧实现里，路径不存在 ⇒ total_files 停在 0 ⇒ 直接落到
+    # `if not violations: ✅ ... return 0` ⇒ 扫了 0 个文件却报「未发现违规」并 exit 0。
+    # 「扫不到」与「扫过且干净」在退出码上长得一模一样 ⇒ 守卫静默失效。
+    with tempfile.TemporaryDirectory() as td:
+        empty_root = Path(td) / "definitely-not-here"
+        empty_root.mkdir()
+        rc = _run_roots([str(empty_root)])
+        if rc == 0:
+            failures.append("扫不到任何文件时必须判红（exit != 0），实际 exit 0"
+                            "——「判不了」被当成了「没问题」")
+        print(f"  {'ok' if rc != 0 else 'FAIL':<4} 扫不到文件时判红（exit={rc}，期望 != 0）")
+
     print()
     if failures:
         print(f"❌ 自测失败 {len(failures)} 项：")
         for f in failures:
             print(f"   - {f}")
         return 1
-    print(f"✅ 自测通过（{len(cases)} 个样本 + {len(probes)} 个豁免探针）")
+    print(f"✅ 自测通过（{len(cases)} 个样本 + {len(probes)} 个豁免探针 + 零文件判红）")
     return 0
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--roots", nargs="+")
-    ap.add_argument("--verbose", action="store_true")
-    ap.add_argument("--selftest", action="store_true",
-                    help="跑内置样本，证明守卫本身有效（CI 里应该常跑）")
-    args = ap.parse_args()
+def _run_roots(roots: list[str]) -> int:
+    """扫描给定路径并判定；返回退出码。
 
-    if args.selftest:
-        return selftest()
-
-    if not args.roots:
-        ap.print_help()
-        return 2
-
+    抽成独立函数是为了让自测能**端到端**跑这条路径——
+    「零文件 ⇒ 判红」是 main 流程的判定，不是 scan_file 的单元行为，
+    只测 scan_file 覆盖不到它。
+    """
     total_files = 0
     violations: list[tuple[str, int, str]] = []
 
-    for root_s in args.roots:
+    for root_s in roots:
         root = Path(root_s).expanduser().resolve()
         if not root.exists():
             print(f"⚠️  路径不存在，跳过: {root}")
@@ -169,6 +175,21 @@ def main() -> int:
     for prefix, why in FORBIDDEN:
         print(f"  禁止前缀: {prefix}  —— {why}")
 
+    # 「一个文件都没扫到」= **判不了**，不是「没问题」。
+    #
+    # 实测 2026-10-30：路径不存在（或参数写错、或 glob 形态不对）时，
+    # 上面那句「⚠️ 路径不存在，跳过」会让 total_files 停在 0，
+    # 而旧实现直接落到 `if not violations: ✅ ... return 0`
+    # ⇒ **扫了 0 个文件却报「未发现违规」并 exit 0**。
+    # 同族的 verify_ghost_packages.py 早就防了这事
+    #（「一个仓都没查到 = 参数传错 ⇒ 显式失败」），两个同类守卫口径漂移的实例。
+    #
+    # 「扫不到」和「扫过且干净」必须分开：前者判红，不当绿灯。
+    if total_files == 0:
+        print("\n❌ 一个 .go 文件都没扫到 —— 这是「判不了」，不是「未发现违规」。")
+        print("   修法：检查 --roots 指向的路径是否正确（是否拼错 / 是否该先克隆仓）。")
+        return 1
+
     if not violations:
         print("✅ 未发现门面仓/旧单仓 import")
         return 0
@@ -183,6 +204,24 @@ def main() -> int:
           "        python3 matrix-tools/scripts/rewrite_imports.py --org oagentkit "
           "--root <仓目录> --apply      # 再写盘")
     return 1
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--roots", nargs="+")
+    ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--selftest", action="store_true",
+                    help="跑内置样本，证明守卫本身有效（CI 里应该常跑）")
+    args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
+
+    if not args.roots:
+        ap.print_help()
+        return 2
+
+    return _run_roots(args.roots)
 
 
 if __name__ == "__main__":

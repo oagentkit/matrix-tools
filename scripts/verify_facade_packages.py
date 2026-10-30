@@ -61,6 +61,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from matrix_paths import new_import_path  # noqa: E402  事实层：import 路径规则本体
 
 # 已退役、矩阵里不再有、门面上也不该有的包。
 # 形如 {模块段: {包名, ...}}；模块段用于校验「曾属哪个仓」。
@@ -90,6 +92,31 @@ def matrix_packages(matrix_path: Path) -> dict[str, set[str]]:
         names = out.setdefault(repo, set())
         for entry in m.get("packages", []):
             names.add(entry.rstrip("/").split("/")[-1])
+    return out
+
+
+def packages_without_facade(matrix_path: Path, facade: dict[str, str]) -> set[str]:
+    """矩阵有、门面没有转发等价物的包 → {真实 import 路径}。
+
+    与生成器 `gen_llms_txt.packages_without_facade` **各自独立实现**
+    （本仓硬规则：事实可以共享，判定不能共享）——
+    生成器算「该列哪些」，本函数算「实际是哪些」，两边不一致就判红。
+
+    路径规则用 `matrix_paths.new_import_path`（事实层，共享安全）：
+    它处理了「末段与仓名相同要收口到 module 根」这条唯一例外
+    （`llm/decision` → `github.com/oagentkit/llm/decision`，不是 `llm/llm/decision`）。
+    """
+    data = json.loads(matrix_path.read_text(encoding="utf-8"))
+    org = data.get("defaultOrg", "oagentkit")
+    facade_leaves = {name.split("/")[-1] for name in facade}
+    out: set[str] = set()
+    for m in data.get("modules", []):
+        repo = m["repo"]
+        for pkg in m.get("packages", []):
+            leaf = pkg.rstrip("/").split("/")[-1]
+            if leaf in facade_leaves:
+                continue
+            out.add(new_import_path(org, repo, pkg))
     return out
 
 
@@ -123,6 +150,75 @@ def facade_packages(facade_path: Path) -> dict[str, str]:
             continue
         found[alias.parent.name] = m.group("path")
     return found
+
+
+# llms.txt 里「兼容门面，N 包 re-export」那一行。
+# 对外生成物写错包数，AI Agent 会照着它去门面找那些不存在的包 ⇒ 必然 404。
+_LLMS_FACADE_COUNT_RE = re.compile(r"兼容门面，\s*(\d+)\s*包\s*re-export")
+# llms.txt 里「以下 N 个矩阵包没有门面等价物」那一段里列出的真实 import 路径
+_LLMS_NO_FACADE_ITEM_RE = re.compile(r"^\s*-\s*`(?P<path>github\.com/[^`]+)`\s*——\s*直接依赖真实模块",
+                                    re.M)
+
+
+def check_llms_facade_count(llms_text: str | None, facade_count: int,
+                            no_facade_paths: list[str] | None = None) -> list[dict]:
+    """对外生成物（llms.txt）声明的门面包数必须等于门面实际包数。
+
+    ## 为什么这条要独立存在
+
+    已有两条判据都抓不到这个形态：
+      - `verify_docs.py` 判的是「生成物 vs 提交物逐行相等」——
+        生成器和门禁同源，**生成器算错时两边一起错**，永远是绿的；
+      - `verify_facade_packages.py` 的包数对账比的是「基线 ∩ 矩阵」，
+        门面值对不对它管，但**它不看对外说了什么**。
+
+    实测 2026-10-30：`gen_llms_txt.py` 拿**矩阵包数**填门面包数，
+    于是 llms.txt 宣称「52 包 re-export」，而门面实际只有 48 个包
+    （guardx/wire、guardx/sandbox、guardx/toolfail、llm/decision 四个
+    按废弃承诺不转发，是**正确**行为）。
+    ⇒ 对外生成物在撒谎，而所有门禁全绿。
+
+    所以这条判据独立读 llms.txt 的**原文**，用门面的**实际**包数对账。
+
+    ## 顺带核对「无门面等价物」清单
+
+    llms.txt 里有一段列出「矩阵有、门面没有」的包（实测 4 个）。
+    那段的价值全在**准确**：漏列 ⇒ 下游去门面 import 404；
+    多列 ⇒ 下游以为某个能走门面的包不能走。
+    ⇒ 清单必须与实际集合**完全一致**（两个方向都报）。
+    """
+    if llms_text is None:
+        # 判不了 ≠ 没问题：读不到 llms.txt 就报可疑，不当通过。
+        return [{"kind": "llms-unreadable", "package": "-", "repo": "-",
+                 "detail": "读不到 llms.txt，无法核对对外声明的门面包数"}]
+    problems: list[dict] = []
+    m = _LLMS_FACADE_COUNT_RE.search(llms_text)
+    if not m:
+        problems.append({"kind": "llms-count-missing", "package": "-", "repo": "-",
+                         "detail": "llms.txt 里找不到「兼容门面，N 包 re-export」这一行，"
+                                   "无法核对对外声明的门面包数"})
+    else:
+        declared = int(m.group(1))
+        if declared != facade_count:
+            problems.append({"kind": "llms-count-mismatch", "package": "-", "repo": "-",
+                             "detail": f"llms.txt 对外宣称门面 {declared} 包，"
+                                       f"门面实际 {facade_count} 包 —— "
+                                       f"下游照 llms.txt 去门面会找不到那些包"})
+
+    if no_facade_paths is not None:
+        listed = set(_LLMS_NO_FACADE_ITEM_RE.findall(llms_text))
+        want = set(no_facade_paths)
+        missing = sorted(want - listed)
+        extra = sorted(listed - want)
+        if missing:
+            problems.append({"kind": "llms-no-facade-missing", "package": "-", "repo": "-",
+                             "detail": f"llms.txt 的「无门面等价物」清单漏了 {missing}"
+                                       "—— 下游会以为这些包能走门面，去 import 就 404"})
+        if extra:
+            problems.append({"kind": "llms-no-facade-extra", "package": "-", "repo": "-",
+                             "detail": f"llms.txt 的「无门面等价物」清单多列了 {extra}"
+                                       "—— 这些包门面其实有转发，会误导下游"})
+    return problems
 
 
 def migration_map(facade_path: Path) -> dict[str, dict]:
@@ -398,6 +494,46 @@ def _selftest() -> int:
     kinds = {(p["kind"], p["package"]) for p in check_migration_map(facade_full, with_retired)}
     check_ok("退役行不误报", any(k[0] in ("map-orphan", "map-missing") for k in kinds), False)
 
+    # 8. **对外生成物声明的门面包数**（2026-10-30 实测事故）
+    #    线上真实形态：llms.txt 宣称「52 包 re-export」，门面实际 48 包
+    #    （4 个按废弃承诺不转发）。所有其它判据都抓不到——生成器与门禁同源。
+    llms_wrong = "- [agentkit](https://github.com/oagentkit/agentkit): 原单仓 "\
+                 "`git.enjoye.top/enjoydream/agentkit` 的兼容门面，52 包 re-export。\n"
+    check_ok("llms 门面包数不符被判出",
+             [p["kind"] for p in check_llms_facade_count(llms_wrong, 48)],
+             ["llms-count-mismatch"])
+    llms_right = "- [agentkit](https://github.com/oagentkit/agentkit): 原单仓 "\
+                 "`git.enjoye.top/enjoydream/agentkit` 的兼容门面，48 包 re-export。\n"
+    check_ok("llms 门面包数一致则无问题", check_llms_facade_count(llms_right, 48), [])
+    # 判不了 ≠ 没问题：读不到 llms.txt ⇒ 可疑，不当通过
+    check_ok("llms 读不到时判可疑",
+             [p["kind"] for p in check_llms_facade_count(None, 48)],
+             ["llms-unreadable"])
+    # 找不到那一行 ⇒ 可疑（不能默认当成对）
+    check_ok("llms 缺那一行时判可疑",
+             [p["kind"] for p in check_llms_facade_count("# oagentkit\n没有门面这一行\n", 48)],
+             ["llms-count-missing"])
+
+    # 8b. 「无门面等价物」清单必须与实际集合**完全一致**（两个方向都报）
+    llms_full = (
+        "- [agentkit](https://github.com/oagentkit/agentkit): 兼容门面，48 包 re-export。\n"
+        "- **以下 2 个矩阵包没有门面等价物**：\n"
+        "  - `github.com/oagentkit/guardx/wire` —— 直接依赖真实模块，**不要**去门面 import\n"
+        "  - `github.com/oagentkit/llm/decision` —— 直接依赖真实模块，**不要**去门面 import\n"
+    )
+    want_two = ["github.com/oagentkit/guardx/wire", "github.com/oagentkit/llm/decision"]
+    check_ok("无门面等价物清单一致时无问题",
+             check_llms_facade_count(llms_full, 48, want_two), [])
+    # 漏列 ⇒ 报（下游会以为能走门面，import 就 404）
+    probs = check_llms_facade_count(llms_full, 48,
+                                    want_two + ["github.com/oagentkit/guardx/sandbox"])
+    check_ok("无门面等价物清单漏列被判出",
+             [p["kind"] for p in probs], ["llms-no-facade-missing"])
+    # 多列 ⇒ 报（会误导下游以为某包不能走门面）
+    probs = check_llms_facade_count(llms_full, 48, want_two[:1])
+    check_ok("无门面等价物清单多列被判出",
+             [p["kind"] for p in probs], ["llms-no-facade-extra"])
+
     # 8. 冻结后矩阵新增的包：门面**不该**转发它（按废弃承诺）——不得报红
     #
     # 实测形态（2026-10-21）：另一条工作线给 guardx 加了 toolfail 与 sandbox 两个包
@@ -439,6 +575,8 @@ def main() -> int:
                     help="门面冻结基线 JSON（用来区分「真缺口」与「冻结后矩阵新增的包」）")
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--llms",
+                    help="llms.txt 路径（可选）：核对对外声明的门面包数与门面实际是否一致")
     args = ap.parse_args()
 
     if args.selftest:
@@ -463,6 +601,13 @@ def main() -> int:
     problems, notes = check(matrix_pkgs, facade, baseline)
     # 迁移映射表的一致性：下游唯一的迁移指引，必须与实际转发一一对应
     problems += check_migration_map(facade, migration_map(facade_path))
+
+    # 对外生成物声明的门面包数：独立于生成器算，必须等于门面实际包数
+    if args.llms:
+        llms_path = Path(args.llms)
+        llms_text = llms_path.read_text(encoding="utf-8") if llms_path.is_file() else None
+        no_facade = packages_without_facade(matrix_path, facade)
+        problems += check_llms_facade_count(llms_text, len(facade), sorted(no_facade))
 
     if args.as_json:
         print(json.dumps({"facade_packages": len(facade),

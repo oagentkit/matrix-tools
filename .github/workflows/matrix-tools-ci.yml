@@ -311,7 +311,13 @@ jobs:
 
       - name: 门面包覆盖与迁移映射门禁自测
         # 含迁移映射表的反证样本：门面包缺映射行 / 空映射 / 表与实现漂移。
+        # 也含**对外生成物包数**的反证样本：llms.txt 宣称 N 包而门面实际 M 包。
         run: python3 scripts/verify_facade_packages.py --selftest
+
+      - name: 门面 README 分层表门禁自测
+        # 反证样本：少仓 / 多仓 / 整层漂移 / 少一层 / 缺生成区标记 / 表格被删空 /
+        # 数量对但集合错（最隐蔽的一种）。
+        run: python3 scripts/verify_facade_tier_table.py --selftest
 
       - name: 不变量登记表门禁自测
         # 登记表自己的守门人：未登记的守卫 / 未接线的判据 / 未披露的耦合。
@@ -883,6 +889,24 @@ jobs:
         # 含 MIGRATION.md ↔ alias.go 的对应校验——实测「port 包有转发但迁移表漏行」
         # 就是靠这条防住的。
         run: python3 matrix-tools/scripts/verify_facade_packages.py --facade agentkit
+
+      - name: 门面 README 分层表与矩阵数据源一致
+        # 矩阵里有三张分层表，只有一张有门禁——门面 README 那张长期写着
+        # 重定位之前的旧分层（tier0 含 queue、tier1 含 obs/skillkit/mcpkit/rag），
+        # 而 profile 与仓级声明都说另一套 ⇒ 同一份分层矩阵两个答案。
+        # 详见 invariants.json 的 facade-tier-table。
+        run: python3 matrix-tools/scripts/verify_facade_tier_table.py --root .
+
+      - name: 对外 llms.txt 声明的门面包数 = 门面实际包数
+        # 独立判据：`verify_docs.py` 比的是「生成物 vs 提交物」，而生成器与门禁同源
+        # ⇒ 生成器算错时两边一起错，永远是绿的。
+        # 实测 2026-10-30：gen_llms_txt 拿**矩阵包数**填门面包数，llms.txt 宣称
+        # 「52 包 re-export」而门面实际 48 包 ⇒ 下游照 llms.txt 去门面必然 404。
+        run: |
+          set -euo pipefail
+          git clone -q --depth 1 https://github.com/oagentkit/oagentkit.github.io.git site
+          python3 matrix-tools/scripts/verify_facade_packages.py \
+            --facade agentkit --llms site/docs/public/llms.txt
 
       - name: 各仓文档与矩阵声明的差异（报告器）
         # ⚠️ 这是**报告器**，不是门禁，恒不失败。
