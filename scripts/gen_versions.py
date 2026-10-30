@@ -129,11 +129,21 @@ def floor_bumps_map(args, data: dict) -> tuple[dict[str, list[dict]], str]:
         # 对账要联网（远端 tag 集合是基准）⇒ 传 org 进去。
         # 没给 --org 时用数据源的 defaultOrg —— 否则本地 tag 完整性**无法核对**，
         # 陈旧 tag 会被静默当成「相邻 tag 对」，漏算的历史条目直接落进对外产物。
-        org = args.org or data.get("defaultOrg")
+        #
+        # 用 getattr 而不是 args.org：本函数的调用方不止 argparse 的 Namespace
+        # （test_sync_matrix.py 会构造最小假 args），直接取属性会让「调用方没这个字段」
+        # 变成 AttributeError —— 2026-10-31 CI 的 Scripts job 就是这样红的。
+        org = getattr(args, "org", None) or data.get("defaultOrg")
         try:
             computed = gen_floor_bumps.compute_all(Path(local_root), org, repos)
             which = "--floor-root" if floor_root else "--root"
-            return computed, f"现算（{which} {local_root}）"
+            note = f"现算（{which} {local_root}）"
+            if not org:
+                # 「判不了 ≠ 没问题」：没 org ⇒ 没法核对本地 tag 是否齐全 ⇒
+                # 现算结果**可能漏算**，必须写进来源说明（release.py 会打印它，
+                # 操作者据此决定要不要先补 tag）。
+                note += "；⚠️ 未给 org ⇒ 无法核对本地 tag 完整性，结果可能漏算"
+            return computed, note
         except Exception as e:  # 取不到就退回去搬，不静默
             note = f"现算失败（{e}），改为搬运既有值"
     else:

@@ -59,13 +59,20 @@ def _make_repo(root: Path, name: str = "demo") -> None:
 
 
 class _Args:
-    """floor_bumps_map 只需要这几个字段；显式写出来免得签名变了悄悄失效。"""
+    """floor_bumps_map 只需要这几个字段；显式写出来免得签名变了悄悄失效。
 
-    def __init__(self, root=None, floor_root=None, preserve_from=None, no_preserve=False):
+    2026-10-31 补 org：floor_bumps_map 拿 org 去做「本地 tag 完整性」的远端对账
+    （远端 tag 集合是基准），少这个字段就会 AttributeError —— CI 的 Scripts job
+    就是这样红过一次（本地自测清单漏了 scripts/test_*.py，没提前发现）。
+    """
+
+    def __init__(self, root=None, floor_root=None, preserve_from=None,
+                 no_preserve=False, org=None):
         self.root = root
         self.floor_root = floor_root
         self.preserve_from = preserve_from
         self.no_preserve = no_preserve
+        self.org = org
 
 
 def t1_source_selection() -> list[str]:
@@ -85,6 +92,12 @@ def t1_source_selection() -> list[str]:
             fails.append(f"T1① 现算结果不对：{got}")
         if not got or not got[0].get("bumps"):
             fails.append("T1① 没认出 v0.1.0→v0.2.0 抬了地板")
+
+        # T1③ 没给 org ⇒ **无法核对**本地 tag 完整性 ⇒ 来源说明必须写出来。
+        # 「判不了 ≠ 没问题」：不写出来，操作者会以为核对过了，
+        # 而现算结果其实可能漏算（tag 残缺 ⇒ 相邻对错 ⇒ 条目变少且不报错）。
+        if "无法核对本地 tag 完整性" not in note:
+            fails.append(f"T1③ 没给 org 时来源说明没声明「无法核对完整性」：{note}")
 
         bumps2, note2 = gen_versions.floor_bumps_map(
             _Args(no_preserve=True), data)
