@@ -2379,7 +2379,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.57",
+      "latest": "v1.8.58",
       "retiring": true,
       "breakingIndex": [
         {
