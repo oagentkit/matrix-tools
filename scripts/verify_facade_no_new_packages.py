@@ -24,7 +24,10 @@
 3. 与冻结基线交叉：
    - 新增且**不在**基线 ⇒ **红**（基线之后又长了新包）
    - 新增且**在**基线 ⇒ **黄**（基线之前就违规、已被快照吸收 —— 需要显式决策）
-4. 找不到废弃声明 ⇒ 规则不适用（信息，不是红）。
+4. 找不到废弃声明 ⇒ **黄**（判不了，规则不适用）—— 不是「没问题」。
+   ⚠️ 实测 2026-10-31：这条原先只报 info ⇒ 把门面的措辞从「不接受任何新功能」
+   改成同义表述，整条**规则级**判定就静默失效而 CI 照样全绿 ⇒
+   兜底冻结快照盲区的那条网自己消失了。判黄 + CI 的 --fail-on-yellow 才拦得住。
 
 ## 为什么这是规则级而不是快照级
 
@@ -153,8 +156,26 @@ def judge(facade_dir: Path, baseline: set[str], known: set[str], markers: list[s
     repo = facade_dir.name
     sha, marker = deprecation_commit(facade_dir, markers)
     if sha is None:
-        report.info(repo, "README 里找不到废弃声明，规则不适用",
-                    f"确认 README 是否写明「已废弃 / 不接受任何新功能」（标记词：{markers}）")
+        # 判不了 ≠ 没问题（硬规则 3）。
+        #
+        # 为什么不能只报 info（实测 2026-10-31）：本守卫的**触发前提**是门面 README 里
+        # 那句「已废弃 / 不接受任何新功能」——判据是**规则级**的（取自门面自己的承诺
+        # + git 历史），正因如此它能兜住冻结快照门禁的盲区。
+        #
+        # 而一旦找不到那句声明，整条规则级判定就**整体退化为「不适用」**——
+        # 把措辞从「不接受任何新功能」改成「不再维护」「进入冻结」这类同义表述即可，
+        # 而 CI **照样全绿** ⇒ 兜底盲区的那条网自己消失了。
+        #
+        # 所以这里判**黄**（判不了）：读不出承诺 ⇒ 无法判定门面是否违约。
+        # CI 用 --fail-on-yellow 把它升级为失败 ⇒ 措辞一改就有人被叫住。
+        report.yellow(
+            repo,
+            "门面 README 里找不到废弃声明 ⇒ **规则级判定不适用**，"
+            "本守卫无法判断门面是否违约",
+            f"确认 README 是否写明「已废弃 / 不接受任何新功能」（标记词：{markers}）。"
+            "⚠️ 这不是「门面没违规」，是「读不出门面的承诺 ⇒ 判不了」——"
+            "把措辞改成同义表述就会让整条规则级门禁静默失效，"
+            "而冻结快照门禁（verify_facade_frozen）只抓「长出新包」，抓不到这一类")
         return
     report.info(repo, f"废弃声明始于提交 {sha[:8]}（命中「{marker}」）")
 
@@ -236,12 +257,41 @@ def selftest() -> int:
         check("基线吸收后转黄", report2.has_red(), False)
         check("基线吸收后仍报黄", report2.has_yellow(), True)
 
+        # ── 找不到废弃声明 ⇒ 判黄（判不了），不是「没问题」（实测 2026-10-31）──
+        #
+        # 形态：判据的**触发前提**是门面 README 里那句「不接受任何新功能」。
+        # 把措辞改成同义表述（「不再维护」等）⇒ 整条规则级判定退化为「不适用」
+        # ⇒ 而旧实现只报 info ⇒ CI 全绿 ⇒ 兜底冻结快照盲区的那条网自己消失了。
+        #
+        # 反证样本：造一个**没有**废弃声明的仓 ⇒ 必须判黄（且不得判红——
+        # 「读不出承诺」不等于「门面违约」）。
+        repo_no_marker = root / "facade_nomarker"
+        repo_no_marker.mkdir()
+        git(repo_no_marker, "init", "-q", "-b", "main")
+        git(repo_no_marker, "config", "user.email", "t@example.com")
+        git(repo_no_marker, "config", "user.name", "t")
+        (repo_no_marker / "README.md").write_text(
+            "# facade\n\n本仓不再维护，仅保留兼容转发。\n", encoding="utf-8")
+        (repo_no_marker / "old").mkdir()
+        (repo_no_marker / "old" / "alias.go").write_text(
+            'package old\n\nimport upstream "github.com/acme/llm/old"\n', encoding="utf-8")
+        git(repo_no_marker, "add", "-A")
+        git(repo_no_marker, "commit", "-q", "-m", "feat: 初始门面")
+
+        report3 = Report(title="门面不得新增包")
+        judge(repo_no_marker, baseline=set(), known=set(), markers=DEFAULT_MARKERS, report=report3)
+        check("找不到废弃声明时判黄（判不了 ≠ 没问题）", report3.has_yellow(), True)
+        check("找不到废弃声明时不判红（读不出承诺 ≠ 违约）", report3.has_red(), False)
+        check("黄灯说明了规则级判定不适用",
+              any("规则级判定不适用" in f.message for f in report3.yellows), True)
+
     if fails:
         print("❌ verify_facade_no_new_packages 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ verify_facade_no_new_packages 自测通过（废弃后新增包判红 / 基线吸收判黄）")
+    print("✅ verify_facade_no_new_packages 自测通过"
+          "（废弃后新增包判红 / 基线吸收判黄 / 找不到废弃声明判黄）")
     return 0
 
 

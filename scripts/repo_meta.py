@@ -60,6 +60,10 @@ GRAPHQL_PAGE_MAX = 100
 # 翻页的总页数上限：仓里有海量已关闭 PR 时不至于无限翻（`repository.issues`
 # 把 PR 也一起返回，而 limit 只按 issue 计）。超了就判不了，不当成「就这些」。
 GRAPHQL_MAX_PAGES = 20
+# REST 侧的翻页上限：同一条纪律（`repository.issues` 把 PR 一起返回，
+# 单页 100 条 ⇒ 20 页 = 2000 条，超了就判不了）。
+# 实测 2026-10-31：agentkit 有 63 个 tag，默认只回第一页 30 个 ⇒ 必须翻页。
+REST_MAX_PAGES = 20
 
 
 def gh_api_status(path: str, retries: int = 3) -> tuple[str | None, str]:
@@ -95,6 +99,50 @@ def gh_api(path: str, retries: int = 3) -> str | None:
     """调 `gh api <path>` 取 JSON 文本；取不到返回 None（**判不了 ≠ 没有**）。"""
     text, _status = gh_api_status(path, retries=retries)
     return text
+
+
+def gh_api_paginated(path: str, retries: int = 3,
+                     max_pages: int = REST_MAX_PAGES) -> str | None:
+    """调 GitHub REST list 端点取**全量** JSON 数组；取不到返回 None。
+
+    ## 为什么不能直接用 gh_api
+
+    GitHub 的 REST list 端点**默认只返回第一页**（30 条；`per_page` 最多 100）。
+    实测 2026-10-31：`gh api repos/oagentkit/agentkit/tags --jq length` 返回 **30**，
+    而该仓真实有 **63** 个 tag ⇒ 任何「数 tag」的判据都会**假报缺口**。
+
+    ## 为什么自己翻页而不用 `gh api --paginate`
+
+    `gh api --paginate` 会一直翻到空页为止，**没有上限**——而 `repository.issues`
+    这类端点把 PR 也一起返回，仓里 PR 一多就是几十页。
+    本函数自己翻页并带**页数上限**（REST_MAX_PAGES），超限 ⇒ 返回 None（判不了），
+    **不当成「就这些」**——与 GraphQL 侧「游标不前进 ⇒ 判不了」同一纪律。
+
+    中途某页取不到 ⇒ **判不了**（返回 None），不拿已取到的部分当全量。
+
+    返回值是**合并后的单个 JSON 数组**（`json.dumps` 出来）⇒ 调用方照常
+    `json.loads` 即可，不用改解析。
+    """
+    sep = "&" if "?" in path else "?"
+    base = f"{path}{sep}per_page=100"
+    out: list = []
+    for page in range(1, max_pages + 1):
+        raw = gh_api(f"{base}&page={page}", retries=retries)
+        if not raw:
+            # 取不到这一页 ⇒ 判不了（不拿已取到的部分冒充全量）
+            return None
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return None
+        if not isinstance(data, list):
+            return None
+        out.extend(data)
+        if len(data) < 100:
+            # 不满一页 ⇒ 已是最后一页
+            return json.dumps(out, ensure_ascii=False)
+    # 翻到上限还没翻完 ⇒ 判不了（不当成「就这些」）
+    return None
 
 
 def fetch_file_status(org: str, repo: str, path: str, ref: str = "main") -> tuple[str | None, str]:
@@ -446,7 +494,9 @@ def fetch_repo_snapshot(org: str, repo: str, dest: "Path", ref: str = "main") ->
 
 
 def _all_tags(org: str, repo: str) -> list[str]:
-    raw = gh_api(f"repos/{org}/{repo}/tags?per_page=100")
+    # 分页取全量：默认只回第一页（30 条）⇒ 会漏掉较旧的 tag，
+    # 让「tag 数量/集合」类判据假报缺口（实测 agentkit 真实 63 个、默认只回 30）。
+    raw = gh_api_paginated(f"repos/{org}/{repo}/tags")
     if not raw:
         return []
     try:
@@ -672,6 +722,60 @@ def selftest() -> int:
     check("None 变量没被发成字符串 None", "after=None" in captured[0], False)
     check("非 None 变量原样发", "n=100" in captured[0], True)
 
+    # ---- REST 翻页（gh_api_paginated）：默认只回第一页 ⇒ 必须自己翻
+    #
+    # 实测 2026-10-31：agentkit 有 63 个 tag，而 `gh api .../tags`（默认 per_page=30）
+    # 只回 30 个 ⇒ 任何「数 tag」的判据都会**假报缺口**。
+    saved_api = gh_api
+    try:
+        seen: list[str] = []
+
+        def fake_api(path, retries=3):
+            seen.append(path)
+            page = 1
+            for seg in path.split("&"):
+                if seg.startswith("page="):
+                    page = int(seg.split("=", 1)[1])
+            if page == 1:
+                # 第一页满 100 条 ⇒ 还要翻
+                return json.dumps([{"name": f"v0.0.{i}"} for i in range(100)])
+            return json.dumps([{"name": "v0.1.0"}])   # 第二页不满 100 ⇒ 收尾
+
+        globals()["gh_api"] = fake_api
+        seen.clear()
+        raw = gh_api_paginated("repos/o/r/tags")
+        data = json.loads(raw) if raw else None
+        check("REST 翻页后拿到全量", len(data or []), 101)
+        check("REST 翻页取了两次", len(seen), 2)
+        check("第 2 页带了 page 参数", any("page=2" in p for p in seen), True)
+        check("每页都带 per_page=100", all("per_page=100" in p for p in seen), True)
+
+        # 反证样本：中途某页取不到 ⇒ **判不了**（不拿已取到的部分冒充全量）
+        seen.clear()
+
+        def fake_api_fail_mid(path, retries=3):
+            seen.append(path)
+            if "page=2" in path:
+                return None
+            # 第 1 页必须**满 100 条** ⇒ 才会触发翻页（不满即收尾）
+            return json.dumps([{"name": f"v0.0.{i}"} for i in range(100)])
+
+        globals()["gh_api"] = fake_api_fail_mid
+        check("反证：中途取不到 ⇒ 判不了（不当成「就这些」）",
+              gh_api_paginated("repos/o/r/tags"), None)
+
+        # 反证样本：第 1 页就取不到 ⇒ 判不了
+        globals()["gh_api"] = lambda path, retries=3: None
+        check("反证：第 1 页取不到 ⇒ 判不了", gh_api_paginated("repos/o/r/tags"), None)
+
+        # 反证样本：翻到页数上限仍未收尾 ⇒ 判不了（不当成「就这些」）
+        globals()["gh_api"] = lambda path, retries=3: json.dumps(
+            [{"name": f"v0.0.{i}"} for i in range(100)])
+        check("反证：页数超上限 ⇒ 判不了",
+              gh_api_paginated("repos/o/r/tags", max_pages=3), None)
+    finally:
+        globals()["gh_api"] = saved_api
+
     if fails:
         print("❌ repo_meta 自测失败：")
         for f in fails:
@@ -679,7 +783,7 @@ def selftest() -> int:
         return 1
     print("✅ repo_meta 自测通过"
           "（tag 过滤 / semver / module 路径 / 包目录 / CHANGELOG 版本段解析 / "
-          "关闭来源三态 / 关闭来源取数翻页）")
+          "关闭来源三态 / 关闭来源取数翻页 / REST 翻页与页数上限）")
     return 0
 
 

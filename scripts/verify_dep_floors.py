@@ -50,6 +50,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import matrix_facts  # noqa: E402  事实层：仓清单取数（与 verify_dep_floor 共用）
 import repo_meta  # noqa: E402  取数与 tag 判定的唯一实现
 
 # 判作「第一方」的 module path 前缀。oekit 与 oagentkit 同属一个团队的 org
@@ -215,7 +216,7 @@ def collect(org: str, repo: str, ref: str, prefixes: tuple[str, ...]) -> list[di
 def matrix_repos(matrix_path: Path) -> list[str]:
     """矩阵的仓清单 —— **含门面仓**。
 
-    为什么门面也要进扫描：门面（infraRepos 里 topics 含 deprecated 的那个）
+    为什么门面也要进扫描：门面（infraRepos 里 goModule 为真的那个）
     的 go.mod 同样钉着一整排第一方依赖，而它的每个 tag 都是一份**对外承诺**
     （MVS 只看被消费版本的 go.mod）。门面地板落后时，
     `go get github.com/oagentkit/agentkit@vX` 装走的就是旧实现。
@@ -223,15 +224,16 @@ def matrix_repos(matrix_path: Path) -> list[str]:
     此前门面不在扫描范围里 ⇒ 它的地板漂移没有任何报告器兜底
     （而 `verify_dep_floor.py` 的注释明写「门面仓也要进对账」——
     两个脚本覆盖面不一致，是个真缺口）。
+
+    ⚠️ 取数走**事实层**（`matrix_facts.Matrix.all_go_repos`）——
+    与 `verify_dep_floor.py` 共用同一份「哪些仓是 Go module」的判定。
+    此前两边各写各的谓词（这里按 `topics` 含 deprecated/facade、
+    那边按 `goModule`）⇒ 当时集合恰好相同，但改数据源一个字段就可能让
+    某个仓从其中一条守卫的视野里消失，而两条各自看起来都正常。
+    ⇒ 消除重复，而不是加一条「两边必须相同」的检查。
     """
     data = json.loads(matrix_path.read_text(encoding="utf-8"))
-    repos = [m["repo"] for m in data.get("modules", [])]
-    for infra in data.get("infraRepos", []):
-        topics = infra.get("topics") or []
-        name = infra.get("repo")
-        if name and ("deprecated" in topics or "facade" in topics) and name not in repos:
-            repos.append(name)
-    return repos
+    return matrix_facts.Matrix(path=matrix_path, data=data).all_go_repos()
 
 
 # ---------------------------------------------------------------- 自测
@@ -259,6 +261,51 @@ def _selftest() -> int:
     # 非 semver 必须判不出，而不是默默判成「不落后」
     check("非 semver 判不出", version_lt("latest", "v1.0.0"), None)
     check("非 semver 另一侧", version_lt("v1.0.0", "main"), None)
+
+    # --- 仓清单：与 verify_dep_floor.py **必须一致**（2026-10-31）
+    #
+    # 两条地板守卫此前各写各的取仓谓词（这里按 topics 含 deprecated/facade、
+    # 那边按 goModule）⇒ 当时集合恰好相同，但改数据源一个字段就可能让某个仓
+    # 从其中一条守卫的视野里消失，而**两条各自看起来都正常**。
+    # ⇒ 现在两边共用事实层 `matrix_facts` 的同一份取数（结构上不可能不一致）。
+    #
+    # 这条断言用**构造的 fixture** 而不是真实 modules.json ——
+    # 真实数据下两个谓词恰好同集合（门面两个字段都满足）⇒ 用真实数据断言**没有区分力**
+    # （实测：把谓词退回旧写法，断言照样绿）。fixture 里那个
+    # 「是 Go module 但 topics 无 deprecated/facade」的仓才是分水岭。
+    import verify_dep_floor as _vdf
+    import tempfile
+    fixture = {
+        "modules": [{"repo": "a", "tier": 0}],
+        "infraRepos": [
+            {"repo": "facade", "goModule": True, "topics": ["deprecated", "facade"]},
+            # 旧谓词（按 topics）会漏掉它，新谓词（按 goModule）不会：
+            {"repo": "newgo", "goModule": True, "topics": ["ci"]},
+            {"repo": "notgo", "goModule": False, "topics": ["deprecated"]},
+        ],
+    }
+    with tempfile.TemporaryDirectory() as _td:
+        fpath = Path(_td) / "modules.json"
+        fpath.write_text(json.dumps(fixture), encoding="utf-8")
+        # ⚠️ 必须走**本脚本的入口** `matrix_repos()`，否则断言绕开了被保护的那段代码
+        mine_fixture = matrix_repos(fpath)
+        theirs_fixture = [r for r, _t in _vdf.matrix_facts.Matrix(
+            path=fpath, data=fixture).go_module_targets()]
+        check("fixture 下两守卫的仓清单完全一致（防分叉）", mine_fixture, theirs_fixture)
+        check("fixture 下「是 Go module 但 topics 无 deprecated」的仓在清单里",
+              "newgo" in mine_fixture, True)
+        check("fixture 下非 Go module 的仓不在清单里",
+              "notgo" in mine_fixture, False)
+
+    # 真实数据源上的基本性质
+    matrix_path = HERE.parent / "modules.json"
+    if matrix_path.is_file():
+        mine = matrix_repos(matrix_path)
+        check("真实仓清单含门面 agentkit", "agentkit" in mine, True)
+        real_modules = [m["repo"] for m in
+                        json.loads(matrix_path.read_text(encoding="utf-8"))["modules"]]
+        check("真实仓清单含全部模块",
+              sorted(r for r in mine if r in set(real_modules)), sorted(real_modules))
 
     # --- require 解析
     gomod = """module github.com/oagentkit/demo
@@ -329,7 +376,8 @@ require github.com/oekit/pkg v0.15.1
         for f in failures:
             print(f"   - {f}")
         return 1
-    print("✅ verify_dep_floors 自测通过（semver / require 解析 / 豁免边界 / 离线）")
+    print("✅ verify_dep_floors 自测通过"
+          "（semver / require 解析 / 豁免边界 / 仓清单与 verify_dep_floor 一致 / 离线）")
     return 0
 
 

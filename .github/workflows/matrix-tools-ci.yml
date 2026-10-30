@@ -363,6 +363,19 @@ jobs:
         # 嵌套字段被改 / packages 顺序乱 ⇒ 必报；完全一致 ⇒ 不报。
         run: python3 scripts/verify_modules_copy.py --selftest
 
+      - name: 全量自测（兜底：防止有自测脚本漏接进 CI）
+        # 上面这些步骤是**逐条写死的** ⇒ 新增一个自测脚本时，接线要靠人记 ⇒ 必然漏。
+        # 这一步自动发现 `scripts/test_*.py` + 所有支持 `--selftest` 的守卫并全跑一遍。
+        #
+        # 为什么这不是「重复劳动」：本地清单与 CI 清单**都是靠人记的**，两边都会漏。
+        # 2026-10-31 实测：改了 gen_versions.floor_bumps_map 的取值（加 org 字段），
+        # 本地清单漏了 scripts/test_*.py ⇒ 本地全绿，CI 的 Scripts job 却报
+        # AttributeError 红了一轮 ⇒ 清单漂移是**真会咬人**的。
+        #
+        # 集合等价性已核对：selftest_all 发现的 43 个脚本**全部**在上面逐条出现过
+        # ⇒ 不引入新的环境依赖（pyyaml / Go 都已在本 job 装好）。
+        run: python3 scripts/selftest_all.py
+
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
     # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的
@@ -883,7 +896,12 @@ jobs:
 
       - name: 门面不得新增包（规则级）
         # 判据取自门面自己的 README 废弃声明 + git 历史，**不依赖**冻结快照。
-        run: python3 matrix-tools/scripts/verify_facade_no_new_packages.py --facade agentkit
+        #
+        # `--fail-on-yellow`：黄灯 = 「读不出门面的废弃承诺 ⇒ 判不了」。
+        # 这条判据的**触发前提**就是那句措辞——把它改成同义表述（「不再维护」等），
+        # 整条规则级判定会静默失效而 CI 照样全绿 ⇒ 兜底冻结快照盲区的那条网自己消失了。
+        # 黄灯升级为失败 ⇒ 措辞一改就有人被叫住。
+        run: python3 matrix-tools/scripts/verify_facade_no_new_packages.py --facade agentkit --fail-on-yellow
 
       - name: 门面包覆盖与迁移映射
         # 含 MIGRATION.md ↔ alias.go 的对应校验——实测「port 包有转发但迁移表漏行」
