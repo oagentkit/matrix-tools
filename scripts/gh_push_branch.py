@@ -27,6 +27,12 @@
   此时 parent 相同 ⇒ 内容寻址 ⇒ **远端 commit sha 与本地逐字相同**。
   若 base 只有远端有（本地没有对象），重建出的 commit sha 必然不同 ⇒ 本脚本**拒绝**，
   而不是给你一个「树相同但 sha 不同」的弱对账。
+- **逐个 commit 重建，不压平**：base..HEAD 若有多个 commit，本脚本会**逐个**重建
+  （parent 串成与本地一致的链）⇒ 每个 commit 的远端 sha 都与本地**逐字相同**。
+  ⚠️ 压平成一个 commit 的话 parent 变了 ⇒ sha 必不同 ⇒ 最强对账失效
+  （实测：这是本脚本初版在真实环境下的缺陷——自测只覆盖单 commit ⇒ 漏过；
+  本轮推 3 个 commit 时被自己的 sha 校验拦下：拦得对，但功能不可用）。
+- **只支持线性链**：合并提交（多个父）会被拒绝（明确报错，不静默改写历史）。
 - **GitHub 的 squash/merge commit 带 PGP 签名** ⇒ 本脚本不去改写已有远端提交，
   只推「新分支」。⚠️（2026-10-31 更正）带签名的 commit 其实**能**逐字重建 ——
   用 API 的 `verification.payload` + `verification.signature`，规则见 `gh_git_api.py`；
@@ -121,46 +127,72 @@ def push_branch(repo_dir: Path, repo: str, branch: str, base: str,
         raise SystemExit("本地 %s 的树与远端不一致（本地=%s 远端=%s）—— 拒绝推送"
                          % (base, tree_of(repo_dir, base), base_tree))
 
-    # 1) 逐个上传 blob，并核对 sha（内容寻址 ⇒ 必须逐字相等）
-    entries = []
-    for status, path in changed_paths(repo_dir, base, head):
-        if status == "D":
-            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
-            continue
-        content = git_bytes(repo_dir, "show", head + ":" + path)
-        local_sha = subprocess.run(
-            ["git", "-C", str(repo_dir), "hash-object", "-t", "blob", "--stdin"],
-            input=content, capture_output=True, check=True).stdout.decode().strip()
-        resp = api("POST", "/repos/%s/git/blobs" % repo,
-                   {"content": base64.b64encode(content).decode("ascii"),
-                    "encoding": "base64"}, api_root=api_root)
-        if resp["sha"] != local_sha:
-            raise SystemExit("blob sha 不一致 %s：远端=%s 本地=%s"
-                             % (path, resp["sha"], local_sha))
-        entries.append({"path": path, "mode": file_mode(repo_dir, head, path),
-                        "type": "blob", "sha": resp["sha"]})
+    # 1) 取 base..HEAD 的 commit 链（从旧到新），**逐个**重建
+    #
+    # ⚠️ 必须逐个 commit 重建，不能把整段变更压成一个 commit：
+    #    内容寻址下，commit 的 sha 取决于它的 parent ⇒ 压成一个 ⇒ parent 与本地不同
+    #    ⇒ **sha 必然不同** ⇒「远端 sha == 本地 sha」这个最强对账永远失败。
+    #    实测（2026-10-31）：本仓库修好这个缺陷前，推 3 个 commit 会被自己的
+    #    sha 校验拦下（远端 sha ≠ 本地 sha）—— 拦得对，但功能不可用。
+    #    ⇒ 逐个重建 ⇒ 链上的 parent 与本地**逐个相同** ⇒ 每个 commit 的 sha 都相同。
+    commits = git(repo_dir, "rev-list", "--reverse", "%s..%s" % (base, head)).split()
+    if not commits:
+        commits = [head]
 
-    # 2) 建 tree（空提交 ⇒ GitHub 拒绝 `tree: []` ⇒ 沿用父树）
-    if entries:
-        tree_sha = api("POST", "/repos/%s/git/trees" % repo,
-                       {"base_tree": base_tree, "tree": entries},
-                       api_root=api_root)["sha"]
-    else:
-        tree_sha = base_tree
-    want_tree = tree_of(repo_dir, head)
-    if tree_sha != want_tree:
-        raise SystemExit("tree sha 不一致：远端=%s 本地=%s" % (tree_sha, want_tree))
+    prev_tree = base_tree
+    prev_sha = base
+    for c in commits:
+        parents = git(repo_dir, "rev-list", "--parents", "-n", "1", c).split()[1:]
+        if len(parents) != 1:
+            raise SystemExit("commit %s 有 %d 个父（合并提交）——本通道只支持线性链"
+                             % (c[:12], len(parents)))
+        if parents[0] != prev_sha:
+            raise SystemExit("commit %s 的父 %s 与链上前一个 %s 不符——链条不连续"
+                             % (c[:12], parents[0][:12], prev_sha[:12]))
 
-    # 3) 建 commit（parent = base ⇒ sha 应与本地逐字相同）
-    meta = commit_meta(repo_dir, head)
-    commit_resp = api("POST", "/repos/%s/git/commits" % repo,
-                      {"message": meta["message"], "tree": tree_sha,
-                       "parents": [base], "author": meta["author"],
-                       "committer": meta["committer"]}, api_root=api_root)
-    if commit_resp["sha"] != head:
-        raise SystemExit("commit sha 不一致：远端=%s 本地=%s"
-                         % (commit_resp["sha"], head))
-    new_sha = commit_resp["sha"]
+        # 1a) 逐个上传 blob，并核对 sha（内容寻址 ⇒ 必须逐字相等）
+        entries = []
+        for status, path in changed_paths(repo_dir, parents[0], c):
+            if status == "D":
+                entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+                continue
+            content = git_bytes(repo_dir, "show", c + ":" + path)
+            local_sha = subprocess.run(
+                ["git", "-C", str(repo_dir), "hash-object", "-t", "blob", "--stdin"],
+                input=content, capture_output=True, check=True).stdout.decode().strip()
+            resp = api("POST", "/repos/%s/git/blobs" % repo,
+                       {"content": base64.b64encode(content).decode("ascii"),
+                        "encoding": "base64"}, api_root=api_root)
+            if resp["sha"] != local_sha:
+                raise SystemExit("blob sha 不一致 %s：远端=%s 本地=%s"
+                                 % (path, resp["sha"], local_sha))
+            entries.append({"path": path, "mode": file_mode(repo_dir, c, path),
+                            "type": "blob", "sha": resp["sha"]})
+
+        # 1b) 建 tree（空提交 ⇒ GitHub 拒绝 `tree: []` ⇒ 沿用父树）
+        if entries:
+            tree_sha = api("POST", "/repos/%s/git/trees" % repo,
+                           {"base_tree": prev_tree, "tree": entries},
+                           api_root=api_root)["sha"]
+        else:
+            tree_sha = prev_tree
+        want_tree = tree_of(repo_dir, c)
+        if tree_sha != want_tree:
+            raise SystemExit("tree sha 不一致（commit %s）：远端=%s 本地=%s"
+                             % (c[:12], tree_sha, want_tree))
+
+        # 1c) 建 commit（parent = 链上前一个 ⇒ sha 应与本地逐字相同）
+        meta = commit_meta(repo_dir, c)
+        commit_resp = api("POST", "/repos/%s/git/commits" % repo,
+                          {"message": meta["message"], "tree": tree_sha,
+                           "parents": [prev_sha], "author": meta["author"],
+                           "committer": meta["committer"]}, api_root=api_root)
+        if commit_resp["sha"] != c:
+            raise SystemExit("commit sha 不一致：远端=%s 本地=%s"
+                             % (commit_resp["sha"], c))
+        prev_tree = tree_sha
+        prev_sha = commit_resp["sha"]
+    new_sha = prev_sha
 
     if dry_run:
         return {"branch": branch, "commit": new_sha, "dry_run": True}
@@ -227,6 +259,10 @@ def _selftest() -> int:
         bad_commit_sha = False
         bad_tree_content = False
         bad_base_tree = False
+        # ⚠️ 记录每次 POST /git/commits 的请求体 ⇒ 自测据此断言
+        #    「**逐个** commit 重建、parent 链与本地一致」。
+        #    （此前自测只有**单 commit** ⇒ 「把整段压成一个 commit」的缺陷漏过了。）
+        commit_posts = []
         # ⚠️ 必须 HTTP/1.1：默认的 HTTP/1.0 每次响应后断连 ⇒ urllib 复用连接时报
         # RemoteDisconnected（自测第一版就栽在这）。
         protocol_version = "HTTP/1.1"
@@ -358,6 +394,7 @@ def _selftest() -> int:
                     sha = "2" * 40
                 return self._json({"sha": sha})
             if parts[-1] == "commits":
+                FakeGitHub.commit_posts.append(body)
                 lines = ["tree %s" % body["tree"]]
                 for p in body.get("parents", []):
                     lines.append("parent %s" % p)
@@ -395,7 +432,17 @@ def _selftest() -> int:
         (repo_dir / "b.txt").write_text("new\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
         subprocess.run(["git", "-C", str(repo_dir), "commit", "-q", "-m", "change"], check=True)
-        head = git(repo_dir, "rev-parse", "HEAD")
+        # ⚠️ **再补两个 commit** ⇒ 推的是一条**链**（3 个 commit）
+        #    （此前自测只有**单 commit** ⇒ 「把整段变更压成一个 commit」的缺陷漏过了：
+        #      压平时 parent 与本地不同 ⇒ sha 必不同 ⇒ 真实环境里功能不可用）
+        chain = [git(repo_dir, "rev-parse", "HEAD")]
+        for i in (1, 2):
+            (repo_dir / ("c%d.txt" % i)).write_text("chain-%d\n" % i, encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(repo_dir), "commit", "-q",
+                            "-m", "chain %d" % i], check=True)
+            chain.append(git(repo_dir, "rev-parse", "HEAD"))
+        head = chain[-1]
 
         FakeGitHub.repo_dir = repo_dir
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeGitHub)
@@ -405,9 +452,19 @@ def _selftest() -> int:
         api_root = "http://127.0.0.1:%d" % port
 
         try:
-            # ① 正常路径：推一个含 1 改 1 增的分支 ⇒ 远端 commit sha 必须 == 本地 HEAD sha
+            # ① 正常路径：推一条**3 个 commit 的链** ⇒ 远端 commit sha 必须 == 本地 HEAD sha
+            FakeGitHub.commit_posts.clear()
             out = push_branch(repo_dir, "o/r", "feat/x", base, api_root=api_root)
             check("① 远端 commit sha == 本地 HEAD sha", out["commit"], head)
+            # ①b ⚠️ 必须**逐个** commit 重建（不能压平成一个）⇒ parent 链与本地一致
+            check("①b 逐个 commit 重建（不是压平成一个）",
+                  len(FakeGitHub.commit_posts), len(chain))
+            for i, body in enumerate(FakeGitHub.commit_posts):
+                want_parent = base if i == 0 else chain[i - 1]
+                check("①b 第 %d 个 commit 的 parent 与本地一致" % (i + 1),
+                      body["parents"][0], want_parent)
+                check("①b 第 %d 个 commit 的 tree 与本地一致" % (i + 1),
+                      body["tree"], git(repo_dir, "rev-parse", chain[i] + "^{tree}"))
 
             # ② 反证：blob sha 对不上时必须**中止**（不能把错 blob 推上去）
             FakeGitHub.bad_blob_sha = True
