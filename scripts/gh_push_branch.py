@@ -311,6 +311,23 @@ def _selftest() -> int:
             import traceback
             traceback.print_exc()
 
+        def _guard(self, fn):
+            """包住 handler：**任何**异常（含 SystemExit）都要留下痕迹。
+
+            ⚠️ socketserver 的 `handle_error` 只处理 `Exception` ⇒ `SystemExit`
+            会**直接杀掉服务线程** ⇒ 客户端只看到「连接被关」，日志里什么都没有
+            ⇒ 排查成本极高。⇒ 这里兜住全部异常并回 500。
+            """
+            import traceback
+            try:
+                fn()
+            except BaseException as exc:  # noqa: BLE001（含 SystemExit）
+                traceback.print_exc()
+                try:
+                    self._json({"message": "fake server error: %r" % (exc,)}, code=500)
+                except Exception:
+                    pass
+
         def _json(self, obj, code=200):
             body = json.dumps(obj).encode()
             self.send_response(code)
@@ -320,6 +337,9 @@ def _selftest() -> int:
             self.wfile.write(body)
 
         def do_GET(self):
+            self._guard(self._do_GET)
+
+        def _do_GET(self):
             path = self.path.split("?")[0]
             parts = [p for p in path.split("/") if p]
             if "commits" in parts and len(parts) >= 5:
@@ -365,6 +385,9 @@ def _selftest() -> int:
             return self._json({"message": "not found"}, code=404)
 
         def do_POST(self):
+            self._guard(self._do_POST)
+
+        def _do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
             path = self.path.split("?")[0]
@@ -530,16 +553,27 @@ def _selftest() -> int:
 
 
 def _iso_to_git(iso: str) -> str:
-    """ISO8601（带偏移）→ Git 的「<unix ts> <+0800>」。"""
+    """ISO8601（带偏移）→ Git 的「<unix ts> <+0800>」。
+
+    ⚠️ 用 `fromisoformat` 而不是正则挑格式：正则挑不中就抛异常 ⇒ 在**服务端**里
+    抛 `SystemExit` ⇒ `handle_error` **不捕获**（它只处理 Exception）⇒ 服务线程直接死
+    ⇒ 客户端只看到「连接被关」，日志里什么都没有（2026-10-31 的 CI 红的可疑路径）。
+    """
     import datetime
-    m = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-])(\d{2}):(\d{2})", iso)
-    if not m:
-        raise SystemExit("认不出的日期格式：%r" % iso)
-    y, mo, d, H, M, S, sign, hh, mm = m.groups()
-    off = datetime.timezone(datetime.timedelta(hours=int(hh),
-                                               minutes=int(mm) if sign == "+" else -int(mm)))
-    dt = datetime.datetime(int(y), int(mo), int(d), int(H), int(M), int(S), tzinfo=off)
-    return "%d %s%s%s" % (int(dt.timestamp()), sign, hh, mm)
+    text = iso.strip()
+    if text.endswith("Z"):          # fromisoformat 在 3.11 前不认 Z
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise SystemExit("认不出的日期格式：%r（%s）" % (iso, exc))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    off = dt.utcoffset() or datetime.timedelta(0)
+    total = int(off.total_seconds())
+    sign = "+" if total >= 0 else "-"
+    total = abs(total)
+    return "%d %s%02d%02d" % (int(dt.timestamp()), sign, total // 3600, (total % 3600) // 60)
 
 
 def main() -> int:
