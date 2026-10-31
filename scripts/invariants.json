@@ -876,7 +876,11 @@
       "bump_dep_floors.py",
       "publish_repo.sh",
       "test_matrix_paths.py",
-      "breaking_index.py"
+      "breaking_index.py",
+      "selftest_all.py",
+      "selftest_discovery.py",
+      "gh_push_branch.py",
+      "gh_sync_commit.py"
     ],
     "sharedLayers": {
       "note": "守卫可以自由 import 共享层——它们**不含判定**：matrix_facts 只取事实、judge_report 只渲染、repo_meta 只取数、matrix_paths 是 import 路径规则本体（自带独立断言 test_matrix_paths.py）。共享它们不会造成「共同盲区」；共享**生成器/判据层**才会，所以后者必须逐条披露。",
@@ -884,8 +888,10 @@
         "matrix_facts",
         "judge_report",
         "repo_meta",
-        "matrix_paths"
-      ]
+        "matrix_paths",
+        "gh_git_api"
+      ],
+      "modulesNote": "gh_git_api 是 2026-10-31 新增的共享层：**只取事实 + 只做字节级自校验**（REST 取数、代理绕过、git 对象读取、commit 对象的逐字重建规则）。它**不含任何判定**——「这次对齐算不算成功」住在 gh_push_branch.py（推）与 gh_sync_commit.py（拉）各自的脚本里。两侧共用一份取数层，是为了避免各写一份后**悄悄漂移**（实测：仓库外临时脚本 push_via_api.py 与仓内 gh_push_branch.py 就是两份实现，行为已经不一样了）。"
     }
   }
 }
