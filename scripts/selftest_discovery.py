@@ -165,13 +165,20 @@ def _selftest() -> int:
             "print('ok')\n", encoding="utf-8")
         # ⑥ 语法错误 ⇒ 不得崩（跳过即可）
         (scripts / "f_broken.py").write_text("def (:\n", encoding="utf-8")
+        # ⑦ **只**用「常量引用」注册参数 ⇒ 仍算有 --selftest 入口
+        #    （⚠️ 判据若只认字面量，`add_argument(FLAG, ...)` 会被漏掉 ⇒ 变异②抓的就是这条）
+        (scripts / "g_constref.py").write_text(
+            "import argparse\n"
+            "FLAG = \"--selftest\"\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(FLAG, action=\"store_true\")\n", encoding="utf-8")
 
         plain, with_selftest = discover(scripts)
         plain_names = [p.name for p in plain]
         st_names = [p.name for p in with_selftest]
 
         check("普通运行那一拨", plain_names, ["test_a_wire.py"])
-        check("判据自测那一拨", st_names, ["b_argparse.py", "c_func.py"])
+        check("判据自测那一拨", st_names, ["b_argparse.py", "c_func.py", "g_constref.py"])
 
         # 反证：提到 selftest 但没入口的，不得被发现
         check("反证：decoy 不得进自测集合", "d_decoy.py" in st_names, False)
@@ -188,13 +195,18 @@ def _selftest() -> int:
         check("真实仓库发现集合非空", len(r_plain) + len(r_st) > 0, True)
         check("真实仓库：接线自测那一拨非空", len(r_plain) > 0, True)
         check("真实仓库：判据自测那一拨非空", len(r_st) > 0, True)
+        # ⑧ 发现层**自己**也必须被发现自己 ⇒ 它的自测才会被聚合器跑到
+        #    （⚠️ 本模块用常量 `SELFTEST_FLAG` 注册参数 ⇒ 若判据不认「常量引用」写法，
+        #    本模块会被漏掉 ⇒ 这条断言正是抓那个变异的）
+        check("发现层自己也在自测集合里",
+              Path(__file__).name in {p.name for p in r_st}, True)
 
     if fails:
         print("发现层自测失败：")
         for f in fails:
             print("  ✗ " + f)
         return 1
-    print("发现层自测：7 条断言全过")
+    print("发现层自测：9 条断言全过")
     return 0
 
 

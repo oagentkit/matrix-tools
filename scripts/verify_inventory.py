@@ -224,9 +224,15 @@ def selftest_invoked(ci_text: str, script: str) -> bool:
 
 
 def auto_discovery_wired(ci_text: str) -> bool:
-    """CI 里是否有**自动发现式接线**（跑聚合器 + 分片/计划）。
+    """CI 里是否有**自动发现式接线**（真的跑聚合器的分片）。
 
-    形态：`python3 scripts/selftest_all.py --shard i/n` 或 `--plan-shards`。
+    形态：`python3 scripts/selftest_all.py --shard i/n`。
+
+    ⚠️ **只认 `--shard`，不认 `--plan-shards`**：`--plan-shards` 只是「算片数」，
+    它在 `selftest-plan` job 里 ⇒ 若认它，则「计划 job 在、真正跑分片的 job 没了」
+    也会被判成「已接线」⇒ 接线是假的（实测变异：这正是没转红的原因）。
+    ⇒ 判据必须落在**真正跑自测的那一步**上。
+    ⇒ 判据将来若换形态 ⇒ 这里会判红（保守：宁可红，不放过假接线）。
 
     为什么要有这条：CI 里「跑哪些自测」这份清单**靠人记** ⇒ 必然漂移
     （实测：`bump_dep_floors.py --selftest` 写了两周根本没进 CI）。
@@ -234,7 +240,7 @@ def auto_discovery_wired(ci_text: str) -> bool:
     ⇒ 但这样一来，「接线」就不能再靠 grep 文本判定 ⇒ 必须改成**集合包含**关系。
     """
     for line in ci_text.splitlines():
-        if "selftest_all.py" in line and ("--shard" in line or "--plan-shards" in line):
+        if "selftest_all.py" in line and "--shard" in line:
             return True
     return False
 
@@ -953,6 +959,15 @@ def selftest() -> int:
         # 反证样本 ⑪：自动发现式接线下，集合外的脚本（--selftest 只在注释里）判红
         check("注释型 --selftest 在自动发现接线下被判红",
               "commentonly" in subjects, True)
+        # ⚠️ 「自动发现式接线」本身也要有判据：只有**跑分片**的那一步才算数，
+        #    光有「算片数」（--plan-shards）不算 ⇒ 否则「计划 job 在、跑分片的
+        #    job 没了」会被判成已接线 ⇒ 假接线漏过（实测变异：这正是没转红的原因）。
+        check("只有 --plan-shards 不算已接线",
+              auto_discovery_wired(
+                  "      - run: python3 scripts/selftest_all.py --plan-shards\n"), False)
+        check("跑分片才算已接线",
+              auto_discovery_wired(
+                  "      - run: python3 scripts/selftest_all.py --shard 0/2\n"), True)
         # ③ 硬规则 2：没有 --selftest 的判据脚本必须判红
         check("没有 --selftest 的判据被抓出", "noselftest" in subjects, True)
         # ④ 硬规则 2：--selftest 没接进 CI 必须判红
@@ -1082,7 +1097,8 @@ def selftest() -> int:
           "（未登记 / 未接线 / 未披露耦合 / 无 --selftest / --selftest 未接线 / "
           "登记的 CI 位置不跑该判据 / 登记了不存在的 trigger / "
           "if 排除登记的 trigger / if 判不了判黄 / "
-          "注释型 --selftest 在自动发现接线下被判红 十类检出）")
+          "注释型 --selftest 在自动发现接线下被判红 十类检出；"
+          "并自检「自动发现式接线」判据本身）")
     return 0
 
 
