@@ -884,6 +884,7 @@ jobs:
   #    发现层：scripts/selftest_discovery.py；聚合器：scripts/selftest_all.py。
   # ⇒ 接线不再靠 grep 文本：verify_inventory.py 的第 5/8 条改成**集合包含**判据。
   selftestplan:
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -900,6 +901,7 @@ jobs:
           echo "matrix=$(grep '^matrix=' /tmp/shards.txt | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
 
   selftest:
+    runs-on: ubuntu-latest
     needs: selftestplan
     timeout-minutes: 15
     strategy:
