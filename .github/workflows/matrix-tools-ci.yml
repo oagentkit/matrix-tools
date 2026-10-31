@@ -281,7 +281,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - uses: ./.github/actions/setup-matrix-tools
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: Clone 矩阵各仓（完整历史）
         # 清单来自 modules.json（单一数据源），不写死仓名。
         # 必须完整克隆：浅克隆的 tag 历史不全，算出来的「相邻 tag」是假的。
@@ -546,7 +546,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - uses: ./.github/actions/setup-matrix-tools
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
         with:
           go-version: '1.26'
           go-cache-dependency-path: 'matrix-tools/go.sum'
@@ -736,7 +736,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - uses: ./.github/actions/setup-matrix-tools
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: Clone 矩阵各仓（完整历史）
         # 必须是完整克隆：浅克隆没有历史，看不到「预写段曾经存在」。
         run: |
@@ -772,7 +772,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - uses: ./.github/actions/setup-matrix-tools
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: latest 字段对账
         # 取不到 ⇒ 黄灯（判不了 ≠ 没问题），不判绿。
         run: python3 matrix-tools/scripts/verify_latest_field.py --org oagentkit
@@ -792,7 +792,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - uses: ./.github/actions/setup-matrix-tools
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
         with:
           pyyaml: 'true'
       - name: Clone 规则仓（登记表引用了两个 CI 文件）
@@ -853,7 +853,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - uses: ./.github/actions/setup-matrix-tools
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: issue 回执落地对账
         # 「判不了 ≠ 没问题」：取数失败判**黄灯**而不是绿灯——
         # 否则门禁会在网络故障时静默放行，而故障恰好是最需要它的时候。
