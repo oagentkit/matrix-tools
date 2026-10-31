@@ -357,6 +357,16 @@ jobs:
         # （手写内容被抹掉是它存在的理由）。
         run: python3 scripts/verify_repo_docs.py --selftest
 
+      - name: 依赖地板施作器自测（含 Git Data API 推送通道）
+        # 这两个脚本的 --selftest 此前**没有人跑**（写了自测却没人跑 = 摆设）⇒ 接进 CI。
+        # `bump_dep_floors.py` 的自测覆盖「推分支用哪条通道 / 失败怎么回退 / 基线核对」；
+        # `gh_push_branch.py` 的自测覆盖「Git Data API 推送通道的 sha 逐层自校验」
+        # （用本地假 GitHub 跑真 HTTP 往返，不是 mock 掉 HTTP 层）。
+        # ⚠️ 两者只依赖标准库 + 本地 git ⇒ 不引入新的环境依赖。
+        run: |
+          python3 scripts/bump_dep_floors.py --selftest
+          python3 scripts/gh_push_branch.py --selftest
+
       - name: 站点 modules.json 副本守卫自测
         # 反证样本：少一个包（2026-10-21 真实形态——站点副本缺 llm/port）/
         # 改 tier / 多一个仓 / 少一个顶层字段 / 副本缺失 / JSON 损坏 /

@@ -53,6 +53,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gh_push_branch  # noqa: E402  （同目录模块：Git Data API 推送通道）
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
@@ -305,19 +308,90 @@ def git(repo: Path, *args: str, check: bool = True) -> str:
     return (p.stdout or "").strip()
 
 
+def remote_main_sha(org: str, repo: str) -> str | None:
+    """远端 main 的 commit sha（走 api.github.com，**不依赖 git 传输层**）。
+
+    取不到 ⇒ 返回 None（**判不了**，不是「取到空」）。
+    """
+    try:
+        out = subprocess.run(
+            ["gh", "api", f"repos/{org}/{repo}/commits/main", "--jq", ".sha"],
+            capture_output=True, text=True)
+    except OSError:
+        return None
+    if out.returncode != 0:
+        return None
+    sha = (out.stdout or "").strip()
+    return sha or None
+
+
+def ensure_baseline(repo_dir: Path, org: str, repo: str, mode: str) -> tuple[bool, str]:
+    """确保本地基线 == 远端 main。→ (成功?, 说明)
+
+    为什么要在 API 模式下也核对基线：传���层不可用时**不能 fetch** ⇒ 本地
+    `origin/main` 可能是**陈旧**的 ⇒ 在陈旧基线上改依赖并推分支 ⇒ PR 的 diff 会
+    混进「远端 main 已有的新提交」⇒ 审阅者看到一堆无关变更。
+    ⇒ 这里**不比对就拒绝**（判不了 ≠ 没问题），而不是冒险推。
+    """
+    local_main = git(repo_dir, "rev-parse", "origin/main", check=False)
+    remote = remote_main_sha(org, repo)
+    if remote and local_main == remote:
+        return True, "基线已是最新（API 核对 origin/main == 远端 main）"
+    if mode == "api":
+        return False, (f"本地 origin/main({local_main[:8] or '缺失'}) 与远端 main"
+                       f"({remote[:8] if remote else '取不到'}) 不一致 ⇒ 传输层不可用时"
+                       f"无法安全同步基线 ⇒ 拒绝（请在能 fetch 的环境里先同步）")
+    # git 模式（或 auto 的快路径）：先试传输层
+    git(repo_dir, "fetch", "origin", "--tags")
+    local_main = git(repo_dir, "rev-parse", "origin/main", check=False)
+    remote = remote_main_sha(org, repo)
+    if remote and local_main != remote:
+        return False, (f"fetch 后本地 origin/main({local_main[:8]}) 仍与远端 main"
+                       f"({remote[:8]}) 不一致 ⇒ 拒绝")
+    return True, "已 fetch origin --tags（基线已核对）"
+
+
+def push_with_fallback(repo_dir: Path, org: str, repo: str, branch: str,
+                       base: str, mode: str) -> tuple[bool, str]:
+    """把分支推上去。→ (成功?, 说明)
+
+    `mode`：
+    - ``git``：只用 git push（传输层必须可用）
+    - ``api``：只用 Git Data API（**不依赖传输层**）
+    - ``auto``（默认）：先试 git push，失败 ⇒ 回退 API 通道
+      （⚠️ 不靠错误字符串判断「是不是传输层问题」——那种匹配脆且会误判；
+        直接换通道，失败原因由 API 通道自己报）
+    """
+    if mode in ("git", "auto"):
+        r = subprocess.run(["git", "-C", str(repo_dir), "push", "-q", "-u", "origin", branch],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return True, "git push"
+        if mode == "git":
+            return False, "git push 失败：" + (r.stderr or r.stdout).strip()[:200]
+    try:
+        out = gh_push_branch.push_branch(repo_dir, f"{org}/{repo}", branch, base)
+    except SystemExit as exc:
+        return False, "Git Data API 通道也失败：" + str(exc).replace("\n", " ")[:240]
+    return True, f"Git Data API 推送（commit {out['commit'][:8]}，树逐路径核对过）"
+
+
 def go(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["go", *args], cwd=str(repo), capture_output=True, text=True)
 
 
 def apply_repo(repo_dir: Path, repo: str, floors: list[tuple[str, str, str]],
-               org: str, stamp: str, open_pr: bool, push: bool = True) -> tuple[bool, str]:
+               org: str, stamp: str, open_pr: bool, push: bool = True,
+               push_mode: str = "auto") -> tuple[bool, str]:
     """把一个仓的地板抬上去并开 PR。→ (成功?, 说明)。
 
     任何一步红 ⇒ **不动那个仓**（不提交、不推、不开 PR），并把原因报出来。
     """
     if git(repo_dir, "status", "--porcelain", check=False):
         return False, "工作树不干净（有人正在改这个仓）⇒ 跳过"
-    git(repo_dir, "fetch", "origin", "--tags")
+    ok, base_note = ensure_baseline(repo_dir, org, repo, push_mode)
+    if not ok:
+        return False, base_note
     git(repo_dir, "checkout", "main")
     git(repo_dir, "reset", "--hard", "origin/main")
     branch = f"chore/deps-floor-{stamp}"
@@ -402,7 +476,10 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
         git(repo_dir, "add", "-A")
         git(repo_dir, "commit", "-q", "-F", str(msg_path))
         if push:
-            git(repo_dir, "push", "-q", "-u", "origin", branch)
+            base_sha = git(repo_dir, "rev-parse", "origin/main")
+            ok, note = push_with_fallback(repo_dir, org, repo, branch, base_sha, push_mode)
+            if not ok:
+                return False, f"推分支失败 ⇒ {note}（本地提交已留在分支 {branch}）"
 
         if not push:
             return True, f"已在本地提交（分支 {branch}，**未推远端**）"
@@ -422,6 +499,127 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
         body_path.unlink(missing_ok=True)
 
 
+
+def selftest_push_modes() -> int:
+    """自测：**通道选择与回退**必须符合契约（带反证样本）。
+
+    契约：
+    - ``mode=api``  ⇒ 不许碰 git push，直接走 Git Data API；
+    - ``mode=git``  ⇒ 只走 git push，失败就失败（**不许**偷偷回退）；
+    - ``mode=auto`` ⇒ 先 git push，失败**回退** API（不许静默放弃）；
+    - 基线与远端 main 不一致 ⇒ 拒绝（在陈旧基线上推分支会让 PR diff 混进无关变更）。
+
+    变异验证（退回旧写法 ⇒ 自测必须转红）：
+    - 「auto 失败不回退」⇒ ③ 转红；
+    - 「api 模式也先试 git push」⇒ ① 转红；
+    - 「基线不一致也放行」⇒ ④ 转红。
+    """
+    import shutil
+    import tempfile
+
+    # ⚠️ 必须 global：下面要把模块级 remote_main_sha 换成假实现 ⇒ 不声明的话
+    # Python 把它当**局部**变量 ⇒ `orig_main_sha = remote_main_sha` 直接 UnboundLocalError。
+    global remote_main_sha
+
+    fails = []
+
+    def check(name: str, ok: bool, detail: str = "") -> None:
+        if not ok:
+            fails.append("%s%s" % (name, ("：" + detail) if detail else ""))
+
+    def make_repo(td: str, name: str = "r", with_remote: bool = True) -> Path:
+        """with_remote=True  ⇒ 有一个**可用**的 bare remote（git push 会成功）
+        with_remote=False ⇒ 没有 remote（git push 必然失败 ⇒ 模拟传输层不可用）
+        """
+        d = Path(td) / name
+        d.mkdir()
+        subprocess.run(["git", "-C", str(d), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(d), "config", "user.email", "t@example.com"], check=True)
+        subprocess.run(["git", "-C", str(d), "config", "user.name", "t"], check=True)
+        (d / "f.txt").write_text("x\n", encoding="utf-8")
+        # 一个**可用**的 bare remote（本地路径）⇒ git push 会成功
+        # ⇒ 于是「api 模式到底有没有偷偷用 git push」变得可观测。
+        bare = Path(td) / (name + "-remote.git")
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+        subprocess.run(["git", "-C", str(d), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(d), "commit", "-q", "-m", "base"], check=True)
+        if with_remote:
+            subprocess.run(["git", "-C", str(d), "remote", "add", "origin", str(bare)], check=True)
+            subprocess.run(["git", "-C", str(d), "push", "-q", "origin",
+                            "HEAD:refs/heads/main"], check=True)
+        return d
+
+    orig_api = gh_push_branch.push_branch
+    orig_main_sha = remote_main_sha
+    seen = []
+
+    def fake_api(*_a, **_k):
+        seen.append("api")
+        return {"branch": "br", "commit": "a" * 40, "files": 1}
+
+    try:
+        gh_push_branch.push_branch = fake_api
+        with tempfile.TemporaryDirectory() as td:
+            d = make_repo(td)
+            base = git(d, "rev-parse", "HEAD")
+
+            # ① mode=api ⇒ 必须走 API，且 git push 不该被调用
+            #    （这个仓**没有** remote ⇒ git push 必然失败 ⇒ 若仍成功，只能是 API 兜住了）
+            # 建出 br 分支并推到 bare remote ⇒ 之后 git push **会成功**
+            # ⇒ 「api 模式有没有偷偷用 git push」才可观测（否则必然失败 ⇒ 断言没区分力）。
+            subprocess.run(["git", "-C", str(d), "checkout", "-q", "-b", "br"], check=True)
+            subprocess.run(["git", "-C", str(d), "push", "-q", "origin", "br"], check=True)
+            # 删掉远端那个分支（本地分支留着无妨）⇒ bare 里没有 refs/heads/br
+            subprocess.run(["git", "-C", str(d), "push", "-q", "origin", ":refs/heads/br"], check=True)
+            seen.clear()
+            ok, note = push_with_fallback(d, "o", "r", "br", base, "api")
+            check("① mode=api 走 API 通道", ok and seen == ["api"], note)
+            # 加强：api 模式下**不许碰 git push**（bare remote 是可用的 ⇒ 若偷偷推了会留下分支）
+            bare_refs = git(d, "ls-remote", "--heads", "origin", check=False)
+            check("①b mode=api 没有偷偷 git push", "refs/heads/br" not in bare_refs, bare_refs)
+
+            # ② mode=git 且传输层不可用 ⇒ 必须失败，**且不许回退**
+            #    用「没有 remote」的仓 ⇒ git push 必然失败（= 传输层不可用的形态）
+            d_noremote = make_repo(td, name="r2", with_remote=False)
+            seen.clear()
+            ok, note = push_with_fallback(d_noremote, "o", "r", "br", base, "git")
+            check("② mode=git 失败且不回退", (not ok) and seen == [], note)
+
+            # ③ mode=auto 且传输层不可用 ⇒ 必须回退到 API 并成功
+            seen.clear()
+            ok, note = push_with_fallback(d_noremote, "o", "r", "br", base, "auto")
+            check("③ mode=auto 回退到 API", ok and seen == ["api"], note)
+
+            # ④ 基线与远端 main 不一致 ⇒ 拒绝（api 模式下不许 fetch）
+            remote_main_sha = lambda _o, _r: "b" * 40
+            ok, note = ensure_baseline(d, "o", "r", "api")
+            check("④ 基线不一致 ⇒ 拒绝", (not ok) and "不一致" in note, note)
+
+            # ⑥ auto 模式：fetch 之后仍与远端 main 不一致 ⇒ 拒绝
+            remote_main_sha = lambda _o, _r: "c" * 40
+            ok, note = ensure_baseline(d, "o", "r", "auto")
+            check("⑥ fetch 后仍不一致 ⇒ 拒绝", (not ok) and "不一致" in note, note)
+
+            # ⑤ 基线一致 ⇒ 放行（且说明里要说清是 API 核对的）
+            subprocess.run(["git", "-C", str(d), "update-ref",
+                            "refs/remotes/origin/main", base], check=True)
+            remote_main_sha = lambda _o, _r: base
+            ok, note = ensure_baseline(d, "o", "r", "api")
+            check("⑤ 基线一致 ⇒ 放行", ok and "API 核对" in note, note)
+    finally:
+        gh_push_branch.push_branch = orig_api
+        remote_main_sha = orig_main_sha
+
+    if fails:
+        print("❌ 自测失败：")
+        for f in fails:
+            print("   -", f)
+        return 1
+    print("✅ 推送通道自测通过（7 条断言：api 只走 API 且不碰 git push / git 模式不回退 / "
+          "auto 会回退 / 基线不一致拒绝 / fetch 后仍不一致拒绝 / 基线一致放行）")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="第一方依赖地板施作器（默认只报告）")
     ap.add_argument("--root", required=True, help="矩阵根目录（各仓克隆的父目录）")
@@ -429,6 +627,9 @@ def main() -> int:
     ap.add_argument("--repo", action="append", default=[], help="只处理这些仓（可重复）")
     ap.add_argument("--apply", action="store_true", help="真的落地（改文件/提交/推分支/开 PR）")
     ap.add_argument("--no-pr", action="store_true", help="落地但不��� PR")
+    ap.add_argument("--push-mode", choices=("git", "api", "auto"), default="auto",
+                    help="推分支用哪条通道：git=只走传输层；api=只走 GitHub REST Git Data API"
+                         "（**不依赖传输层**）；auto=先 git push，失败回退 API")
     ap.add_argument("--no-push", action="store_true",
                     help="落地但**不推远端**（本地试跑；隐含 --no-pr）")
     ap.add_argument("--api-report", action="store_true",
@@ -438,6 +639,8 @@ def main() -> int:
     ap.add_argument("--tracking-repo", default="matrix-tools",
                     help="跟踪 issue 开在哪个仓（默认 matrix-tools）")
     args = ap.parse_args()
+    if args.selftest:
+        return selftest()
 
     root = Path(args.root).resolve()
     repos = args.repo or matrix_repos(root)
@@ -565,6 +768,9 @@ def selftest() -> int:
         for f in fails:
             print(f"   - {f}")
         return 1
+    rc = selftest_push_modes()
+    if rc != 0:
+        return rc
     print("✅ bump_dep_floors 自测通过"
           "（版本按数字比 / 第一方筛选 / 落后判定 / go.mod 两种 require 形态）")
     return 0
