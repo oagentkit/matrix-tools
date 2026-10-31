@@ -1,0 +1,556 @@
+#!/usr/bin/env python3
+"""把本地分支推到远端 —— 走 GitHub REST **Git Data API**，不依赖 git 传输层。
+
+## 为什么需要它（issue matrix-tools#166）
+
+`bump_dep_floors.py --apply` 这条施作器的收尾是「改 go.mod → 提交 → **推分支** → 开 PR」。
+其中「推分支」走的是 `git push` ⇒ **依赖 git 传输层**（GitHub 的 git smart-HTTP 端点或 SSH）。
+实测在某些出口下 `github.com` 主站的 TLS 被掐（443/22/SSH 全断）⇒ `git push` 永远失败
+⇒ 施作器把「改完 go.mod」和「推得出去」耦合在一条命令里 ⇒ 前半段可用、后半段不可用。
+
+而 `api.github.com` 在同一出口下**可达** ⇒ Git Data API 完全绕过传输层：
+`POST /git/blobs` → `POST /git/trees` → `POST /git/commits` → `POST|PATCH /git/refs`。
+
+## 保真性（内容寻址 ⇒ 可逐层自校验，任何一层不一致就中止）
+
+① 上传 blob 后 GitHub 返回的 sha 必须 == 本地 `git hash-object`；
+② 重建 tree 的 sha 必须 == 本地 `git rev-parse <c>^{tree}`；
+③ 重建 commit 的 sha 必须 == 本地 commit sha（author/committer/时区/message 全同）；
+④ 推完后用 `GET /git/trees/<head>?recursive=1` 与本地 `git ls-tree -r HEAD`
+   **逐路径逐 sha** 比对。
+
+⇒ 全部成立即证明「远端分支 == 本地 HEAD 逐字节等价」，且**不依赖任何传输层**。
+
+## 已知边界（别把它当通用 git 客户端）
+
+- **base 必须是远端已有、本地也有的 commit**（例如刚 fetch 过的 `origin/main`）。
+  此时 parent 相同 ⇒ 内容寻址 ⇒ **远端 commit sha 与本地逐字相同**。
+  若 base 只有远端有（本地没有对象），重建出的 commit sha 必然不同 ⇒ 本脚本**拒绝**，
+  而不是给你一个「树相同但 sha 不同」的弱对账。
+- **GitHub 的 squash/merge commit 带 PGP 签名** ⇒ 本地重建不出那个对象 ⇒ 本脚本
+  只推「新分支」，不去改写已有远端提交。
+- `gh pr create` 本来就走 API ⇒ 不受传输层影响 ⇒ 本脚本只负责「把分支推上去」。
+
+## 用法
+
+    python3 scripts/gh_push_branch.py --repo-dir <本地仓> --repo <owner/repo> \
+        --branch <分支> [--base <commit，默认 origin/main>] [--dry-run]
+    python3 scripts/gh_push_branch.py --selftest
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+API_ROOT = "https://api.github.com"
+ROOT_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
+
+
+# ── 取数层 ──────────────────────────────────────────────────────────────
+
+def _token() -> str:
+    """GitHub token：先看环境变量，再退到 `gh auth token`（gh 已登录时可用）。"""
+    env = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if env:
+        return env.strip()
+    p = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
+    if p.returncode != 0 or not p.stdout.strip():
+        raise SystemExit("拿不到 GitHub token：设 GITHUB_TOKEN，或先 `gh auth login`")
+    return p.stdout.strip()
+
+
+def _opener(api_root: str):
+    """本地地址（自测的假服务）**必须绕过代理**。
+
+    否则 HTTP_PROXY/HTTPS_PROXY 会把 127.0.0.1 的请求也塞给代理 ⇒ 请求到不了本地服务
+    （自测第一版就栽在这：报 RemoteDisconnected）。
+    非本地地址则用默认 opener ⇒ 读标准代理环境变量（生产环境要靠它出网）。
+    """
+    host = urllib.parse.urlparse(api_root).hostname
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener()
+
+
+def api(method: str, path: str, body=None, api_root: str = API_ROOT,
+        allow_404: bool = False):
+    """调 GitHub REST。代理走标准环境变量（HTTPS_PROXY）⇒ urllib 默认生效。"""
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(api_root + path, data=data, method=method)
+    req.add_header("Authorization", "Bearer " + _token())
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with _opener(api_root).open(req, timeout=120) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404 and allow_404:
+            return None
+        detail = exc.read().decode("utf-8", "replace")
+        raise SystemExit("HTTP %s %s\n%s" % (exc.code, path, detail[:1500]))
+    return json.loads(raw) if raw else None
+
+
+# ── 本地 git 事实层 ────────────────────────────────────────────────────
+
+def git(repo: Path, *args: str) -> str:
+    p = subprocess.run(["git", "-C", str(repo), *args],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise SystemExit("git %s 失败：%s" % (" ".join(args),
+                                            (p.stderr or p.stdout).strip()[:300]))
+    return (p.stdout or "").strip()
+
+
+def git_bytes(repo: Path, *args: str) -> bytes:
+    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
+    if p.returncode != 0:
+        raise SystemExit("git %s 失败：%s" % (" ".join(args),
+                                            p.stderr.decode("utf-8", "replace")[:300]))
+    return p.stdout
+
+
+def commit_meta(repo: Path, sha: str) -> dict:
+    """取 commit 的作者/提交者/消息。用 %aI/%cI（**带时区**的 ISO）——
+    GitHub 保留传入的时区 ⇒ 重建出的 commit sha 与本地逐字相同。"""
+    fmt = "%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B"
+    raw = git(repo, "show", "-s", "--format=" + fmt, sha).split("\x00")
+    an, ae, ai, cn, ce, ci, msg = raw[:7]
+    return {
+        "author": {"name": an, "email": ae, "date": ai},
+        "committer": {"name": cn, "email": ce, "date": ci},
+        "message": msg if msg.endswith("\n") else msg + "\n",
+    }
+
+
+def changed_paths(repo: Path, base: str, head: str) -> list:
+    """base..head 的变更：[(status, path)]，status ∈ M/A/D/T。"""
+    out = git(repo, "diff-tree", "-r", "--no-commit-id", "--name-status", base, head)
+    rows = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        rows.append((parts[0], parts[-1]))
+    return rows
+
+
+def file_mode(repo: Path, commit: str, path: str) -> str:
+    return git(repo, "ls-tree", commit, "--", path).split()[0].strip()
+
+
+def tree_of(repo: Path, rev: str) -> str:
+    return git(repo, "rev-parse", rev + "^{tree}")
+
+
+def local_tree_map(repo: Path, rev: str) -> dict:
+    """{path: (mode, sha)}"""
+    out = {}
+    for line in git(repo, "ls-tree", "-r", rev).splitlines():
+        meta, path = line.split("\t", 1)
+        mode, _kind, sha = meta.split()
+        out[path] = (mode, sha)
+    return out
+
+
+# ── 推送通道 ────────────────────────────────────────────────────────────
+
+def push_branch(repo_dir: Path, repo: str, branch: str, base: str,
+                api_root: str = API_ROOT, dry_run: bool = False) -> dict:
+    """把本地 HEAD（相对 base 的变更）推到远端 `branch`。→ 摘要。"""
+    head = git(repo_dir, "rev-parse", "HEAD")
+
+    # 0) base 必须远端已有（且本地也有对象，才能算变更集与建 tree）
+    # 一次 GET 同时拿到 base 的 sha 与 tree（`/git/commits/<sha>` 两者都给）
+    # ⇒ 既校验「base 远端存在」，又拿到建 tree 要用的 base_tree。
+    base_info = api("GET", "/repos/%s/git/commits/%s" % (repo, base), api_root=api_root)
+    if base_info["sha"] != base:
+        raise SystemExit("远端 %s/%s 的 %s 解析成 %s —— 拒绝推送"
+                         % (repo, branch, base, base_info["sha"]))
+    base_tree = base_info["tree"]["sha"]
+    if base_tree != tree_of(repo_dir, base):
+        raise SystemExit("本地 %s 的树与远端不一致（本地=%s 远端=%s）—— 拒绝推送"
+                         % (base, tree_of(repo_dir, base), base_tree))
+
+    # 1) 逐个上传 blob，并核对 sha（内容寻址 ⇒ 必须逐字相等）
+    entries = []
+    for status, path in changed_paths(repo_dir, base, head):
+        if status == "D":
+            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+            continue
+        content = git_bytes(repo_dir, "show", head + ":" + path)
+        local_sha = subprocess.run(
+            ["git", "-C", str(repo_dir), "hash-object", "-t", "blob", "--stdin"],
+            input=content, capture_output=True, check=True).stdout.decode().strip()
+        resp = api("POST", "/repos/%s/git/blobs" % repo,
+                   {"content": base64.b64encode(content).decode("ascii"),
+                    "encoding": "base64"}, api_root=api_root)
+        if resp["sha"] != local_sha:
+            raise SystemExit("blob sha 不一致 %s：远端=%s 本地=%s"
+                             % (path, resp["sha"], local_sha))
+        entries.append({"path": path, "mode": file_mode(repo_dir, head, path),
+                        "type": "blob", "sha": resp["sha"]})
+
+    # 2) 建 tree（空提交 ⇒ GitHub 拒绝 `tree: []` ⇒ 沿用父树）
+    if entries:
+        tree_sha = api("POST", "/repos/%s/git/trees" % repo,
+                       {"base_tree": base_tree, "tree": entries},
+                       api_root=api_root)["sha"]
+    else:
+        tree_sha = base_tree
+    want_tree = tree_of(repo_dir, head)
+    if tree_sha != want_tree:
+        raise SystemExit("tree sha 不一致：远端=%s 本地=%s" % (tree_sha, want_tree))
+
+    # 3) 建 commit（parent = base ⇒ sha 应与本地逐字相同）
+    meta = commit_meta(repo_dir, head)
+    commit_resp = api("POST", "/repos/%s/git/commits" % repo,
+                      {"message": meta["message"], "tree": tree_sha,
+                       "parents": [base], "author": meta["author"],
+                       "committer": meta["committer"]}, api_root=api_root)
+    if commit_resp["sha"] != head:
+        raise SystemExit("commit sha 不一致：远端=%s 本地=%s"
+                         % (commit_resp["sha"], head))
+    new_sha = commit_resp["sha"]
+
+    if dry_run:
+        return {"branch": branch, "commit": new_sha, "dry_run": True}
+
+    # 4) 落 ref（不存在则创建，存在则更新）
+    exists = api("GET", "/repos/%s/git/ref/heads/%s" % (repo, branch),
+                 api_root=api_root, allow_404=True)
+    if exists is None:
+        api("POST", "/repos/%s/git/refs" % repo,
+            {"ref": "refs/heads/" + branch, "sha": new_sha}, api_root=api_root)
+    else:
+        api("PATCH", "/repos/%s/git/refs/heads/%s" % (repo, branch),
+            {"sha": new_sha, "force": True}, api_root=api_root)
+
+    # 5) 独立判据：远端树 vs 本地 HEAD 树，逐路径逐 sha
+    remote = api("GET", "/repos/%s/git/trees/%s?recursive=1" % (repo, new_sha),
+                 api_root=api_root)["tree"]
+    remote_map = {e["path"]: (e["mode"], e["sha"]) for e in remote if e["type"] == "blob"}
+    local_map = local_tree_map(repo_dir, "HEAD")
+    if remote_map != local_map:
+        only_remote = sorted(set(remote_map) - set(local_map))
+        only_local = sorted(set(local_map) - set(remote_map))
+        diff = sorted(p for p in set(local_map) & set(remote_map)
+                      if local_map[p] != remote_map[p])
+        raise SystemExit("远端树与本地 HEAD 不一致：仅远端=%s 仅本地=%s 内容不同=%s"
+                         % (only_remote[:8], only_local[:8], diff[:8]))
+    return {"branch": branch, "commit": new_sha, "files": len(local_map)}
+
+
+# ── 自测（带反证样本）──────────────────────────────────────────────────
+
+def _obj_exists(repo: Path, rev: str) -> bool:
+    """本地是否有这个对象（假服务对未知 sha 必须回 404，不能崩）。"""
+    p = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", rev],
+                       capture_output=True)
+    return p.returncode == 0
+
+
+def _selftest() -> int:
+    """端到端自测：用**本地假 GitHub** 跑一遍真 HTTP 往返。
+
+    为什么用真 HTTP 而不是 mock 掉 api()：本脚本最易错的地方正是
+    「GitHub REST 的调用语义」（base_tree 怎么用、删除文件怎么写、ref 更新怎么判存废），
+    mock 掉 HTTP 层就等于把最该验的部分绕过去了。
+
+    假服务**委托本地 git** 算 sha ⇒ 客户端若算错，sha 就对不上 ⇒ 断言能抓住。
+    """
+    import http.server
+    import threading
+    import tempfile
+
+    fails = []
+
+    def check(name, got, want):
+        if got != want:
+            fails.append("%s：期望 %r，实得 %r" % (name, want, got))
+
+    class FakeGitHub(http.server.BaseHTTPRequestHandler):
+        """最小 GitHub git-data 端点。sha 一律委托本地 git 算（= 真值）。"""
+
+        repo_dir = None
+        bad_blob_sha = False
+        bad_tree_sha = False
+        bad_commit_sha = False
+        bad_tree_content = False
+        bad_base_tree = False
+        # ⚠️ 必须 HTTP/1.1：默认的 HTTP/1.0 每次响应后断连 ⇒ urllib 复用连接时报
+        # RemoteDisconnected（自测第一版就栽在这）。
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *_a):  # 静音
+            pass
+
+        def handle_error(self, request, client_address):
+            import traceback
+            traceback.print_exc()
+
+        def _json(self, obj, code=200):
+            body = json.dumps(obj).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            parts = [p for p in path.split("/") if p]
+            if "commits" in parts and len(parts) >= 5:
+                sha = parts[-1]
+                if not _obj_exists(FakeGitHub.repo_dir, sha):
+                    return self._json({"message": "Not Found"}, code=404)
+                raw = git_bytes(FakeGitHub.repo_dir, "cat-file", "commit", sha)
+                head = raw.decode("utf-8")
+                tree = git(FakeGitHub.repo_dir, "rev-parse", sha + "^{tree}")
+                if FakeGitHub.bad_base_tree:
+                    tree = "5" * 40
+                meta = commit_meta(FakeGitHub.repo_dir, sha)
+                return self._json({
+                    "sha": sha, "tree": {"sha": tree},
+                    "parents": [{"sha": p} for p in git(
+                        FakeGitHub.repo_dir, "rev-parse", sha + "^@").split()],
+                    "message": meta["message"].rstrip("\n"),
+                    "author": {"name": meta["author"]["name"],
+                               "email": meta["author"]["email"],
+                               "date": meta["author"]["date"]},
+                    "committer": {"name": meta["committer"]["name"],
+                                  "email": meta["committer"]["email"],
+                                  "date": meta["committer"]["date"]},
+                    "_raw": head,
+                })
+            if "trees" in parts and len(parts) >= 6:
+                sha = parts[-1]
+                if not _obj_exists(FakeGitHub.repo_dir, sha):
+                    return self._json({"message": "Not Found"}, code=404)
+                out = []
+                for line in git(FakeGitHub.repo_dir, "ls-tree", "-r", sha).splitlines():
+                    m, p = line.split("\t", 1)
+                    mode, kind, s = m.split()
+                    out.append({"path": p, "mode": mode, "type": kind, "sha": s})
+                if FakeGitHub.bad_tree_content and out:
+                    # 让**内容**与本地不同（sha 仍合法）⇒ 只可能被最后那道
+                    # 「远端树 vs 本地 HEAD 树」逐路径比对抓住。
+                    out[0] = dict(out[0], sha="4" * 40)
+                return self._json({"sha": sha, "tree": out})
+            if "refs" in parts:
+                return self._json({"ref": "refs/heads/x", "object": {"sha": "0" * 40}},
+                                  code=404)
+            return self._json({"message": "not found"}, code=404)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            path = self.path.split("?")[0]
+            parts = [p for p in path.split("/") if p]
+            if parts[-1] == "blobs":
+                content = base64.b64decode(body["content"])
+                sha = subprocess.run(
+                    ["git", "-C", str(FakeGitHub.repo_dir), "hash-object", "-t", "blob", "--stdin"],
+                    input=content, capture_output=True, check=True).stdout.decode().strip()
+                if FakeGitHub.bad_blob_sha:
+                    sha = "1" * 40
+                return self._json({"sha": sha})
+            if parts[-1] == "trees":
+                # tree 是**增量**（base_tree + entries）⇒ 必须合并后再算 sha。
+                # 用临时索引做（等价于 Git 内部做法）：
+                #   read-tree base_tree → update-index 各条目 → write-tree
+                idx = str(FakeGitHub.repo_dir / ".git" / "fake-index")
+                if os.path.exists(idx):
+                    os.remove(idx)
+                env = {**os.environ, "GIT_INDEX_FILE": idx}
+                rd = subprocess.run(["git", "-C", str(FakeGitHub.repo_dir), "read-tree",
+                                     body.get("base_tree") or ""], env=env, capture_output=True)
+                if rd.returncode != 0:
+                    return self._json({"message": "bad base_tree"}, code=422)
+                for e in (body.get("tree") or []):
+                    if e.get("sha") is None:
+                        subprocess.run(["git", "-C", str(FakeGitHub.repo_dir), "update-index",
+                                        "--force-remove", "--", e["path"]], env=env,
+                                       capture_output=True)
+                    else:
+                        subprocess.run(["git", "-C", str(FakeGitHub.repo_dir), "update-index",
+                                        "--add", "--cacheinfo",
+                                        "%s,%s,%s" % (e["mode"], e["sha"], e["path"])],
+                                       env=env, capture_output=True)
+                wt = subprocess.run(["git", "-C", str(FakeGitHub.repo_dir), "write-tree"],
+                                    env=env, capture_output=True)
+                if wt.returncode != 0:
+                    return self._json({"message": "bad tree"}, code=422)
+                sha = wt.stdout.decode().strip()
+                if FakeGitHub.bad_tree_sha:
+                    sha = "2" * 40
+                return self._json({"sha": sha})
+            if parts[-1] == "commits":
+                lines = ["tree %s" % body["tree"]]
+                for p in body.get("parents", []):
+                    lines.append("parent %s" % p)
+                for role in ("author", "committer"):
+                    d = body[role]
+                    stamp = _iso_to_git(d["date"])
+                    lines.append("%s %s <%s> %s" % (role, d["name"], d["email"], stamp))
+                raw = ("\n".join(lines) + "\n\n" + body["message"]).encode()
+                sha = subprocess.run(
+                    ["git", "-C", str(FakeGitHub.repo_dir), "hash-object", "-t", "commit", "--stdin"],
+                    input=raw, capture_output=True, check=True).stdout.decode().strip()
+                if FakeGitHub.bad_commit_sha:
+                    sha = "3" * 40
+                return self._json({"sha": sha})
+            if parts[-1] == "refs":
+                return self._json({"ref": body["ref"], "object": {"sha": body["sha"]}})
+            return self._json({"message": "not found"}, code=404)
+
+        def do_PATCH(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            return self._json({"ref": self.path, "object": {"sha": body.get("sha")}})
+
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir = Path(td) / "demo"
+        repo_dir.mkdir()
+        subprocess.run(["git", "-C", str(repo_dir), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "config", "user.email", "t@example.com"], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "config", "user.name", "t"], check=True)
+        (repo_dir / "a.txt").write_text("one\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "commit", "-q", "-m", "base"], check=True)
+        base = git(repo_dir, "rev-parse", "HEAD")
+        (repo_dir / "a.txt").write_text("two\n", encoding="utf-8")
+        (repo_dir / "b.txt").write_text("new\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo_dir), "commit", "-q", "-m", "change"], check=True)
+        head = git(repo_dir, "rev-parse", "HEAD")
+
+        FakeGitHub.repo_dir = repo_dir
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeGitHub)
+        port = srv.server_address[1]
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        api_root = "http://127.0.0.1:%d" % port
+
+        try:
+            # ① 正常路径：推一个含 1 改 1 增的分支 ⇒ 远端 commit sha 必须 == 本地 HEAD sha
+            out = push_branch(repo_dir, "o/r", "feat/x", base, api_root=api_root)
+            check("① 远端 commit sha == 本地 HEAD sha", out["commit"], head)
+
+            # ② 反证：blob sha 对不上时必须**中止**（不能把错 blob 推上去）
+            FakeGitHub.bad_blob_sha = True
+            try:
+                push_branch(repo_dir, "o/r", "feat/y", base, api_root=api_root)
+                fails.append("② blob sha 不一致时没有中止")
+            except SystemExit as exc:
+                if "blob sha 不一致" not in str(exc):
+                    fails.append("② 中止原因不对：%s" % str(exc)[:120])
+            FakeGitHub.bad_blob_sha = False
+
+            # ③ base 不存在（远端 404）⇒ 必须报错，不是静默
+            try:
+                push_branch(repo_dir, "o/r", "feat/z", "0" * 40, api_root=api_root)
+                fails.append("③ base 不存在时没有报错")
+            except SystemExit as exc:
+                if "404" not in str(exc):
+                    fails.append("③ base 不存在时的报错不对（应报 404）：%s" % str(exc)[:120])
+
+            # ④ 反证：tree sha 对不上 ⇒ 必须中止
+            FakeGitHub.bad_tree_sha = True
+            try:
+                push_branch(repo_dir, "o/r", "feat/t", base, api_root=api_root)
+                fails.append("④ tree sha 不一致时没有中止")
+            except SystemExit as exc:
+                if "tree sha 不一致" not in str(exc):
+                    fails.append("④ 中止原因不对：%s" % str(exc)[:120])
+            FakeGitHub.bad_tree_sha = False
+
+            # ⑤ 反证：commit sha 对不上 ⇒ 必须中止
+            FakeGitHub.bad_commit_sha = True
+            try:
+                push_branch(repo_dir, "o/r", "feat/u", base, api_root=api_root)
+                fails.append("⑤ commit sha 不一致时没有中止")
+            except SystemExit as exc:
+                if "commit sha 不一致" not in str(exc):
+                    fails.append("⑤ 中止原因不对：%s" % str(exc)[:120])
+            FakeGitHub.bad_commit_sha = False
+
+            # ⑦ 反证：远端 base 的树与本地不同 ⇒ 预检必须中止（否则会在错误基线上推）
+            FakeGitHub.bad_base_tree = True
+            try:
+                push_branch(repo_dir, "o/r", "feat/w", base, api_root=api_root)
+                fails.append("⑦ 本地/远端 base 树不一致时没有中止")
+            except SystemExit as exc:
+                if "树与远端不一致" not in str(exc):
+                    fails.append("⑦ 中止原因不对：%s" % str(exc)[:120])
+            FakeGitHub.bad_base_tree = False
+
+            # ⑥ 反证：远端树**内容**与本地不同（sha 合法）⇒ 逐路径比对必须抓住
+            FakeGitHub.bad_tree_content = True
+            try:
+                push_branch(repo_dir, "o/r", "feat/v", base, api_root=api_root)
+                fails.append("⑥ 远端树与本地不一致时没有中止")
+            except SystemExit as exc:
+                if "远端树与本地 HEAD 不一致" not in str(exc):
+                    fails.append("⑥ 中止原因不对：%s" % str(exc)[:120])
+            FakeGitHub.bad_tree_content = False
+        finally:
+            srv.shutdown()
+
+    if fails:
+        print("❌ 自测失败：")
+        for f in fails:
+            print("   -", f)
+        return 1
+    print("✅ 自测通过（7 条断言：正常路径 sha 全等 / blob·tree·commit 三处 sha 不一致必中止 / "
+          "base 不存在必报 404 / 本地与远端 base 树不一致必中止 / 远端树内容不一致必中止）")
+    return 0
+
+
+def _iso_to_git(iso: str) -> str:
+    """ISO8601（带偏移）→ Git 的「<unix ts> <+0800>」。"""
+    import datetime
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-])(\d{2}):(\d{2})", iso)
+    if not m:
+        raise SystemExit("认不出的日期格式：%r" % iso)
+    y, mo, d, H, M, S, sign, hh, mm = m.groups()
+    off = datetime.timezone(datetime.timedelta(hours=int(hh),
+                                               minutes=int(mm) if sign == "+" else -int(mm)))
+    dt = datetime.datetime(int(y), int(mo), int(d), int(H), int(M), int(S), tzinfo=off)
+    return "%d %s%s%s" % (int(dt.timestamp()), sign, hh, mm)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="用 GitHub Git Data API 推分支（不依赖 git 传输层）")
+    ap.add_argument("--repo-dir", help="本地仓目录")
+    ap.add_argument("--repo", help="owner/repo")
+    ap.add_argument("--branch", help="要推的分支名")
+    ap.add_argument("--base", default="origin/main", help="基线 commit（默认 origin/main）")
+    ap.add_argument("--dry-run", action="store_true", help="只算不推")
+    ap.add_argument("--selftest", action="store_true")
+    args = ap.parse_args()
+    if args.selftest:
+        return _selftest()
+    if not (args.repo_dir and args.repo and args.branch):
+        ap.error("需要 --repo-dir / --repo / --branch（或用 --selftest）")
+    repo_dir = Path(args.repo_dir).resolve()
+    base = git(repo_dir, "rev-parse", args.base)
+    out = push_branch(repo_dir, args.repo, args.branch, base, dry_run=args.dry_run)
+    print("✅ 已推 %s@%s → %s（%d 个文件）"
+          % (args.repo, out["branch"], out["commit"][:8], out.get("files", 0)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
