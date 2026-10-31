@@ -57,15 +57,26 @@ ROOT_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 # ── 取数层 ──────────────────────────────────────────────────────────────
 
-def _token() -> str:
-    """GitHub token：先看环境变量，再退到 `gh auth token`（gh 已登录时可用）。"""
+def _token(api_root: str = API_ROOT) -> str:
+    """GitHub token：先看环境变量，再退到 `gh auth token`（gh 已登录时可用）。
+
+    ⚠️ **本地自测的假服务不校验认证** ⇒ 那台机器上没登录 gh 也得能跑自测
+    （实测：CI 上没有 gh 认证 ⇒ 自测直接崩 ⇒ 2026-10-31 的 CI 红的真因）。
+    ⇒ 对本地 api_root 退化成占位 token；对真实 GitHub 仍然**必须**有 token。
+    """
     env = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if env:
         return env.strip()
-    p = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
-    if p.returncode != 0 or not p.stdout.strip():
-        raise SystemExit("拿不到 GitHub token：设 GITHUB_TOKEN，或先 `gh auth login`")
-    return p.stdout.strip()
+    try:
+        p = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
+    except OSError:  # gh 都没装
+        p = None
+    if p is not None and p.returncode == 0 and p.stdout.strip():
+        return p.stdout.strip()
+    host = urllib.parse.urlparse(api_root).hostname
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return "local-selftest-token"
+    raise SystemExit("拿不到 GitHub token：设 GITHUB_TOKEN，或先 `gh auth login`")
 
 
 def _opener(api_root: str):
@@ -86,7 +97,7 @@ def api(method: str, path: str, body=None, api_root: str = API_ROOT,
     """调 GitHub REST。代理走标准环境变量（HTTPS_PROXY）⇒ urllib 默认生效。"""
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(api_root + path, data=data, method=method)
-    req.add_header("Authorization", "Bearer " + _token())
+    req.add_header("Authorization", "Bearer " + _token(api_root))
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     if data is not None:
