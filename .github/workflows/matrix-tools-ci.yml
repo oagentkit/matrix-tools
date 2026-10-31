@@ -883,7 +883,7 @@ jobs:
   # ⇒ 改成「脚本自己发现（AST 判据）+ CI 切成片并行跑」⇒ 新增自测脚本**自动**被纳入。
   #    发现层：scripts/selftest_discovery.py；聚合器：scripts/selftest_all.py。
   # ⇒ 接线不再靠 grep 文本：verify_inventory.py 的第 5/8 条改成**集合包含**判据。
-  selftest-plan:
+  selftestplan:
     timeout-minutes: 5
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -900,14 +900,14 @@ jobs:
           echo "matrix=$(grep '^matrix=' /tmp/shards.txt | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
 
   selftest:
-    needs: selftest-plan
+    needs: selftestplan
     timeout-minutes: 15
     strategy:
       fail-fast: false      # ⚠️ 一片红了别的片也要跑完 ⇒ 报错一次看全
       matrix:
-        shard: ${{ fromJSON(needs['selftest-plan'].outputs.matrix) }}
+        shard: ${{ fromJSON(needs.selftestplan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-matrix-tools
       - name: 跑第 ${{ matrix.shard }} 片自测
-        run: python3 scripts/selftest_all.py --shard ${{ matrix.shard }}/${{ needs['selftest-plan'].outputs.shards }}
+        run: python3 scripts/selftest_all.py --shard ${{ matrix.shard }}/${{ needs.selftestplan.outputs.shards }}
