@@ -11,13 +11,13 @@ runs:
         python-version: '3.12'
 
     - name: 装 Go
-      if: inputs.go-version != ''
+      if: inputs['go-version'] != ''
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ inputs.go-version }}
+        go-version: ${{ inputs['go-version'] }}
         # ⚠️ checkout 到子目录的 job（path: matrix-tools）必须把 cache 路径指过去，
         #    否则 go 的模块缓存会按仓库根算 ⇒ 每次都缓存不命中。
-        cache-dependency-path: ${{ inputs.go-cache-dependency-path }}
+        cache-dependency-path: ${{ inputs['go-cache-dependency-path'] }}
 
     - name: 装 pyyaml
       if: inputs.pyyaml == 'true'

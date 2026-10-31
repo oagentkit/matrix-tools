@@ -905,9 +905,9 @@ jobs:
     strategy:
       fail-fast: false      # ⚠️ 一片红了别的片也要跑完 ⇒ 报错一次看全
       matrix:
-        shard: ${{ fromJSON(needs.selftest-plan.outputs.matrix) }}
+        shard: ${{ fromJSON(needs['selftest-plan'].outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-matrix-tools
       - name: 跑第 ${{ matrix.shard }} 片自测
-        run: python3 scripts/selftest_all.py --shard ${{ matrix.shard }}/${{ needs.selftest-plan.outputs.shards }}
+        run: python3 scripts/selftest_all.py --shard ${{ matrix.shard }}/${{ needs['selftest-plan'].outputs.shards }}
