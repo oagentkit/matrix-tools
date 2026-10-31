@@ -27,8 +27,10 @@
   此时 parent 相同 ⇒ 内容寻址 ⇒ **远端 commit sha 与本地逐字相同**。
   若 base 只有远端有（本地没有对象），重建出的 commit sha 必然不同 ⇒ 本脚本**拒绝**，
   而不是给你一个「树相同但 sha 不同」的弱对账。
-- **GitHub 的 squash/merge commit 带 PGP 签名** ⇒ 本地重建不出那个对象 ⇒ 本脚本
-  只推「新分支」，不去改写已有远端提交。
+- **GitHub 的 squash/merge commit 带 PGP 签名** ⇒ 本脚本不去改写已有远端提交，
+  只推「新分支」。⚠️（2026-10-31 更正）带签名的 commit 其实**能**逐字重建 ——
+  用 API 的 `verification.payload` + `verification.signature`，规则见 `gh_git_api.py`；
+  要把远端 commit 搬回本地时走 `gh_sync_commit.py`（拉的一侧）。
 - `gh pr create` 本来就走 API ⇒ 不受传输层影响 ⇒ 本脚本只负责「把分支推上去」。
 
 ## 用法
@@ -51,86 +53,25 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-API_ROOT = "https://api.github.com"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+# 取数层（token / 代理 / REST）与本地 git 事实层**上移到共享模块**：
+# 推送侧与拉取侧共用一份 ⇒ 两边不会各写一份后**悄悄漂移**。
+from gh_git_api import API_ROOT, api, git, git_bytes, local_tree_map, tree_of  # noqa: E402
+
 ROOT_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 # ── 取数层 ──────────────────────────────────────────────────────────────
 
-def _token(api_root: str = API_ROOT) -> str:
-    """GitHub token：先看环境变量，再退到 `gh auth token`（gh 已登录时可用）。
+# ⚠️ 取数层已上移到 `gh_git_api.py`（见上方 import）：
+#    token / 代理绕过 / REST 调用 / 本地 git 事实 / 树映射都在那里，
+#    拉取侧的 `gh_sync_commit.py` 用的是同一份。
 
-    ⚠️ **本地自测的假服务不校验认证** ⇒ 那台机器上没登录 gh 也得能跑自测
-    （实测：CI 上没有 gh 认证 ⇒ 自测直接崩 ⇒ 2026-10-31 的 CI 红的真因）。
-    ⇒ 对本地 api_root 退化成占位 token；对真实 GitHub 仍然**必须**有 token。
-    """
-    env = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if env:
-        return env.strip()
-    try:
-        p = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
-    except OSError:  # gh 都没装
-        p = None
-    if p is not None and p.returncode == 0 and p.stdout.strip():
-        return p.stdout.strip()
-    host = urllib.parse.urlparse(api_root).hostname
-    if host in ("127.0.0.1", "localhost", "::1"):
-        return "local-selftest-token"
-    raise SystemExit("拿不到 GitHub token：设 GITHUB_TOKEN，或先 `gh auth login`")
-
-
-def _opener(api_root: str):
-    """本地地址（自测的假服务）**必须绕过代理**。
-
-    否则 HTTP_PROXY/HTTPS_PROXY 会把 127.0.0.1 的请求也塞给代理 ⇒ 请求到不了本地服务
-    （自测第一版就栽在这：报 RemoteDisconnected）。
-    非本地地址则用默认 opener ⇒ 读标准代理环境变量（生产环境要靠它出网）。
-    """
-    host = urllib.parse.urlparse(api_root).hostname
-    if host in ("127.0.0.1", "localhost", "::1"):
-        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    return urllib.request.build_opener()
-
-
-def api(method: str, path: str, body=None, api_root: str = API_ROOT,
-        allow_404: bool = False):
-    """调 GitHub REST。代理走标准环境变量（HTTPS_PROXY）⇒ urllib 默认生效。"""
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(api_root + path, data=data, method=method)
-    req.add_header("Authorization", "Bearer " + _token(api_root))
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if data is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with _opener(api_root).open(req, timeout=120) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404 and allow_404:
-            return None
-        detail = exc.read().decode("utf-8", "replace")
-        raise SystemExit("HTTP %s %s\n%s" % (exc.code, path, detail[:1500]))
-    return json.loads(raw) if raw else None
+# （取数层的实现已全部上移到 gh_git_api.py：token / opener / api / git /
+#  git_bytes / tree_of / local_tree_map —— 推送侧与拉取侧共用同一份。）
 
 
 # ── 本地 git 事实层 ────────────────────────────────────────────────────
-
-def git(repo: Path, *args: str) -> str:
-    p = subprocess.run(["git", "-C", str(repo), *args],
-                       capture_output=True, text=True)
-    if p.returncode != 0:
-        raise SystemExit("git %s 失败：%s" % (" ".join(args),
-                                            (p.stderr or p.stdout).strip()[:300]))
-    return (p.stdout or "").strip()
-
-
-def git_bytes(repo: Path, *args: str) -> bytes:
-    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
-    if p.returncode != 0:
-        raise SystemExit("git %s 失败：%s" % (" ".join(args),
-                                            p.stderr.decode("utf-8", "replace")[:300]))
-    return p.stdout
-
 
 def commit_meta(repo: Path, sha: str) -> dict:
     """取 commit 的作者/提交者/消息。用 %aI/%cI（**带时区**的 ISO）——
@@ -159,20 +100,6 @@ def changed_paths(repo: Path, base: str, head: str) -> list:
 
 def file_mode(repo: Path, commit: str, path: str) -> str:
     return git(repo, "ls-tree", commit, "--", path).split()[0].strip()
-
-
-def tree_of(repo: Path, rev: str) -> str:
-    return git(repo, "rev-parse", rev + "^{tree}")
-
-
-def local_tree_map(repo: Path, rev: str) -> dict:
-    """{path: (mode, sha)}"""
-    out = {}
-    for line in git(repo, "ls-tree", "-r", rev).splitlines():
-        meta, path = line.split("\t", 1)
-        mode, _kind, sha = meta.split()
-        out[path] = (mode, sha)
-    return out
 
 
 # ── 推送通道 ────────────────────────────────────────────────────────────
