@@ -39,10 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: Python syntax
         run: |
           set -euo pipefail
@@ -76,44 +73,6 @@ jobs:
           done < <(find scripts -name '*.py' -not -path '*/__pycache__/*' | sort)
           exit "$fail"
 
-      - name: 路径规则自洽
-        # matrix_paths 是「旧→新 import 路径」的规则本体，
-        # rewrite_imports / gen_versions / gen_llms_txt 全都 import 它。
-        # 规则写错时三处会**一致地错**，普通检查抓不到，所以要有独立断言。
-        run: python3 scripts/test_matrix_paths.py
-
-      - name: import 改写器自测（带反证样本）
-        # 规则对 ≠ 改得动：改写器是「历史路径 → 当前路径」的**执行端**。
-        # 实测过的坑：改写器早先只扫「含旧单仓根」的文件 ⇒ 只 import 矩阵内部
-        # 历史路径（github.com/oagentkit/llm/llm）的文件被整个跳过 ⇒
-        # 改写器「什么都没做」却退出 0（静默空转），下游要到编译报错才发现。
-        # 自测必须带反证样本（抽掉规则后断言必须变红），否则「跑通即绿」。
-        run: python3 scripts/rewrite_imports.py --selftest
-
-      - name: sync-matrix 自测（接线 + 降级路径 + 站点副本）
-        # release.py sync-matrix 的两个义务曾经**没有任何机器约束**：
-        # ① 不传本地根 ⇒ floorBumps 只能「搬运既有值」⇒ 门面每次抬地板，
-        #    矩阵源都少一条「下游必须跑 go mod tidy」的登记；
-        # ② 不拷 site/data/modules.json ⇒ 站点副本同步是纯手工动作，漏了没人报。
-        # 两条都不会让门禁变红 ⇒「谁改回去」不会被发现 ⇒ 用自测把接线钉住
-        # （含反证样本：抽掉 --floor-root 必须变红）。
-        run: python3 scripts/test_sync_matrix.py
-
-      - name: 打 tag 前的地板时效门禁自测（接线 + 反证样本）
-        # 打 tag 的那一刻的依赖地板时效，2026-10-27 加进 release.py cmd_tag。
-        #
-        # 为什么值得单列一步：这道检查**不会让任何 CI job 变红**（它只在人/agent
-        # 真的执行 `release.py tag` 时生效）⇒ 属于「义务缺失」型修复 ——
-        # 把接线删掉、把判据改松，都没有别的门禁会报出来 ⇒ 必须用自测把接线钉住。
-        #
-        # 它防的具体形态（2026-10-26 实测）：发 tag 前跑
-        # `verify_tag_floor --latest-only` 是绿的，但它只判**已存在**的 tag，
-        # 即将新建的那个它看不见 ⇒ 一路绿灯打出了两个「发版时刻地板就已落后」的
-        # tag（textx v0.7.0 / queue v0.6.4），被 CI 当场照出来，而 tag 不能重打。
-        #
-        # 自测含**反证样本**：抽掉取数调用或抽掉报告调用，接线判定都必须变红。
-        run: python3 scripts/test_tag_floor_gate.py
-
   guards:
     name: Guards self-test
     # 守卫最危险的失效模式是「一直绿，但从没生效过」：
@@ -124,48 +83,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/setup-matrix-tools
         with:
-          python-version: '3.12'
-
-      - name: 安装 pyyaml
-        # verify_inventory 的触发条件校验要解析 workflow YAML。
-        # 显式装，不靠 runner 镜像/解释器预装的 pyyaml——那是不确定因素。
-        # 写法沿用 .github/workflows/repo-ci.yml 里已有的兜底。
-        run: python3 -m pip install --quiet pyyaml
-
+          pyyaml: 'true'
       - uses: actions/setup-go@v5
         with:
           # 门面符号级门禁的符号提取器是 scripts/symdump/main.go（go/parser
           # 程序，只用标准库），但仍需 Go 工具链。显式装一个定版——
           # 不靠 runner 镜像预装的 Go 版本，那是不确定因素。
           go-version: '1.26'
-
-      - name: 门面仓退役守卫自测
-        run: python3 scripts/check_facade_imports.py --selftest
-
-      - name: 门面包冻结守卫自测（门面已废弃，不得再长出新包）
-        # 门面仓 README 明写「v1.x 退役条件**已满足**，本仓不接受任何新功能」。
-        # 「不许再引门面」有机器约束（check_facade_imports.py），
-        # 但「门面不得继续长出新包」此前**一条机器约束都没有**——有人加一个新包目录
-        # + 一批别名，CI 全绿。这条守卫把那句文档承诺变成红灯。
-        #
-        # 自测覆盖（离线、真实逻辑，不 mock 判定函数）：
-        # 与基线一致→绿 / 新增包→红 / 删包（上游删除场景）→绿 / 新增转发目标→红 /
-        # 数量相同但集合不同→红（负向样本）/ 门面自研包→红 / 空门面→判不了。
-        run: python3 scripts/verify_facade_frozen.py --selftest
-
-      - name: 门面仓发布地板守卫自测
-        # 判据里含「门面接 v0.1.0」这个样本 —— 那是线上真实发生过的形态
-        # （agentkit@v1.2.0 的 go.mod 把 13 个内部依赖全钉在 v0.1.0）。
-        run: python3 scripts/verify_facade_release.py --selftest
-
-      - name: 依赖地板守卫自测
-        # 这条守卫有过一次真实的静默失效：owner/repo 拆分把 owner 拼成
-        # "github.com/oagentkit"，于是每个依赖都查不到 tag，报告里 43 条
-        # 全是「判不了」却照样 exit 0 —— 一直绿、从没生效过。
-        # 所以它的判据纯函数部分必须离线可测，不能只靠联网跑一次。
-        run: python3 scripts/verify_dep_floors.py --selftest
 
       - name: 破坏性变更抽取器自测
         # breakingIndex 的判定规则本体。判据错了整条门禁就是摆设：
@@ -176,210 +102,6 @@ jobs:
         # tag 过滤必须只认 ^vX.Y.Z：嵌套模块的 tag（audit/v0.1.0）与主模块的
         # tag 在同一个仓里，取错「最新」会把矩阵写成 v0.1.0。
         run: python3 scripts/repo_meta.py
-
-      - name: breakingIndex 对账门禁自测
-        run: python3 scripts/verify_breaking_index.py --selftest
-
-      - name: import 路径对账门禁自测
-        run: python3 scripts/verify_import_paths.py --selftest
-
-      - name: 门面符号级完整性门禁自测
-        # oracle 有效性自测：拿一个**有盲区的被检对象**跑一遍，确认它报得出。
-        # 如果 oracle 自己也有同一处盲区，它会对着坏对象说「没问题」，
-        # 那门禁就是假通过。样本含八类缺陷：漏转发 / 幽灵转发 / const 降级成 var /
-        # type 降级成 var / 泛型函数被误转发 / 泛型函数未登记白名单 /
-        # 白名单过期 / 泛型类型不误报。
-        run: python3 scripts/verify_facade_symbols.py --selftest
-
-      - name: breakingIndex 独立 oracle 门禁自测
-        # 反证：旧解析器（breaking_index.py）漏收的形态——粗体 **BREAKING**、
-        # 项目符号里的 BREAKING CHANGE、小写 breaking change、散文描述的
-        # import 路径搬家——独立 oracle 必须全部收得到。自测里拿旧解析器
-        # 跑同一份样本，确认它确实漏，才能证明 oracle 不是同一处盲区。
-        run: python3 scripts/verify_breaking_oracle.py --selftest
-
-      - name: tag ↔ CHANGELOG 对账门禁自测
-        # 双向一一对应 / 待发版段豁免 / 存量欠账基线 / 快照里没有 CHANGELOG 豁免。
-        run: python3 scripts/verify_changelog_at_tag.py --selftest
-
-      - name: 欠账基线缓解门禁自测
-        # 这条门禁要防的失效形态是「基线文件自己变成可写的豁免」：
-        # 写一行 "mitigated" 就能让欠账变绿。
-        # 所以自测必须证明**台账字段无论怎么写都改不动判定**——
-        # 反证 A（换事实 ⇒ 结论变）/ B（台账全写已缓解 ⇒ 危害那条仍红）/
-        # C（判不了的那条不因台账而转绿）。
-        run: python3 scripts/verify_debt_mitigation.py --selftest
-
-      - name: CHANGELOG 覆盖门禁自测（独立 oracle）
-        # 两级覆盖判据（issue matrix-tools#41）：条目级 + body 级。
-        # 自测含五组：漏条目 / 正文缺失 / 零信息量提交不误报 /
-        # 「tag 后有提交但无待发版段 → 不报红」/ subject 回声不误报。
-        run: python3 scripts/verify_changelog_coverage.py --selftest
-
-      - name: 发版时刻地板时效门禁自测
-        run: python3 scripts/verify_tag_floor.py --selftest
-
-      - name: 依赖地板抬高抽取器自测
-        # floorBumps 的抽取规则本体。判据错了整条登记就是摆设：
-        # 漏判 → 矩阵继续说「这一版不会让你的构建红」；
-        # 误判 → 登记里塞满假的「要 tidy」。
-        run: python3 scripts/gen_floor_bumps.py --selftest
-
-      - name: 依赖地板施作器自测
-        # 地板是**跑步机**（基座一天发几版）⇒ 人工追平赶不上 ⇒ 有施作器。
-        # 自测覆盖三件最容易错的地方：版本必须**按数字**比（字符串比会把 v0.9.0
-        # 判成大于 v0.10.0）、第一方筛选（第三方依赖不归它管）、
-        # go.mod 的两种 require 形态（单行 `require X v` 与 require 块，
-        # 自写解析器只认块形式 ⇒ 六个仓的第一方依赖对本工具完全不可见）。
-        run: python3 scripts/bump_dep_floors.py --selftest
-
-      - name: 依赖地板抬高对账门禁自测（独立 oracle）
-        # 反证：自测里把 oracle 的「新增依赖」那一路阉割后，
-        # 结论必须变——否则自测没有区分力，门禁是「一直绿、从没生效过」。
-        run: python3 scripts/verify_floor_bumps.py --selftest
-
-      - name: CHANGELOG 生成器自测（预写→提交→打 tag 端到端自洽）
-        # 生成器最危险的失效形态是「看起来生成了正确的文件，但与事后重生成
-        # 的结果不一致」——不跑完整流程发现不了，而后果是 .github 的
-        # 「各仓 CHANGELOG 未过期」门禁永远红、且越修越红。
-        # 自测跑完整流程（临时 git 仓），要求事后重生成与提交版逐字节一致，
-        # 且覆盖「直推打 tag」与「走 PR 打 tag」两种发版打法。
-        run: python3 scripts/gen_changelogs.py --selftest
-
-      - name: 依赖地板门禁自测
-        # tier0/tier1 的地板必须为空——零依赖核心靠这条保证。
-        # 这条守卫最危险的失效形态是「豁免名单写太宽」，所以自测里带了负向样本。
-        # 自测同时覆盖 depFloor 对账（漏登记 / 多登记 / 内容漂移三个负向样本）——
-        # 离线 drift job 忽略 depFloor 之后，它就是这个字段唯一的守门人。
-        run: python3 scripts/verify_dep_floor.py --selftest
-
-      - name: Go 地板门禁自测
-        # tier0 的 go 指令必须 1.24.x，且 CI go-version 与 go.mod 成对。
-        # 自测带负向样本：tier0 地板抬高 / toolchain 超标 / CI 不成对 / 判不了即红，
-        # 同时带**不误报**样本——tier1/tier2/tier3 用 1.26 是合法的，不能报成漂移。
-        run: python3 scripts/verify_go_floor.py --selftest
-
-      - name: 事实层与报告层自测
-        # matrix_facts 是所有新守卫共用的**取数层**，judge_report 是共用**渲染层**。
-        # 它们一旦坏了，所有新守卫会一起错——所以必须单独自测。
-        run: |
-          set -euo pipefail
-          python3 scripts/matrix_facts.py --selftest
-          python3 scripts/judge_report.py --selftest
-
-      - name: 各仓层位声明门禁自测
-        # 反证样本：层位数字错 / 层名错 / **正文自述行错**（只刷规范行不算修好）/
-        # 认不出声明（判黄）/ 缺 AGENTS.md（判黄）/ 跨仓提及不误报。
-        # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
-        run: python3 scripts/verify_repo_tiers.py --selftest
-
-      - name: 各仓依赖零性声明门禁自测
-        # 反证样本：「require 段必须为空」但 go.mod 非空（红）/「零第三方依赖」
-        # 但 go.mod 有第三方（红）/「零外部依赖」语义没钉死（黄）/ 缺 go.mod（黄），
-        # 以及**不误报**样本（跨仓提及、否定句、口语「零依赖」、
-        # 「新增第三方依赖前先确认…」这类**要求**而非状态声明）。
-        # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
-        run: python3 scripts/verify_repo_dep_claims.py --selftest
-
-      - name: 各仓依赖清单声明门禁自测
-        # 反证样本：清单多列一个仓（红）/ 漏列一个仓（红）/
-        # **indirect 不算本仓依赖**（绿）/ 同仓两个第一入口不一致（红）/
-        # 尾部括注里的包路径不是仓名（绿）/ 有依赖却没声明（黄）/
-        # 只有一个入口声明（黄）/ 缺 go.mod（黄）/ 认不出仓名（黄）/
-        # 拼错的仓名（黄），
-        # 以及**不误报**样本（tier 0 的否定句、显式空声明「无」、
-        # 全文路径写法、非矩阵依赖 oekit/* 不参与）。
-        # 「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西。
-        run: python3 scripts/verify_repo_dep_inventory.py --selftest
-
-      - name: 第一方依赖方向门禁自测
-        # 反证样本：tier 倒挂 / 依赖未声明 / 声明陈旧 / 矩阵内消费门面，
-        # 以及**不误报**样本（合规依赖、indirect require 不算直接依赖）。
-        run: python3 scripts/verify_import_direction.py --selftest
-
-      - name: 待发版段可观测性门禁自测
-        # 反证样本：预写段被重生成吞掉的历史必须被检出；补回后必须转绿。
-        run: python3 scripts/verify_pending_release.py --selftest
-
-      - name: latest 字段对账门禁自测
-        # 陈旧 latest 判红；**取不到判黄而不是判绿**（判不了 ≠ 没问题）。
-        run: python3 scripts/verify_latest_field.py --selftest
-
-      - name: 门面不得新增包门禁自测
-        # 规则级判定：废弃声明之后新增的包必须判红；被基线吸收的判黄。
-        run: python3 scripts/verify_facade_no_new_packages.py --selftest
-
-      - name: 门面包覆盖与迁移映射门禁自测
-        # 含迁移映射表的反证样本：门面包缺映射行 / 空映射 / 表与实现漂移。
-        # 也含**对外生成物包数**的反证样本：llms.txt 宣称 N 包而门面实际 M 包。
-        run: python3 scripts/verify_facade_packages.py --selftest
-
-      - name: 门面 README 分层表门禁自测
-        # 反证样本：少仓 / 多仓 / 整层漂移 / 少一层 / 缺生成区标记 / 表格被删空 /
-        # 数量对但集合错（最隐蔽的一种）。
-        run: python3 scripts/verify_facade_tier_table.py --selftest
-
-      - name: 不变量登记表门禁自测
-        # 登记表自己的守门人：未登记的守卫 / 未接线的判据 / 未披露的耦合。
-        run: python3 scripts/verify_inventory.py --selftest
-
-      - name: 版本漂移方向判定自测
-        # 源陈旧与副本陈旧要给**不同**的修法——照错方向修会把站点降级。
-        run: python3 scripts/verify_versions_drift.py --selftest
-
-      - name: issue 回执落地门禁自测
-        # 反证样本：把「被 PR 自动关闭」这一路掐掉后，llm#29 形态的缺口必须检不出；
-        # 反过来把「回执识别」掐掉后，有回执的必须变成报红。
-        # 自测没有区分力 ⇒ 门禁是「一直绿、从没生效过」。
-        run: python3 scripts/verify_receipts.py --selftest
-
-      - name: 幽灵包守卫自测
-        # 反证样本：幽灵包 / **嵌套**幽灵包 / 测试专用包 / 登记了但仓里没有 必报，
-        # 合规仓与 SKIP 名单（cmd/internal/…）不误报。
-        # 这条守卫此前对嵌套包与测试专用包**完全失明**（口径只扫仓根直接子目录
-        # 且要求含非测试 .go 文件），而这两种形态 `go build ./... && go test ./...`
-        # 全绿 ⇒ 幽灵包可以存在于 CI 完全看不见的地方。
-        run: python3 scripts/verify_ghost_packages.py --selftest
-
-      - name: 文档陈旧引用守卫自测
-        # 反证样本：裸写死包路径必报；**不误报**样本同样重要（误报是这类扫描的
-        # 主要风险）：迁移箭头 / 已退役章节 / 宣布退役的引用块 / URL / CHANGELOG。
-        run: python3 scripts/scan_stale_refs.py --selftest
-
-      - name: llms.txt 防漂移守卫自测
-        # 反证样本：llms.txt 与 modules.json 漂移（多行 / 少行 / 整体换掉）必红，
-        # 一致判绿，--fix 能修回。
-        run: python3 scripts/verify_docs.py --selftest
-
-      - name: 仓文档漂移报告器自测
-        # 这条是**报告器**（恒不失败），但报告器同样要能自证还活着：
-        # 漂移必报、一致/缺文档/缺仓不报，且守住核心承诺——**只报告不覆盖**
-        # （手写内容被抹掉是它存在的理由）。
-        run: python3 scripts/verify_repo_docs.py --selftest
-
-      - name: 依赖地板施作器自测（含 Git Data API 推送通道）
-        # 这两个脚本的 --selftest 此前**没有人跑**（写了自测却没人跑 = 摆设）⇒ 接进 CI。
-        # `bump_dep_floors.py` 的自测覆盖「推分支用哪条通道 / 失败怎么回退 / 基线核对」；
-        # `gh_push_branch.py` 的自测覆盖「Git Data API 推送通道的 sha 逐层自校验」
-        # （用本地假 GitHub 跑真 HTTP 往返，不是 mock 掉 HTTP 层）。
-        # ⚠️ 两者只依赖标准库 + 本地 git ⇒ 不引入新的环境依赖。
-        run: |
-          python3 scripts/bump_dep_floors.py --selftest
-          python3 scripts/gh_push_branch.py --selftest
-
-      - name: 站点 modules.json 副本守卫自测
-        # 反证样本：少一个包（2026-10-21 真实形态——站点副本缺 llm/port）/
-        # 改 tier / 多一个仓 / 少一个顶层字段 / 副本缺失 / JSON 损坏 /
-        # 嵌套字段被改 / packages 顺序乱 ⇒ 必报；完全一致 ⇒ 不报。
-        run: python3 scripts/verify_modules_copy.py --selftest
-
-      # 注：`scripts/selftest_all.py`（本地一条命令跑全量自测）**不在本 job 跑**。
-      # 原因：它发现的 43 个脚本在上面的步骤里**已逐条跑过** ⇒ 在 CI 上是重复劳动，
-      # 却让本 job 多花数分钟（job 的 timeout 是 5 分钟 ⇒ 有超时风险）。
-      # CI 侧「新增自测脚本不许漏接线」由另一条机制兜底：
-      # `verify_inventory` 的红线要求每个**已登记**的判据脚本的 `--selftest`
-      # 必须在 CI 里被真的调用过 ⇒ 新脚本若要登记为判据，不进 CI 就会被当场判红。
-      # 本地侧则一律用 `python3 scripts/selftest_all.py`（清单机器可执行，不靠人记）。
 
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
@@ -409,10 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: 缓存各仓克隆
         # 覆盖判据要读**完整历史**（tag 区间 + 每个 commit 的 body），浅克隆不够用。
         # 缓存命中时只需 fetch 增量，省掉每次重新克隆 14 个仓的时间。
@@ -458,10 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: 缓存 tag 快照
         # tag 受 protect-tags ruleset 保护**不可变** ⇒ 某个 tag 处的 CHANGELOG.md
         # 内容也不可变 ⇒ (repo, tag, commit sha) 是稳定缓存键。
@@ -565,11 +281,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: Clone 矩阵各仓（完整历史）
         # 清单来自 modules.json（单一数据源），不写死仓名。
         # 必须完整克隆：浅克隆的 tag 历史不全，算出来的「相邻 tag」是假的。
@@ -604,10 +316,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: 发版时刻的依赖地板时效（各仓最新 tag · 窄口径）
         # 窄口径：判**已发布 tag** 的地板时效 —— 「这个 tag 落下时地板新不新」。
         run: python3 scripts/verify_tag_floor.py --org oagentkit --latest-only
@@ -659,24 +368,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Set up Go
-        # 符号提取器是 go/parser 程序（scripts/symdump/main.go），只用标准库，
-        # 但要有 go 工具链。版本与全矩阵一致（CI go-version 1.26）。
-        uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-matrix-tools
         with:
           go-version: '1.26'
-
-      - name: 门禁自测（oracle 有效性）
-        # 守卫最危险的失效形态是「一直绿，但从没生效过」：
-        # oracle 自己有盲区时，它会对着坏门面说「没问题」，那是假通过。
-        # 自测拿一个**故意造坏**的被检对象跑一遍，要求它把每类缺陷都报出来。
-        run: python3 scripts/verify_facade_symbols.py --selftest
-
       - name: 门面符号级转发完整性
         # 取不到即红：守卫最危险的形态是「一直绿，但从没生效过」。
         run: python3 scripts/verify_facade_symbols.py --org oagentkit
@@ -711,11 +405,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: 门面包冻结（不得新增）
         # 取不到即红：守卫最危险的形态是「一直绿，但从没生效过」。
         run: python3 scripts/verify_facade_frozen.py --org oagentkit
@@ -745,10 +435,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: 第一方依赖地板 vs 远端最新
         # 需要 gh 已认证（上面的 GH_TOKEN），且要联网读 tag——
         # 与 drift job 的离线校验不同，故分开成独立 job。
@@ -784,10 +471,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: versions.json 与 modules.json 一致（忽略环境相关字段）
         # 比对时忽略 latest / breakingIndex / depFloor —— 它们按设计要读
         # 矩阵外的仓（tag / CHANGELOG / go.mod），离线 CI 里必然取不到值。
@@ -832,10 +516,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./.github/actions/setup-matrix-tools
       - name: Clone 站点仓（取它的 data/modules.json 副本）
         # 公开仓，走 HTTPS 匿名克隆即可（与 matrix-local-guards 克隆各模块仓同法）。
         run: git clone -q --depth 1 https://github.com/oagentkit/oagentkit.github.io.git site
@@ -865,19 +546,10 @@ jobs:
         with:
           path: matrix-tools
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Set up Go
-        # 层级方向守卫用 `go list` 取**编译器视角**的真实 import——
-        # 源码正则认不出 build tag 与 import 别名。
-        uses: actions/setup-go@v5
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
         with:
           go-version: '1.26'
-          cache-dependency-path: matrix-tools/go.sum
-
+          go-cache-dependency-path: 'matrix-tools/go.sum'
       - name: Clone 矩阵各仓
         # 清单来自 modules.json（单一数据源），不写死仓名。
         # depth 1 即可：层级方向只看源码与 go.mod，不需要历史。
@@ -1064,11 +736,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: Clone 矩阵各仓（完整历史）
         # 必须是完整克隆：浅克隆没有历史，看不到「预写段曾经存在」。
         run: |
@@ -1104,11 +772,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: latest 字段对账
         # 取不到 ⇒ 黄灯（判不了 ≠ 没问题），不判绿。
         run: python3 matrix-tools/scripts/verify_latest_field.py --org oagentkit
@@ -1128,21 +792,14 @@ jobs:
         with:
           path: matrix-tools
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
         with:
-          python-version: '3.12'
-
+          pyyaml: 'true'
       - name: Clone 规则仓（登记表引用了两个 CI 文件）
         # 登记表里记着两个 CI 文件的路径：matrix-tools 自己的与规则仓的。
         # 少克隆一个，门禁就会报「登记的 CI 文件找不到」——那是真话：
         # 在只看得到一个 CI 文件的环境里，跨仓的那几条承诺确实无法验证。
         run: git clone -q --depth 1 "https://github.com/oagentkit/.github.git" .github
-
-      - name: 安装 pyyaml
-        # 触发条件校验要解析 workflow YAML（on: 与 job 级 if:）。
-        # 显式装，不靠 runner 镜像/解释器预装的 pyyaml——那是不确定因素。
-        run: python3 -m pip install --quiet pyyaml
 
       - name: 不变量登记表核对
         run: python3 matrix-tools/scripts/verify_inventory.py --root .
@@ -1196,11 +853,7 @@ jobs:
         with:
           path: matrix-tools
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
+      - uses: ./matrix-tools/.github/actions/setup-matrix-tools
       - name: issue 回执落地对账
         # 「判不了 ≠ 没问题」：取数失败判**黄灯**而不是绿灯——
         # 否则门禁会在网络故障时静默放行，而故障恰好是最需要它的时候。
@@ -1220,3 +873,45 @@ jobs:
           # 脚本崩在写文件之前时不该再红一次——那会把「门禁自己坏了」
           # 伪装成「门禁报了缺口」。
           if-no-files-found: ignore
+
+  # ── 自测接线：清单**不写死**，由脚本自己发现 ──────────────────────────
+  #
+  # ⚠️ 为什么不用「逐条 `run: python3 scripts/X.py --selftest`」：
+  #    那份清单**靠人记** ⇒ 必然漂移。实测形态：`bump_dep_floors.py --selftest`
+  #    写了两周，**根本没进 CI**（写了没人跑＝摆设）；`test_sync_matrix.py` 也没进
+  #    ⇒ 本地绿、CI 红。
+  # ⇒ 改成「脚本自己发现（AST 判据）+ CI 切成片并行跑」⇒ 新增自测脚本**自动**被纳入。
+  #    发现层：scripts/selftest_discovery.py；聚合器：scripts/selftest_all.py。
+  # ⇒ 接线不再靠 grep 文本：verify_inventory.py 的第 5/8 条改成**集合包含**判据。
+  selftestplan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-matrix-tools
+      - id: plan
+        name: 算自测片数（不写死在 CI 里）
+        run: |
+          set -euo pipefail
+          python3 scripts/selftest_all.py --plan-shards | tee /tmp/shards.txt
+          echo "shards=$(grep '^shards=' /tmp/shards.txt | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(grep '^matrix=' /tmp/shards.txt | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+
+  selftest:
+    runs-on: ubuntu-latest
+    needs: selftestplan
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false      # ⚠️ 一片红了别的片也要跑完 ⇒ 报错一次看全
+      # ⚠️ matrix 必须**整体**由 fromJSON 提供：GitHub 不允许 `matrix` 的**键的值**
+      #    是表达式（只允许字面量）⇒ 写成 {shard: ${{ fromJSON(...) }}} 会让整个
+      #    workflow 解析失败（run 名变成文件名、一个 job 都不建）。
+      matrix: ${{ fromJSON(needs.selftestplan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-matrix-tools
+      - name: 跑第 ${{ matrix.shard }} 片自测
+        run: python3 scripts/selftest_all.py --shard ${{ matrix.shard }}/${{ needs.selftestplan.outputs.shards }}

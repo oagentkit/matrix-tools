@@ -84,7 +84,10 @@ scripts/             工具链（见下）
 
 > **这一条现在是机器可执行的不变量**（`verify_inventory.py` 判红，2026-10-22 起）：
 > 每个**已登记**的判据脚本必须 ① 支持 `--selftest` ② 该自测在 CI 里被真的调用过
-> （`matrix-tools-ci.yml` 的 `guards` job）。缺任一条 ⇒ 登记表门禁当场判红。
+> （`matrix-tools-ci.yml` 的 `selftest` job —— 自动发现式接线，见下节）。
+> 缺任一条 ⇒ 登记表门禁当场判红。
+> 此外还有第 8 条：该判据必须在**自测自动发现集合**里
+> （否则「自动发现式接线」永远跑不到它 ⇒ 接线是假的）。
 > 此前这条规则**只是文档**——实测 27 个登记判据里有 4 个根本没有 `--selftest`
 > （`verify_ghost_packages` / `scan_stale_refs` / `verify_docs` / `verify_repo_docs`），
 > 它们处于「一直绿、从没生效过」的高危形态且无人知晓。
@@ -98,12 +101,19 @@ python3 scripts/selftest_all.py
 
 它跑 `scripts/test_*.py` + 所有支持 `--selftest` 的守卫，任一失败则退出码非 0。
 
-> **CI 侧为什么不用它**：它发现的 43 个脚本在 CI 的 `guards` job 里**已逐条跑过**
-> ⇒ 在 CI 上是重复劳动，却让那个 job 多花数分钟（job 的 timeout 是 5 分钟 ⇒ 有超时风险）。
-> CI 侧「新增自测脚本不许漏接线」由另一条机制兜底：`verify_inventory` 的红线要求
-> 每个**已登记**的判据脚本的 `--selftest` **必须在 CI 里被真的调用过**
-> ⇒ 新脚本若要登记为判据，不进 CI 就会被当场判红。
-> 本地侧则一律用上面这一条命令（清单机器可执行，不靠人记）。
+> **CI 侧现在也用同一套机制**（2026-10-31 改）：CI 的 `selftest` job 先跑
+> `scripts/selftest_all.py --plan-shards` 算出片数，再按 matrix **分片并行**跑
+> `scripts/selftest_all.py --shard i/N`。
+> ⇒ 「跑哪些自测」这份清单**不再写死在 CI 里** ⇒ 新增自测脚本**自动**被纳入
+> ⇒ 根治「写了两周没人接线」（实测：`bump_dep_floors.py --selftest` 从没进过 CI）。
+>
+> ⚠️ **分片数也不能写死** ⇒ 由 `--plan-shards` 算出来（`selftest-plan` job 的 outputs
+> 喂给 `selftest` job 的 matrix）⇒ 脚本数变了，片数自动跟着变。
+>
+> ⚠️ 接线判据随之从「grep 文本」升级为**集合包含**：`verify_inventory.py` 现在认
+> 「CI 里有自动发现式接线 **且** 该判据在自动发现集合里」⇒ 集合外的脚本永远
+> 不会被跑到 ⇒ 判红（登记表的第 8 条）。
+> ⇒ **新增守卫时**：给它注册 `--selftest` 入口即可 —— 不必再手动往 CI 里加一行。
 
 ⚠️ **`test_*.py` 与 `--selftest` 是两拨，只跑一拨＝漏掉另一拨。**
 前者是「接线自测」（某个功能有没有接上），后者是「判据自测」（判据本身准不准）。
@@ -117,6 +127,18 @@ python3 scripts/selftest_all.py
 >
 > 附带一条同源的纪律：**改了被测函数的取值/签名，要一并把调用方的假 args 对齐**
 > （`test_sync_matrix.py` 的 `_Args` 就是这个用途），否则自测会在 CI 上才炸。
+
+#### 「哪些脚本算自测」由**结构**判，不由**文本**判
+
+发现层在 `scripts/selftest_discovery.py`：一个脚本算有 `--selftest` 入口，当且仅当
+它 **① 用 argparse 注册了 `--selftest`** 或 **② 模块级定义了 `def selftest` / `def _selftest`**。
+判据是 **AST**，不是「源码里出现过 selftest 这个词」。
+
+> 旧判据（子串匹配）两个方向都错：**假阳性**——只是**提到** selftest 的文件
+> （比如公共模块的注释里写了）会被拉去跑 `--selftest` ⇒ 报 unrecognized arguments ⇒ 误判红；
+> **假阴性**——用了别的参数名或手工判 `sys.argv` 的脚本被漏掉。
+> ⚠️ 注意第 5 条硬规则里那条**文本**判据（`--selftest` 在不在源码里）仍在，
+> 两条并存：文本判据管「有没有自测开关」，AST 判据管「聚合器能不能发现它」。
 
 ### 3. 判不了 ≠ 没问题
 

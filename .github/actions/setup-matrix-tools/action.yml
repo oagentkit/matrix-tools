@@ -1,0 +1,39 @@
+name: setup-matrix-tools
+description: 收敛 matrix-tools CI 里重复的 setup 样板（Python 版本只写一处）
+
+runs:
+  using: composite
+  steps:
+    - name: 装 Python
+      uses: actions/setup-python@v5
+      with:
+        # ⚠️ 版本只在这里写 —— 此前 16 个 job 各写一遍，升级要改 16 处
+        python-version: '3.12'
+
+    - name: 装 Go
+      if: inputs.go_version != ''
+      uses: actions/setup-go@v5
+      with:
+        go_version: ${{ inputs.go_version }}
+        # ⚠️ checkout 到子目录的 job（path: matrix-tools）必须把 cache 路径指过去，
+        #    否则 go 的模块缓存会按仓库根算 ⇒ 每次都缓存不命中。
+        cache-dependency-path: ${{ inputs.go_cache_dependency_path }}
+
+    - name: 装 pyyaml
+      if: inputs.pyyaml == 'true'
+      shell: bash
+      run: python3 -m pip install --quiet pyyaml
+
+inputs:
+  go_version:
+    description: 需要 Go 时填版本（如 1.26）；留空则不装 Go
+    required: false
+    default: ''
+  go_cache_dependency_path:
+    description: go 的 cache-dependency-path（checkout 到子目录时必填）
+    required: false
+    default: ''
+  pyyaml:
+    description: 是否安装 pyyaml（YAML 解析的兜底）
+    required: false
+    default: 'false'

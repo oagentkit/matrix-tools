@@ -223,6 +223,43 @@ def selftest_invoked(ci_text: str, script: str) -> bool:
     return False
 
 
+def auto_discovery_wired(ci_text: str) -> bool:
+    """CI 里是否有**自动发现式接线**（真的跑聚合器的分片）。
+
+    形态：`python3 scripts/selftest_all.py --shard i/n`。
+
+    ⚠️ **只认 `--shard`，不认 `--plan-shards`**：`--plan-shards` 只是「算片数」，
+    它在 `selftest-plan` job 里 ⇒ 若认它，则「计划 job 在、真正跑分片的 job 没了」
+    也会被判成「已接线」⇒ 接线是假的（实测变异：这正是没转红的原因）。
+    ⇒ 判据必须落在**真正跑自测的那一步**上。
+    ⇒ 判据将来若换形态 ⇒ 这里会判红（保守：宁可红，不放过假接线）。
+
+    为什么要有这条：CI 里「跑哪些自测」这份清单**靠人记** ⇒ 必然漂移
+    （实测：`bump_dep_floors.py --selftest` 写了两周根本没进 CI）。
+    ⇒ 改成「脚本自己发现 + CI 分片跑」⇒ 新增自测脚本自动被纳入。
+    ⇒ 但这样一来，「接线」就不能再靠 grep 文本判定 ⇒ 必须改成**集合包含**关系。
+    """
+    for line in ci_text.splitlines():
+        if "selftest_all.py" in line and "--shard" in line:
+            return True
+    return False
+
+
+def discovered_selftests(scripts_dir: Path) -> set:
+    """自测**自动发现集合**（哪些脚本会被聚合器跑到）。
+
+    取数层在 `selftest_discovery.py`（AST 判据，不靠子串匹配）。
+    ⚠️ 发现层坏了 ⇒ 这个集合就是错的 ⇒ 下面第 8 条判据会判红（这正是它的用处）。
+    """
+    try:
+        from selftest_discovery import discover
+    except ImportError as exc:  # 判不了 ⇒ 空集合 ⇒ 第 8 条判红（判不了 ≠ 没问题）
+        print("⚠️ 读不到自测发现层：%s" % exc, file=sys.stderr)
+        return set()
+    _plain, with_selftest = discover(scripts_dir)
+    return {p.name for p in with_selftest}
+
+
 # ---------------------------------------------------------------------------
 # 第 7 条：登记的 CI 位置必须**真的**跑这个判据
 # ---------------------------------------------------------------------------
@@ -628,6 +665,9 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
     #   ② 该自测必须在本 org 的 CI 里真的被调用一次（否则是「写了但没接线」）。
     ci_text = "\n".join(Path(p).read_text(encoding="utf-8", errors="ignore")
                         for p in workflows.values())
+    # 自动发现式接线：CI 里跑聚合器的分片 ⇒ 「跑哪些自测」由脚本自己算
+    auto_wired = auto_discovery_wired(ci_text)
+    discovered = discovered_selftests(scripts_dir)
     for inv in invariants:
         inv_id = inv.get("id", "?")
         for judge_script in inv.get("judges", []):
@@ -643,11 +683,42 @@ def judge(registry: dict, scripts_dir: Path, workflows: dict[str, str],
                     f"（「跑通即绿」的自测是摆设——它证明不了门禁能抓住它要防的东西）")
                 continue
             if not selftest_invoked(ci_text, judge_script):
+                # 自动发现式接线：那份清单由脚本自己算 ⇒ 判据在集合里就等于「已接线」
+                if auto_wired and judge_script in discovered:
+                    report.info(
+                        inv_id,
+                        f"{judge_script} 的自测由自动发现式接线覆盖"
+                        f"（CI 里跑 scripts/selftest_all.py 的分片）")
+                    continue
                 report.red(
                     inv_id,
                     f"{judge_script} 的 --selftest 没有接进任何 CI——写了但没接线",
                     f"在 CI 的 guards job 里加一步："
-                    f"python3 scripts/{judge_script} --selftest")
+                    f"python3 scripts/{judge_script} --selftest"
+                    f"；或改成自动发现式接线（CI 跑 scripts/selftest_all.py --shard）")
+
+    # 8：登记的判据脚本必须在**自测自动发现集合**里
+    #
+    # 为什么必须有这条：一旦 CI 改成「自动发现式接线」，「接上了」就不再是文本问题，
+    # 而是**集合包含**问题——判据不在发现集合里 ⇒ 聚合器永远不跑它 ⇒ 接线是假的。
+    # 这条判据同时是发现层本身的保险：发现层坏了（漏判/退化）⇒ 集合变小 ⇒ 判红。
+    #
+    # ⚠️ 只在**CI 真的用自动发现式接线**时才判红：否则 CI 是显式逐条写的，
+    #    集合外的脚本仍可能被显式调用（第 5 条的文本路径已经管住了那种情形）。
+    if auto_wired:
+        for inv in invariants:
+            inv_id = inv.get("id", "?")
+            for judge_script in inv.get("judges", []):
+                if not (scripts_dir / judge_script).is_file():
+                    continue
+                if judge_script in discovered:
+                    continue
+                report.red(
+                    inv_id,
+                    f"{judge_script} 不在自测自动发现集合里——它永远不会被聚合器跑到",
+                    f"给它注册 --selftest 入口（argparse 的 add_argument(\"--selftest\") "
+                    f"或模块级 def selftest / def _selftest）；"
+                    f"发现层的判据在 scripts/selftest_discovery.py（AST 判据，不靠子串匹配）")
 
     # 6：登记的触发条件必须真的能跑起来（登记表的第三腿）
     #
@@ -710,24 +781,43 @@ def selftest() -> int:
         # 合规的判据脚本：有 --selftest 开关
         (scripts / "verify_ok.py").write_text(
             "import sys\nfrom pathlib import Path\nimport json\n"
-            "ap = None  # --selftest\n", encoding="utf-8")
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         (scripts / "verify_coupled.py").write_text(
             "import gen_changelogs\nfrom matrix_facts import git\n"
-            "ap = None  # --selftest\n", encoding="utf-8")
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         # 反证样本：没有 --selftest 开关的判据脚本
         (scripts / "verify_noselftest.py").write_text("print('x')\n", encoding="utf-8")
         # 反证样本：有 --selftest，但 CI 里没调用它
         (scripts / "verify_unwired.py").write_text(
-            "ap = None  # --selftest\n", encoding="utf-8")
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         (scripts / "verify_orphan.py").write_text(
-            "print('x')\nap = None  # --selftest\n", encoding="utf-8")
+            "print('x')\nimport argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         # 反证样本：登记的 job 里**只有 --selftest**（自测不是判定）
         (scripts / "verify_selftestonly.py").write_text(
-            "ap = None  # --selftest\n", encoding="utf-8")
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         # 反证样本：真判定在**别的 job**（c），登记指错了位置（b）
         (scripts / "verify_elsewhere.py").write_text(
-            "ap = None  # --selftest\n", encoding="utf-8")
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         (scripts / "gen_changelogs.py").write_text("x = 1\n", encoding="utf-8")
+        # ⚠️ **反证样本 ⑪**：`--selftest` 只出现在**注释**里 ⇒
+        #    AST 判据（scripts/selftest_discovery.py）**不认**它有自测入口
+        #    ⇒ 它不在自动发现集合里 ⇒ 当 CI 改用「自动发现式接线」时，
+        #    聚合器**永远不会**跑到它 ⇒ 接线是假的 ⇒ 必须判红。
+        #    （老判据只看源码里有没有 "--selftest" 字样 ⇒ 这种脚本会被误当成有入口。）
+        (scripts / "verify_commentonly.py").write_text(
+            "print('x')\nap = None  # --selftest\n", encoding="utf-8")
         # 反证样本 ⑩：**生成器 import 守卫**（耦合的另一个方向）
         # gen_genjudge.py import verify_ok.py（一个已登记的守卫），
         # 而登记表里没有任何不变量披露这条耦合 ⇒ 必须判红。
@@ -741,6 +831,19 @@ def selftest() -> int:
         # 已登记的 trigger」），opaque 用判不了的 if（反证「判不了 ⇒ 判黄不判红」）。
         wf = root / "ci.yml"
         wf2 = root / "ci2.yml"
+        # ci3.yml：**自动发现式接线**的样本（CI 跑聚合器的分片，而不是逐条写死清单）。
+        # 它是判据 8 的舞台：接了自动发现 ⇒ 集合外的脚本永远不会被跑到 ⇒ 必须判红。
+        wf3 = root / "ci3.yml"
+        wf3.write_text(
+            "on:\n"
+            "  push:\n"
+            "  pull_request:\n"
+            "jobs:\n"
+            "  auto:\n    steps:\n"
+            "      - run: python3 scripts/verify_commentonly.py\n"
+            "      - run: python3 scripts/verify_commentonly.py --selftest\n"
+            "      - run: python3 scripts/selftest_all.py --shard 0/2\n",
+            encoding="utf-8")
 
         def write_ci1(steps: str, b_real: bool = False) -> None:
             # job b 是「登记的位置」——先只给 --selftest（反证：自测不是判定）；
@@ -832,6 +935,12 @@ def selftest() -> int:
                  "oracle": "independent", "sharedWith": [],
                  "ci": [{"file": "ci.yml", "job": "b",
                          "triggers": ["push", "pull_request"]}]},
+                # 反证样本 ⑪：`--selftest` 只写在**注释**里 ⇒ 不在自动发现集合
+                # ⇒ 而 ci3.yml 用了自动发现式接线 ⇒ 它永远不会被跑到 ⇒ 判红
+                {"id": "commentonly", "judges": ["verify_commentonly.py"],
+                 "oracle": "independent", "sharedWith": [],
+                 "ci": [{"file": "ci3.yml", "job": "auto",
+                         "triggers": ["push", "pull_request"]}]},
             ],
             "retired": [],
             "notInvariants": {"tools": ["gen_changelogs.py"]},
@@ -840,12 +949,25 @@ def selftest() -> int:
         reg_path.write_text(json.dumps(registry), encoding="utf-8")
 
         rep = Report(title="不变量登记表")
-        judge(registry, scripts, {"ci.yml": str(wf), "ci2.yml": str(wf2)}, rep)
+        judge(registry, scripts,
+              {"ci.yml": str(wf), "ci2.yml": str(wf2), "ci3.yml": str(wf3)}, rep)
         subjects = {f.subject for f in rep.reds}
         yellow_subjects = {f.subject for f in rep.yellows}
         check("未登记的守卫被抓出", "verify_orphan.py" in subjects, True)
         check("未披露的耦合被抓出", "coupled" in subjects, True)
         check("已登记且合规的不报", "ok" in subjects, False)
+        # 反证样本 ⑪：自动发现式接线下，集合外的脚本（--selftest 只在注释里）判红
+        check("注释型 --selftest 在自动发现接线下被判红",
+              "commentonly" in subjects, True)
+        # ⚠️ 「自动发现式接线」本身也要有判据：只有**跑分片**的那一步才算数，
+        #    光有「算片数」（--plan-shards）不算 ⇒ 否则「计划 job 在、跑分片的
+        #    job 没了」会被判成已接线 ⇒ 假接线漏过（实测变异：这正是没转红的原因）。
+        check("只有 --plan-shards 不算已接线",
+              auto_discovery_wired(
+                  "      - run: python3 scripts/selftest_all.py --plan-shards\n"), False)
+        check("跑分片才算已接线",
+              auto_discovery_wired(
+                  "      - run: python3 scripts/selftest_all.py --shard 0/2\n"), True)
         # ③ 硬规则 2：没有 --selftest 的判据脚本必须判红
         check("没有 --selftest 的判据被抓出", "noselftest" in subjects, True)
         # ④ 硬规则 2：--selftest 没接进 CI 必须判红
@@ -893,7 +1015,9 @@ def selftest() -> int:
             {"file": "ci.yml", "job": "a", "triggers": ["push", "pull_request"]})
         # 反证样本补齐：给它们加上 --selftest 开关并接进 CI
         (scripts / "verify_noselftest.py").write_text(
-            "ap = None  # --selftest\n", encoding="utf-8")
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n", encoding="utf-8")
         write_ci1(
             "      - run: python3 scripts/verify_ok.py\n"
             "      - run: python3 scripts/verify_ok.py --selftest\n"
@@ -949,8 +1073,16 @@ def selftest() -> int:
             "      - run: python3 scripts/verify_ok.py\n"
             "      - run: echo opaque\n",
             encoding="utf-8")
+        # 反证样本 ⑪ 补齐：给「注释型」脚本注册**真的** --selftest 入口
+        # （argparse 的 add_argument）⇒ 它进得了自动发现集合 ⇒ 判据 8 应当转绿。
+        (scripts / "verify_commentonly.py").write_text(
+            "import argparse\n"
+            "ap = argparse.ArgumentParser()\n"
+            "ap.add_argument(\"--selftest\", action=\"store_true\")\n",
+            encoding="utf-8")
         rep2 = Report(title="不变量登记表")
-        judge(registry, scripts, {"ci.yml": str(wf), "ci2.yml": str(wf2)}, rep2)
+        judge(registry, scripts,
+              {"ci.yml": str(wf), "ci2.yml": str(wf2), "ci3.yml": str(wf3)}, rep2)
         check("披露后转绿", rep2.has_red(), False)
         # 判不了的仍然是黄灯——补齐不该把它变成绿灯（硬规则 3）
         check("补齐后判不了的仍是黄灯",
@@ -964,7 +1096,9 @@ def selftest() -> int:
     print("✅ verify_inventory 自测通过"
           "（未登记 / 未接线 / 未披露耦合 / 无 --selftest / --selftest 未接线 / "
           "登记的 CI 位置不跑该判据 / 登记了不存在的 trigger / "
-          "if 排除登记的 trigger / if 判不了判黄 九类检出）")
+          "if 排除登记的 trigger / if 判不了判黄 / "
+          "注释型 --selftest 在自动发现接线下被判红 十类检出；"
+          "并自检「自动发现式接线」判据本身）")
     return 0
 
 

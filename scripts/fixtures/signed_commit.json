@@ -1,0 +1,11 @@
+{
+  "_note": "真实样本：matrix-tools 的 #160 squash 合并 commit（GitHub web-flow GPG 签名）。",
+  "_why": "GitHub 的 commit API 不返回 author/committer 的**原始时区**（只给 UTC）⇒ 无签名 commit 无法逐字重建；带签名的 commit 可以，因为 verification.payload 里含原始时区与完整正文。",
+  "sha": "c50136dcaf84c1a1b00fbf85dcaf4891023c1765",
+  "tree": "bdb1c7974b0fae4bf6918cbe6d81abbc533896da",
+  "parents": [
+    "50a92b5824af6ee0bc5cc1c10685ca7aa3d5b771"
+  ],
+  "payload": "tree bdb1c7974b0fae4bf6918cbe6d81abbc533896da\nparent 50a92b5824af6ee0bc5cc1c10685ca7aa3d5b771\nauthor MurphyYi <zy84338719@hotmail.com> 1793357763 +0800\ncommitter GitHub <noreply@github.com> 1793357763 +0800\n\nchore(versions): 刷新 latest——agent v0.12.0（agentrun 暴露 ToolAliases / UnknownToolsHandler 已发布） (#162)\n\n新增 floorBumps 记录：agent v0.12.0 抬了三条依赖地板（llm v0.17.1→v0.18.1、\ntextx v0.6.2→v0.7.1、oekit/concurrency v0.20.2→…）——按发版时刻的 go.mod 差异现算。\n\n⚠️ 现算依赖各仓的完整 tag 集合：本地 tag 陈旧时（实测 skillkit 缺 3 / toolgate 缺 5 /\nmcpkit 缺 3）会漏算 35 条 floorBumps ⇒ 刷新前须 git fetch --tags 全矩阵补齐。",
+  "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJq5HfDCRC1aQ7uu5UhlAAAKz4QAHuuI+UucTCsInm4YaiAcsyp\nxoQVtoaya9f2Wu3ZfktgPrKQdBVFQ9J25EyGqplsAYgVYBx2kQ3376n9vlMW/tqo\nV8QnY4peAhaXw/XnynVGMqSPBJEyqv3z8oKIgL4cWMYQEKBhEbtDEtdmDxDvBI+W\nmu4e0XPMYao8fEZSTzf2LyNgKeBAksjawZNo9xW0joV+zgXN0NgHXa7VU5IXRhAT\nha+XvAp1ySrXzyRwkBK7BCtBhD22dv4ymlt3NfEQoXa6GPQdOergWImwe0cIiKxF\njVdkaB6TREQFr6gPsFw+FG0MLXZdq2ltKRqARDDimivDAUzwSoqm/A/BFmXdDpuJ\nJVk0odOw0hF5F5rmBYHbHL/MtOj97mg7oCQCmoZphyRyjgL6biqbKWA5EQx1rLBf\n5QiOnmEGIk6Cg+DYHfX22ySTGiLUat94jix4krIOQKKrIYKMyMqxXXbM1CdunKdQ\nntIGarQ2lT+9xQV+lYedsMn7l2lkbdlcFo0EztGET7viPnZ1EY1lIrKrm6t7+0aZ\nhxvNlj20lFMQbnsIxCXl1ZHWBm9N9s9oHpzGSd0q8WK1SDBGF5pYKjuhAsF/Bs3D\nfKZ0GjkbZZmsKFloZbuPfajdxjZHhqaMpca3h/ZGc8rVlc3JtMmCdMJPYEkOranR\n+btOia1SQqbwDTIm8Nqd\n=/lCm\n-----END PGP SIGNATURE-----\n"
+}
