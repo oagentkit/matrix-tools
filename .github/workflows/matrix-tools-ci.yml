@@ -904,8 +904,10 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false      # ⚠️ 一片红了别的片也要跑完 ⇒ 报错一次看全
-      matrix:
-        shard: ${{ fromJSON(needs.selftestplan.outputs.matrix) }}
+      # ⚠️ matrix 必须**整体**由 fromJSON 提供：GitHub 不允许 `matrix` 的**键的值**
+      #    是表达式（只允许字面量）⇒ 写成 {shard: ${{ fromJSON(...) }}} 会让整个
+      #    workflow 解析失败（run 名变成文件名、一个 job 都不建）。
+      matrix: ${{ fromJSON(needs.selftestplan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-matrix-tools

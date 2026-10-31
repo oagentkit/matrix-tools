@@ -142,12 +142,27 @@ def _selftest() -> int:
     real = build_plan()
     check("聚合器不把自己算进计划", any(p.name == SELF for p, _ in real), False)
 
+    # ⑦ --plan-shards 的输出必须能被 fromJSON **整体**解析成一个含 shard 数组的对象
+    #    （GitHub 的 `strategy.matrix` 不允许「键的值是表达式」⇒ 只能整体 fromJSON；
+    #      写成 {shard: ${{ fromJSON(...) }}} ⇒ **整个 workflow 解析失败**）
+    import json as _json
+    import subprocess as _sp
+    out = _sp.run([sys.executable, str(Path(__file__).resolve()), "--plan-shards"],
+                  capture_output=True, text=True).stdout
+    mat = [l for l in out.splitlines() if l.startswith("matrix=")]
+    check("plan-shards 输出了 matrix 行", len(mat), 1)
+    if mat:
+        obj = _json.loads(mat[0][len("matrix="):])
+        check("matrix 能被 fromJSON 整体解析成对象", isinstance(obj, dict), True)
+        check("matrix 里 shard 是数组", isinstance(obj.get("shard"), list), True)
+    check("plan-shards 输出了 shards 数", any(l.startswith("shards=") for l in out.splitlines()), True)
+
     if fails:
         print("聚合器自测失败：")
         for f in fails:
             print("  ✗ " + f)
         return 1
-    print("聚合器自测：%d 条断言全过" % (len(fails) + 26))
+    print("聚合器自测：%d 条断言全过" % (len(fails) + 31))
     return 0
 
 
@@ -193,7 +208,11 @@ def main() -> int:
     if args.plan_shards:
         n = suggest_shards(len(plan))
         print("shards=%d" % n)
-        print("matrix=%s" % json.dumps(list(range(n))))
+        # ⚠️ 输出必须是**能整体交给 fromJSON 的对象**：
+        #    GitHub 的 `strategy.matrix` 里，**键的值不允许是表达式**（只允许字面量）⇒
+        #    动态 matrix 只能写成 `matrix: ${{ fromJSON(needs.x.outputs.matrix) }}`
+        #    ⇒ 这里必须输出 {"shard": [0,1,...]} 而不是裸数组。
+        print("matrix=%s" % json.dumps({"shard": list(range(n))}))
         return 0
 
     if args.shard:
