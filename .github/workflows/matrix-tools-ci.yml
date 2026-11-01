@@ -93,6 +93,15 @@ jobs:
           # 不靠 runner 镜像预装的 Go 版本，那是不确定因素。
           go-version: '1.26'
 
+      - name: CLI 入口守卫（args.<属性> 必须真的注册过）
+        # 形态（实测 2026-11-01，issue matrix-tools#170）：bump_dep_floors.py 曾写了
+        # `if args.selftest:`，而 argparse **从没注册** --selftest ⇒ 每次**正常调用**都抛
+        # AttributeError ⇒ schedule 的「Dep floor watch」巡检每小时红，
+        # 而 **CI 全绿**（CI 只跑 --selftest 那条早期分支，从不走 main()）。
+        # ⇒ 本守卫是**静态**的第二道网：任何脚本里的任何 args.X 引用都查一遍
+        #    ⇒ 零副作用、零网络、覆盖整类缺陷 ⇒ 不靠人记得写冒烟。
+        run: python3 scripts/verify_cli_args.py
+
       - name: 破坏性变更抽取器自测
         # breakingIndex 的判定规则本体。判据错了整条门禁就是摆设：
         # 漏判 → 矩阵继续说「无破坏性变更」；误判 → 矩阵里塞满假条目。

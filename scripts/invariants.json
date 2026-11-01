@@ -844,6 +844,30 @@
       "since": "2026-10-24",
       "note": "仓级依赖**清单**声明的漂移（2026-10-24 实测，issue matrix-tools#127）：obs/README.md 的清单写着「本仓依赖的矩阵内仓：`textx`、`guardx`」，而 obs/go.mod 的矩阵内直接依赖只有 guardx ⇒ **多列 textx**（textx 随 019c029「refactor!: obsx 迁出本仓」离开 go.mod，同一份 README 第 22 行已经记录了那次迁移，却漏改了上一行的清单；同仓 AGENTS.md 的同一行本来是对的 ⇒ 两个第一入口互相矛盾）。toolgate/README.md 与 toolgate/AGENTS.md 的清单都写着「`mcpkit`」，而 toolgate/go.mod 直接 require github.com/oagentkit/guardx v0.14.0（**无** // indirect 标记）⇒ **漏列 guardx**（该依赖由 5c49229「refactor!: invoke 迁出本仓」带入，而 invoke 链正是本仓 AGENTS.md 的核心不变量）。三个本该抓住它的机制逐个失效：① verify_import_direction.py（dependency-declaration 不变量）判的是 **modules.json 的 dependsOn ↔ go.mod**，实跑红 0/黄 0 ⇒ 数据源 13/13 一致、漂的是**文档层**；② verify_repo_dep_claims.py 判的是依赖**零性**红线（零第三方依赖 / require 段为空），不判「依赖了哪些仓」的清单；③ verify_repo_tiers.py 判层位数字与层名。⇒ 三条守卫都停在「文档 ↔ go.mod」这一层之前，本条补的就是这一层。判据：清单集合 == go.mod 直接矩阵内依赖（多列/漏列都判红）；认不出仓名、缺 go.mod、**有依赖却没有声明**判黄（认不出＝该仓不再被机器核对＝安静地失去覆盖，CI 用 --fail-on-yellow 升级为失败）。口径与 modules.json 的 dependsOn 同为「直接依赖」：toolgate/go.mod 里 `github.com/oagentkit/runtime v0.7.2 // indirect` 是被 mcpkit 拉进来的，不算本仓依赖。两个文件都判（AGENTS.md / README.md）——只判一个会让另一个安静地失去覆盖。只判本仓自述的清单行，不判散文里的跨仓提及；tier 0 的否定句「任何矩阵内模块都不得被本仓依赖」不是声明；反引号里的 `guardx/logredact` 是包路径不是仓名。",
       "kind": "gate"
+    },
+    {
+      "id": "cli-entry-registered",
+      "claim": "任何脚本的 `args.<属性>` 引用都必须对应一个**真实注册过**的 argparse dest——否则每一次正常调用都抛 AttributeError（CLI 入口崩溃），而 CI 只跑 --selftest 时看不见",
+      "judges": [
+        "verify_cli_args.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "scripts/ 目录下各脚本的 argparse 定义与属性引用（AST 静态分析，**不执行代码**）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-11-01",
+      "note": "实测形态（issue matrix-tools#170 / PR #171）：bump_dep_floors.py 的 main() 里写了 `if args.selftest:`，而 argparse 从没注册 --selftest ⇒ 每次正常调用都抛 AttributeError ⇒ schedule 的「Dep floor watch」巡检**每小时红**，而 CI 全绿（CI 只跑 --selftest，从不走 main()）。本守卫是**静态**的第二道网：任何脚本里的任何 args.X 引用都查一遍 ⇒ 零副作用、零网络、覆盖整类缺陷 ⇒ 不靠人记得写冒烟。⚠️ 判据是启发式 ⇒ **允许漏报，不允许假阳性**（误报会让门禁变噪声 ⇒ 门禁被无视）：位置参数、显式 dest、set_defaults、subparser dest、**跨模块 import 的常量 flag** 都必须认出来；flag 常量解析不出值时 ⇒ 判**黄**不判红（硬规则 3：判不了 ≠ 没问题）。",
+      "kind": "gate"
     }
   ],
   "retired": [
