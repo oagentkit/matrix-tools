@@ -639,8 +639,13 @@ def main() -> int:
     ap.add_argument("--tracking-repo", default="matrix-tools",
                     help="跟踪 issue 开在哪个仓（默认 matrix-tools）")
     args = ap.parse_args()
-    if args.selftest:
-        return selftest()
+
+    # ⚠️ **不要**在这里写 `if args.selftest:` —— argparse **没有注册** `--selftest`
+    # （自测走的是模块末尾 `if "--selftest" in sys.argv` 那条早期分支）⇒
+    # 那句会抛 `AttributeError: 'Namespace' object has no attribute 'selftest'`
+    # ⇒ **每一次正常调用都崩**（实测：schedule 的「Dep floor watch」巡检每小时红，
+    #    而 CI 全绿 —— 因为 CI 只跑 --selftest 那条早期分支，从不走这里）。
+    # ⇒ CLI 入口路径现在由 selftest 里的「入口不崩」断言守住。
 
     root = Path(args.root).resolve()
     repos = args.repo or matrix_repos(root)
@@ -763,6 +768,26 @@ def selftest() -> int:
     mixed = single + "\nrequire (\n\tgithub.com/oekit/logx v0.8.0\n)\n"
     check("两种形态同时认", len(first_party_requires(mixed)), 2)
 
+    # ⚠️ **CLI 入口路径必须能走通**（2026-11-01 实测事故）
+    #
+    # 形态：`main()` 里写了 `if args.selftest:`，而 argparse **从没注册** `--selftest`
+    # ⇒ 每次**正常调用**都抛 `AttributeError` ⇒ schedule 的「Dep floor watch」巡检
+    #   **每小时红**；而 CI 全绿 —— 因为 CI 只跑 `--selftest` 那条早期分支
+    #   （`if "--selftest" in sys.argv`），**从不走 main()** ⇒ CI 对 CLI 入口零覆盖。
+    # ⇒ 这里用 subprocess 真跑一次「正常调用」，断言它**没有崩**。
+    #    判定口径：不看退出码（业务失败也是 1），看输出里有没有 Traceback / AttributeError。
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        proc = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--root", td, "--api-report"],
+            capture_output=True, text=True)
+    cli_out = (proc.stdout or "") + (proc.stderr or "")
+    check("CLI 入口不崩（输出无 Traceback）", "Traceback" in cli_out, False)
+    check("CLI 入口不崩（输出无 AttributeError）", "AttributeError" in cli_out, False)
+    check("CLI 入口走到了业务逻辑（矩阵清单读不到）",
+          "矩阵清单读不到" in cli_out, True)
+
     if fails:
         print("❌ bump_dep_floors 自测失败：")
         for f in fails:
@@ -772,7 +797,7 @@ def selftest() -> int:
     if rc != 0:
         return rc
     print("✅ bump_dep_floors 自测通过"
-          "（版本按数字比 / 第一方筛选 / 落后判定 / go.mod 两种 require 形态）")
+          "（版本按数字比 / 第一方筛选 / 落后判定 / go.mod 两种 require 形态 / CLI 入口不崩）")
     return 0
 
 
