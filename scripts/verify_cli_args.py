@@ -312,6 +312,9 @@ if args.selftest:
     return 0
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ --root 指向临时目录；本脚本只用脚本自身所在目录 ⇒ **只读、无副作用**。
+SMOKE_ARGS = ["--root", "@tmpdir"]
 def main() -> int:
     ap = argparse.ArgumentParser(description="静态守卫：args.<属性> 引用了未注册的 argparse dest")
     ap.add_argument("--root", default=str(HERE.parent),

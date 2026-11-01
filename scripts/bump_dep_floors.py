@@ -620,6 +620,10 @@ def selftest_push_modes() -> int:
     return 0
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**：--root 指向临时目录 ⇒ 读不到矩阵清单 ⇒ 直接退出，
+#    **不克隆、不联网、不写文件**。
+SMOKE_ARGS = ["--root", "@tmpdir"]
 def main() -> int:
     ap = argparse.ArgumentParser(description="第一方依赖地板施作器（默认只报告）")
     ap.add_argument("--root", required=True, help="矩阵根目录（各仓克隆的父目录）")

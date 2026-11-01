@@ -191,6 +191,9 @@ def _run_plan(plan: list) -> tuple[int, list]:
     return (1 if failed else 0), failed
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ --list 只列出清单、不执行任何自测 ⇒ **只读、无副作用**。
+SMOKE_ARGS = ["--list"]
 def main() -> int:
     ap = argparse.ArgumentParser(description="跑 matrix-tools 的全量自测")
     ap.add_argument("--list", action="store_true", help="只列出要跑哪些，不执行")
