@@ -119,6 +119,56 @@ def plan_for(scripts_dir: Path) -> list[tuple[Path, list[str]]]:
     return plain + [(p, [SELFTEST_FLAG]) for p in with_selftest]
 
 
+# ── 入口冒烟声明 ────────────────────────────────────────────────────────
+#
+# 约定：脚本在**本模块**声明一组**无副作用**的「入口冒烟参数」：
+#
+#     SMOKE_ARGS = ["--root", "@tmpdir", "--api-report"]
+#
+# 运行器（scripts/verify_cli_smoke.py）会拿临时目录替换 `@tmpdir`，
+# 在**临时工作目录**里真跑一次 ⇒ 断言它**没有崩**（输出里无 Traceback /
+# AttributeError / ImportError）。
+#
+# 为什么需要它（2026-11-01 实测事故，issue matrix-tools#170）：
+# `bump_dep_floors.py` 曾因 `if args.selftest:` 引用了没注册的属性 ⇒
+# **每次正常调用都崩** ⇒ schedule 巡检每小时红，而 **CI 全绿**
+# （CI 只跑 --selftest，从不走 main()）⇒ CLI 入口在 CI 里零覆盖。
+#
+# ⚠️ **为什么要求显式声明**：自动跑「正常调用」可能产生副作用
+# （写文件 / 开 issue / 发 PR）⇒ 不能对所有脚本无差别地跑。
+# ⇒ 只有**作者显式声明**了无副作用参数，才纳入冒烟 ⇒ 声明本身就是承诺。
+# ⚠️ 声明必须**无副作用且尽量不联网**（否则会拖慢 CI；联网多的脚本不适合声明）。
+
+SMOKE_ARGS_NAME = "SMOKE_ARGS"
+SMOKE_TMPDIR_TOKEN = "@tmpdir"
+
+
+def smoke_args(src: str) -> list:
+    """→ 脚本声明的冒烟参数列表；没声明 ⇒ None。
+
+    只认**本模块**的模块级 `SMOKE_ARGS = ["--x", ...]`（全是字符串字面量）。
+    ⚠️ 不跨模块解析：跨模块的 list 常量解析需要 import（⇒ 有副作用），
+    而 AST 跨模块解析 list 常量会引入「同名不同值」的歧义 ⇒ 简单优先。
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    for node in tree.body:  # 只看模块级
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == SMOKE_ARGS_NAME:
+                    if isinstance(node.value, ast.List):
+                        out = []
+                        for e in node.value.elts:
+                            if isinstance(e, ast.Constant) and isinstance(e.value, str):
+                                out.append(e.value)
+                            else:
+                                return None  # 不是纯字符串列表 ⇒ 不认
+                        return out
+    return None
+
+
 def _selftest() -> int:
     """自测：用**构造的 fixture** 验证发现判据有区分力。
 
