@@ -82,6 +82,10 @@ from judge_report import Report  # noqa: E402  —— 只共享渲染层
 # ---------------------------------------------------------------- 事实层
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def load_json(path: Path):
     """读一个 JSON 文件。失败返回 (None, 原因)——事实层不抛异常。"""
     if not path.is_file():

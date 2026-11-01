@@ -36,6 +36,10 @@ OLD_ROOT_SHORT = OLD_ROOT.rsplit("/", 1)[-1]  # agentkit，用于文档里写短
 FACADE_BASELINE = HERE / "facade_package_baseline.json"
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = ["--matrix", "@repo/matrix-tools/modules.json", "--out", "@tmpdir/llms.txt"]
+
 def facade_package_names() -> list[str]:
     """门面转发包名清单（取自冻结基线）。
 

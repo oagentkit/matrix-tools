@@ -62,6 +62,10 @@ TEXT_EXT = {".md", ".yaml", ".yml", ".toml", ".json", ".sh", ".py", ".txt", ".mk
 SKIP_DIRS = {".git", ".worktrees", ".v2c", ".mimosa", "node_modules"}
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = ["--root", "@repo", "--check"]
+
 def default_matrix() -> Path:
     """定位 modules.json。
 

@@ -168,6 +168,10 @@ README_SELF_RE = re.compile(r"^\*\*tier\s*(\d+)")
 README_LABEL_RE = re.compile(r"[\s\*（(—–\-]{0,6}([一-鿿]{2,4}层)")
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 @dataclass(frozen=True)
 class DocProfile:
     """一个仓级文档的「自述层位」形态。

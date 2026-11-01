@@ -169,6 +169,10 @@ CN_DECL = re.compile(
 CN_DECL_NEG = re.compile(r"^(?:无|没有|不|非|暂无)")
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def cn_declared(line: str) -> bool:
     """该行是否是**行首**的破坏性声明（中文形态）。"""
     m = CN_DECL.match(line)

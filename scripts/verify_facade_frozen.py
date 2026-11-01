@@ -90,6 +90,10 @@ _ALIAS_IMPORT_RE = re.compile(r'import\s+upstream\s+"(?P<path>[^"]+)"')
 
 # ---------------------------------------------------------------- 取门面
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def facade_packages(facade_path: Path) -> dict[str, str]:
     """门面仓 → {包名: upstream import 路径}。
 

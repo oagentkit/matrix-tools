@@ -62,6 +62,10 @@ from judge_report import Report, emit  # noqa: E402
 DEFAULT_MARKERS = ["已废弃", "不接受任何新功能", "deprecated", "no new features"]
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def _read_at(repo_dir: Path, sha: str, path: str) -> str | None:
     return facts_layer.git_show_file(repo_dir, sha, path)
 

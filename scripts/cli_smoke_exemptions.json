@@ -1,0 +1,104 @@
+{
+  "note": "入口冒烟的**显式豁免名单**：这些脚本**不**纳入 scripts/verify_cli_smoke.py 的入口冒烟。",
+  "why": [
+    "入口冒烟要**真跑一次**脚本的正常调用 ⇒ 有些脚本跑一次就对外产生副作用（建仓/发版/推分支/写绝对路径），有些脚本的完整执行**必须联网**（跑起来超时 ⇒ 拖 CI）。",
+    "⚠️ 豁免**必须显式且逐条有理由**（不许有「笼统豁免」）；",
+    "⚠️ 豁免**必须会过期**：每条带脚本内容的 sha256 ⇒ 脚本一改 ⇒ 豁免失效 ⇒ 门禁要求重审（否则「当初豁免的理由」会随着代码变化悄悄失真）。",
+    "⚠️ 每条豁免带 **reviewedAt**（人工重审日期）+ **contentSha256**（脚本内容哈希）⇒ 脚本一改 ⇒ 哈希不匹配 ⇒ 门禁要求**重新审**并留下重审痕迹（豁免不会悄悄随着代码变化而失真）。"
+  ],
+  "categories": {
+    "outward-side-effect": "会真的对外产生副作用（建仓 / 发版 / 推分支 / 写绝对路径）",
+    "needs-network": "完整执行必须联网（跑起来会超时 ⇒ 拖 CI，且不适合当入口冒烟）",
+    "no-normal-entry": "没有「正常调用」路径（只有 --selftest 入口）"
+  },
+  "exemptions": [
+    {
+      "script": "create_repos.py",
+      "category": "outward-side-effect",
+      "reason": "默认行为就是**真的建 GitHub 仓** ⇒ 跑一次就对外建出一堆仓 ⇒ 永不声明",
+      "contentSha256": "e9773a3b1e16c5d464b89f1f6c96c635c26e181c767318b3c1482d0a67ba5461",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "首次登记"
+    },
+    {
+      "script": "gen_docs.py",
+      "category": "outward-side-effect",
+      "reason": "--out-root 的默认值硬编码了个人绝对路径 ⇒ 在别人机器上会**真的写到那个路径** ⇒ 永不声明",
+      "contentSha256": "6bbcc02301757da6c09bafb1a9647fcc9159a9b342480ffcca57cafdc6889cfc",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "首次登记"
+    },
+    {
+      "script": "gh_push_branch.py",
+      "category": "outward-side-effect",
+      "reason": "会真的把分支推到远端（--push-mode 默认 auto ⇒ 先试 git push）⇒ 永不声明",
+      "contentSha256": "44e563e721c530a04a49c6616599cd71550f5a16d86688d090b946a57686688f",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "首次登记"
+    },
+    {
+      "script": "gh_sync_commit.py",
+      "category": "outward-side-effect",
+      "reason": "会真的往远端写 commit 对象、并改本地对象库 ⇒ 永不声明",
+      "contentSha256": "d39e472ab7887d597afd32c1cc92654fbd4062611a1eda55ed66ed4302eaf2d6",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "首次登记"
+    },
+    {
+      "script": "release.py",
+      "category": "outward-side-effect",
+      "reason": "会真的发版（打 tag / 建 Release）⇒ 永不声明",
+      "contentSha256": "e9d762205d554bfd57b062d66618f816a2f4b6cfcd39f82ad666ce5435103ef4",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "首次登记"
+    },
+    {
+      "script": "gen_versions.py",
+      "category": "needs-network",
+      "reason": "完整执行要读各仓远端状态 ⇒ 联网 ⇒ 冒烟会超时",
+      "contentSha256": "8481eab097e8f526c8cf0956bf7b469bc3cdd20de9163b95cdaae1d26bf55c14",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "改动只是删掉了 SMOKE_ARGS 声明 ⇒ 「完整执行要联网」的理由**仍成立** ⇒ 刷新哈希并留重审痕迹"
+    },
+    {
+      "script": "verify_dep_floors.py",
+      "category": "needs-network",
+      "reason": "同上（远端最新 tag + 本地克隆一起比）",
+      "contentSha256": "287d49427db8aecb5019f121213c9b5398b2a8a64c0909420b53b1561e1c88e3",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "同上"
+    },
+    {
+      "script": "verify_facade_release.py",
+      "category": "needs-network",
+      "reason": "同上",
+      "contentSha256": "fb9df0f632b4ded7621b7f88eaadba4826b9cc8c94889256ccff6a09e6dd1cdd",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "同上"
+    },
+    {
+      "script": "verify_versions_drift.py",
+      "category": "needs-network",
+      "reason": "同上",
+      "contentSha256": "78e329f715e88a5d20d3d97bac5de1f2a66dff690b8a467ebf73e4cbe625d68b",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "同上"
+    },
+    {
+      "script": "verify_debt_mitigation.py",
+      "category": "needs-network",
+      "reason": "必须给 --org（联网重算）——它明确写着「需要 --org（联网重算）」",
+      "contentSha256": "6976ee7a41ed9637a7df9ce499511548c36f22ccf4ccf1126cae1f3c45bb75c1",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "同上"
+    },
+    {
+      "script": "verify_latest_field.py",
+      "category": "needs-network",
+      "reason": "要读各仓远端最新 tag ⇒ 联网 ⇒ 冒烟会超时",
+      "contentSha256": "33a6f6f694864e6523f057f0c2ddaf1667e43949b678a51bae61364f56fe93d1",
+      "reviewedAt": "2026-11-01",
+      "reviewNote": "同上（新增豁免）"
+    }
+  ]
+}

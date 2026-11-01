@@ -65,6 +65,10 @@ REQ_LINE = re.compile(r"^(?P<path>[^\s]+/[^\s]+)\s+(?P<ver>v[^\s]+)")
 # ---------------------------------------------------------------- 事实
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def _semver_tuple(text: str) -> tuple | None:
     """版本号 → 比较用元组；不是 `vX.Y.Z` 返回 None。
 

@@ -44,6 +44,10 @@ from pathlib import Path
 SELFTEST_FLAG = "--selftest"
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def _string_constants(tree: ast.AST) -> set[str]:
     """模块级（或类级）`NAME = "字面量"` 里取值为 --selftest 的常量名。
 
@@ -123,7 +127,7 @@ def plan_for(scripts_dir: Path) -> list[tuple[Path, list[str]]]:
 #
 # 约定：脚本在**本模块**声明一组**无副作用**的「入口冒烟参数」：
 #
-#     SMOKE_ARGS = ["--root", "@tmpdir", "--api-report"]
+#     SMOKE_ARGS = []
 #
 # 运行器（scripts/verify_cli_smoke.py）会拿临时目录替换 `@tmpdir`，
 # 在**临时工作目录**里真跑一次 ⇒ 断言它**没有崩**（输出里无 Traceback /
@@ -144,6 +148,28 @@ SMOKE_TMPDIR_TOKEN = "@tmpdir"
 # @repo = **矩阵根**（各仓克隆的父目录 = 脚本目录的上上级）
 #         ⇒ 给「--root 指矩阵根」的只读脚本用（verify_inventory / verify_repo_tiers …）
 SMOKE_REPO_TOKEN = "@repo"
+# SMOKE_TIMEOUT = 60   # 可选：该脚本的冒烟超时（秒）——有些守卫本身要扫全仓，跑得久
+SMOKE_TIMEOUT_NAME = "SMOKE_TIMEOUT"
+
+
+def smoke_timeout(src: str, default: int) -> int:
+    """→ 该脚本声明的冒烟超时（秒）；没声明 ⇒ 用默认。
+
+    ⚠️ 为什么需要：有些守卫**本身**就要扫全仓（例如 verify_cli_args 要 AST 扫全部脚本）⇒
+    用全局短超时会把它们**误判成超时**（判不了）。
+    ⇒ 让脚本自己声明一个更宽的预算 ⇒ 全局阈值仍保持短（多数脚本很快）⇒ 不撞 job 超时线。
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return default
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            if isinstance(node.value.value, int) and not isinstance(node.value.value, bool):
+                for tg in node.targets:
+                    if isinstance(tg, ast.Name) and tg.id == SMOKE_TIMEOUT_NAME:
+                        return node.value.value
+    return default
 
 
 def smoke_args(src: str) -> list:

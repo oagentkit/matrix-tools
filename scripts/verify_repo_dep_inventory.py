@@ -130,6 +130,10 @@ NEGATION_RE = re.compile(r"不属于|不是|并非|不再是")
 MATRIX_PREFIX = "github.com/oagentkit/"
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 @dataclass
 class Claim:
     """文档里认出的一处「本仓依赖的矩阵内仓」清单。"""

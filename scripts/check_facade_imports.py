@@ -52,6 +52,10 @@ SKIP_DIRS = {".git", "node_modules", "vendor", "_tmp", ".worktrees",
              ".gomodcache", ".superpowers", ".cache", "dist", "site"}
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = ["--roots", "@repo"]
+
 def scan_file(p: Path, rel: str) -> list[tuple[str, int, str]]:
     try:
         text = p.read_text("utf-8", errors="ignore")
