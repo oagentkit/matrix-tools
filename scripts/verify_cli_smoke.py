@@ -96,7 +96,7 @@ def has_cli_entry(src: str) -> bool:
 def run_smoke(script: Path, args: list) -> tuple:
     """→ (判定, 细节)：判定 ∈ {ok, crash, env-missing, timeout}"""
     with tempfile.TemporaryDirectory() as td:
-        repo_root = str(HERE.parent)
+        repo_root = str(HERE.parent.parent)   # @repo = **矩阵根**（--root 的语义）
         real = [a.replace(SMOKE_TMPDIR_TOKEN, td).replace(SMOKE_REPO_TOKEN, repo_root)
                 for a in args]
         env = {**os.environ, "PYTHONPATH": str(HERE)}
@@ -248,7 +248,7 @@ def _selftest() -> int:
         # ④b2 @repo 必须被替换成**仓库根**（给「要读仓库文件、但只读」的脚本用）
         _v2, detail2 = run_smoke(echoer, ["--root", SMOKE_REPO_TOKEN])
         check("@repo 被替换成仓库根", SMOKE_REPO_TOKEN not in detail2, True)
-        check("@repo 替换后确实在仓库里", str(HERE.parent) in detail2, True)
+        check("@repo 替换后确实指向矩阵根", str(HERE.parent.parent) in detail2, True)
 
         # ④c 判定本体（judge）：每档都要能断言 ⇒ 否则「崩了不判红」这类变异不会被抓住
         check("有崩溃 ⇒ 判红", judge([("a", [])], [("a", "boom")], [], [], [])[0], "red")

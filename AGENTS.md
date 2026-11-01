@@ -134,7 +134,7 @@ python3 scripts/selftest_all.py
 
 ⇒ 写法：在脚本里声明一组**无副作用**、且能**走完入口**的参数：
 ```python
-SMOKE_ARGS = ["--root", "@repo"]     # @repo = 仓库根；@tmpdir = 临时目录
+SMOKE_ARGS = ["--root", "@repo"]     # @repo = **矩阵根**；@tmpdir = 临时目录
 ```
 ⚠️ 别用「反正是绝对路径写不到」的写法蒙混：`gen_docs.py` 的 `--out-root` 默认值
 硬编码了个人绝对路径 ⇒ 它在别人机器上会**真的写到那个路径** ⇒ 这种脚本不声明。
