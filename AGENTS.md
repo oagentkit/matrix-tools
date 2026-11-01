@@ -136,6 +136,20 @@ python3 scripts/selftest_all.py
 ```python
 SMOKE_ARGS = ["--root", "@repo"]     # @repo = **矩阵根**；@tmpdir = 临时目录
 ```
+⇒ **兜底机制**：确实跑不了的脚本进 **显式豁免清单**
+`scripts/cli_smoke_exemptions.json`，每条写清 **类别 + 理由 + 脚本内容的 sha256 + reviewedAt**：
+
+```json
+{"script": "create_repos.py", "category": "outward-side-effect",
+ "reason": "默认行为就是真的建 GitHub 仓 ⇒ 永不声明",
+ "contentSha256": "…", "reviewedAt": "2026-11-01"}
+```
+
+⚠️ **豁免必须显式且逐条有理由**（不许笼统豁免；缺 reason/category/reviewedAt ⇒ 判「不完整」）。
+⚠️ **豁免必须会过期**：脚本一改 ⇒ 哈希不匹配 ⇒ 门禁要求**重新审**并留下重审痕迹
+⇒ 否则「当初豁免的理由」会随代码变化悄悄失真。
+⚠️ **既没声明、又无有效豁免 ⇒ 欠账 ⇒ 判红**（这类脚本的 CLI 入口在 CI 里零覆盖 ⇒ 与 #170 同类）。
+
 ⚠️ 别用「反正是绝对路径写不到」的写法蒙混：`gen_docs.py` 的 `--out-root` 默认值
 硬编码了个人绝对路径 ⇒ 它在别人机器上会**真的写到那个路径** ⇒ 这种脚本不声明。
 
