@@ -877,7 +877,7 @@
       ],
       "oracle": "independent",
       "sharedWith": [],
-      "facts": "脚本自报的 SMOKE_ARGS（无副作用参数声明）+ 该脚本这次真实运行的输出",
+      "facts": "脚本自报的 SMOKE_ARGS（无副作用参数声明，支持 @tmpdir/@repo 占位符）+ 该脚本这次真实运行的输出",
       "ci": [
         {
           "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
@@ -890,7 +890,7 @@
         }
       ],
       "since": "2026-11-01",
-      "note": "实测形态（issue matrix-tools#170 / PR #171）：bump_dep_floors.py 的 main() 里写了 `if args.selftest:`，而 argparse 从没注册 --selftest ⇒ 每次正常调用都抛 AttributeError ⇒ schedule 的「Dep floor watch」巡检**每小时红**，而 CI 全绿（CI 只跑 --selftest，从不走 main()）。本守卫补上「动态」那一半（静态那一半是 verify_cli_args.py）。⚠️ **只跑显式声明了 SMOKE_ARGS 的脚本** —— 自动跑正常调用可能有副作用（写文件/开 issue/发 PR）⇒ 声明即承诺。⚠️ 三档判定：崩了=红；缺依赖/超时/没声明=**黄**（判不了 ≠ 没问题）；一个脚本都没纳入=**黄**（什么都没检查 ≠ 没问题）。⚠️ 判定**不看退出码**（业务失败也是非 0）⇒ 只看输出里的崩溃痕迹。",
+      "note": "实测形态（issue matrix-tools#170 / PR #171）：bump_dep_floors.py 的 main() 里写了 `if args.selftest:`，而 argparse 从没注册 --selftest ⇒ 每次正常调用都抛 AttributeError ⇒ schedule 的「Dep floor watch」巡检**每小时红**，而 CI 全绿（CI 只跑 --selftest，从不走 main()）。本守卫补上「动态」那一半（静态那一半是 verify_cli_args.py）。⚠️ **只跑显式声明了 SMOKE_ARGS 的脚本** —— 自动跑正常调用可能有副作用（写文件/开 issue/发 PR）⇒ 声明即承诺。⚠️ 判定已细化（2026-11-01 深度清理）：**只有 AttributeError 判红**（入口崩多半是「用了不存在的名字」）；FileNotFoundError 等**业务失败**、缺依赖、超时、argparse 早退（**没走到入口** ⇒ 不算覆盖）、没声明、一个都没纳入 ⇒ 一律**黄**（判不了 ≠ 没问题）。⚠️ 实测教训：把「有 Traceback」一律判红 ⇒ verify_repo_dep_inventory.py 在临时目录里找不到输入文件（业务失败）⇒ 被误判红 ⇒ 门禁变噪声。⚠️ **动态那半的覆盖面天然有限**：它要求脚本能**离线、无副作用地完整走完 main()**，而多数校验脚本的完整执行本质需要联网 ⇒ ⇒ **静态那半（verify_cli_args）才是主力**。⚠️ 并发跑（声明多了串行会撞 CI 超时线）+ 超时阈值 25s。⚠️ 判定**不看退出码**（业务失败也是非 0）⇒ 只看输出里的崩溃痕迹。",
       "kind": "gate"
     }
   ],

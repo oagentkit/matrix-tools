@@ -124,6 +124,10 @@ _IMPORT_RE = re.compile(r"^\s*(?:from\s+([A-Za-z_][\w]*)\s+import|import\s+([A-Z
                          re.M)
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = ["--root", "@repo"]
+
 def imported_modules(script: Path) -> set[str]:
     """脚本 import 的本地模块名（排除标准库）。
 

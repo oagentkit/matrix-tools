@@ -54,6 +54,10 @@ _LEVEL_ORDER = {RED: 0, YELLOW: 1, INFO: 2, GREEN: 3}
 _LEVEL_ICON = {RED: "❌", YELLOW: "⚠️ ", INFO: "ℹ️ ", GREEN: "✅"}
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 @dataclass
 class Finding:
     """一条判定结论。
