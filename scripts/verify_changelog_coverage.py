@@ -161,6 +161,10 @@ ENTRY_PREFIXES = ("### ", "- ")
 # 取数：原始 git 历史
 # --------------------------------------------------------------------------
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = ["--root", "@repo"]
+
 def git(repo_dir: Path, *args: str) -> str:
     r = subprocess.run(["git", "-C", str(repo_dir), *args],
                        capture_output=True, text=True)

@@ -109,6 +109,10 @@ DEFAULT_ORGS = ("github.com/oagentkit/", "github.com/oekit/")
 ROOT_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def parse_version(v: str) -> tuple | None:
     m = re.match(r"^v(\d+)\.(\d+)\.(\d+)(?:-(.+))?$", (v or "").strip())
     if not m:

@@ -53,6 +53,10 @@ URL_SPAN_RE = re.compile(r"https?://\S+")
 INFRA = {".github", "matrix-tools", "agentkit"}
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def load_valid(matrix: Path) -> tuple[set[str], set[str]]:
     """返回 (合法包引用集合, 仓库名集合)。"""
     data = json.loads(matrix.read_text(encoding="utf-8"))

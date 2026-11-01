@@ -62,7 +62,7 @@ SELF = Path(__file__).resolve().name
 sys.path.insert(0, str(HERE))
 
 from selftest_discovery import (SMOKE_REPO_TOKEN, SMOKE_TMPDIR_TOKEN,  # noqa: E402
-                               smoke_args)
+                               smoke_args, smoke_timeout)
 
 # ⚠️ **只有 AttributeError 判红**：入口崩了多半是「用了不存在的名字」
 #    （`args.selftest` 没注册 ⇒ AttributeError）—— 这正是本守卫要抓的形态。
@@ -75,7 +75,7 @@ ENV_MARKERS = ("ModuleNotFoundError", "ImportError", "No module named")
 BUSINESS_MARKERS = ("Traceback (most recent call last)",)
 # argparse 早退（缺必填参数）⇒ **main() 一行都没跑** ⇒ 这组声明等于没覆盖入口
 NO_ENTRY_MARKERS = ("usage:", "the following arguments are required", "unrecognized arguments")
-TIMEOUT_SECONDS = 25
+TIMEOUT_SECONDS = 15   # 44 个脚本并发跑 ⇒ 超时要短，否则撞 job 超时线
 
 
 def has_cli_entry(src: str) -> bool:
@@ -93,7 +93,7 @@ def has_cli_entry(src: str) -> bool:
     return False
 
 
-def run_smoke(script: Path, args: list) -> tuple:
+def run_smoke(script: Path, args: list, timeout: int = TIMEOUT_SECONDS) -> tuple:
     """→ (判定, 细节)：判定 ∈ {ok, crash, env-missing, timeout}"""
     with tempfile.TemporaryDirectory() as td:
         repo_root = str(HERE.parent.parent)   # @repo = **矩阵根**（--root 的语义）
@@ -103,17 +103,19 @@ def run_smoke(script: Path, args: list) -> tuple:
         try:
             proc = subprocess.run(
                 [sys.executable, str(script.resolve()), *real],
-                cwd=td, capture_output=True, text=True, timeout=TIMEOUT_SECONDS,
+                cwd=td, capture_output=True, text=True, timeout=timeout,
                 env=env)
         except subprocess.TimeoutExpired:
-            return "timeout", "跑超过 %ds" % TIMEOUT_SECONDS
+            return "timeout", "跑超过 %ds" % timeout
         out = (proc.stdout or "") + (proc.stderr or "")
         if any(m in out for m in CRASH_MARKERS):
             return "crash", out.strip()[-600:]
         if any(m in out for m in ENV_MARKERS):
             return "env-missing", out.strip()[-600:]
-        if any(m in out for m in NO_ENTRY_MARKERS):
-            # ⚠️ argparse 早退 ⇒ 没走到入口 ⇒ 这组声明**不覆盖入口**（不算数，也不判红）
+        # ⚠️ argparse 早退 ⇒ 没走到入口 ⇒ 这组声明**不覆盖入口**（不算数，也不判红）
+        # ⚠️ 判据必须用**退出码 2**（argparse 的早退码）⇒ 旧写法「输出含 usage:」会误判：
+        #    脚本**正常跑完**时输出里也可能提到 usage ⇒ 把它错判成 no-entry。
+        if proc.returncode == 2 and any(m in out for m in NO_ENTRY_MARKERS):
             return "no-entry", out.strip()[-300:]
         if any(m in out for m in BUSINESS_MARKERS):
             # 业务失败（脚本已进业务逻辑，只是输入不对）⇒ 判不了，不判红
@@ -121,8 +123,44 @@ def run_smoke(script: Path, args: list) -> tuple:
         return "ok", out.strip()[-300:]
 
 
+EXEMPT_FILE = HERE / "cli_smoke_exemptions.json"
+
+
+def load_exemptions() -> dict:
+    """读显式豁免清单（没有 ⇒ 空 dict ⇒ 全部脚本都算欠账）。"""
+    import json
+    if not EXEMPT_FILE.is_file():
+        return {}
+    try:
+        data = json.loads(EXEMPT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data.get("exemptions") or []
+
+
+def exemption_state(script: str, exemptions: list) -> tuple:
+    """→ (状态, 条目)：状态 ∈ valid / stale / duplicate / incomplete / absent"""
+    import hashlib
+    entry = next((e for e in exemptions if e.get("script") == script), None)
+    if entry is None:
+        return "absent", None
+    if not entry.get("reason") or not entry.get("category") or not entry.get("reviewedAt"):
+        # ⚠️ 豁免必须**显式且有理由**，还要有**重审痕迹**（reviewedAt）
+        #    ⇒ 脚本一改（哈希不匹配）时，重审会被强制留下日期
+        return "incomplete", entry
+    src = HERE / script
+    if not src.is_file():
+        return "incomplete", entry
+    want = entry.get("contentSha256")
+    got = hashlib.sha256(src.read_bytes()).hexdigest()
+    if want and want != got:
+        return "stale", entry
+    return "valid", entry
+
+
 def judge(declared: list, crash: list, env_missing: list,
-          timeout: list, missing: list, business: list = ()) -> tuple:
+          timeout: list, missing: list, business: list = (),
+          debt: list = (), stale_exempt: list = ()) -> tuple:
     """→ (结论, 退出码)：本守卫的**判定本体**（抽成纯函数才能被自测覆盖）。
 
     ⚠️ 为什么必须抽出来：判据写在 `main()` 里 ⇒ 自测只测底层函数 ⇒
@@ -137,6 +175,11 @@ def judge(declared: list, crash: list, env_missing: list,
     | 全部通过 | 绿 |
     """
     if crash:
+        return "red", 1
+    if debt:
+        # ⚠️ **欠账判红**：有 CLI 入口、没声明冒烟、又没有有效豁免
+        #    ⇒ 这个脚本的入口在 CI 里**零覆盖** ⇒ 与 #170 同类的失效可能溜过去。
+        #    ⇒ 「全都完成」＝ 欠账清零，此后门禁守住这个不变量。
         return "red", 1
     if not declared:
         return "yellow", 0
@@ -260,6 +303,37 @@ def _selftest() -> int:
         check("有脚本没声明 ⇒ 判黄", judge([("a", [])], [], [], [], ["b"])[0], "yellow")
         check("一切正常 ⇒ 绿", judge([("a", [])], [], [], [], [])[0], "green")
 
+        # ④d SMOKE_TIMEOUT：脚本可声明更宽的预算（有些守卫本身要扫全仓）
+        check("认 SMOKE_TIMEOUT",
+              smoke_timeout("SMOKE_TIMEOUT = 90\n", 15), 90)
+        check("没声明用默认", smoke_timeout("x = 1\n", 15), 15)
+
+        # ④e 豁免机制四档：valid / stale / incomplete / absent
+        import hashlib
+        probe = tmp / "probe.py"
+        probe.write_text("print('x')\n", encoding="utf-8")
+        h = hashlib.sha256(probe.read_bytes()).hexdigest()
+        good = [{"script": "probe.py", "category": "needs-network",
+                 "reason": "理由", "reviewedAt": "2026-11-01", "contentSha256": h}]
+        # exemption_state 读的是 HERE（scripts 目录）⇒ 用真实脚本名测
+        real = "verify_cli_args.py"
+        rh = hashlib.sha256((HERE / real).read_bytes()).hexdigest()
+        ex_ok = [{"script": real, "category": "needs-network", "reason": "理由",
+                  "reviewedAt": "2026-11-01", "contentSha256": rh}]
+        check("豁免有效", exemption_state(real, ex_ok)[0], "valid")
+        check("豁免过期（哈希变了）",
+              exemption_state(real, [{"script": real, "category": "c", "reason": "r",
+                                      "reviewedAt": "2026-11-01",
+                                      "contentSha256": "0" * 64}])[0], "stale")
+        check("豁免不完整（缺 reviewedAt）",
+              exemption_state(real, [{"script": real, "category": "c", "reason": "r",
+                                      "contentSha256": rh}])[0], "incomplete")
+        check("无豁免", exemption_state(real, [])[0], "absent")
+
+        # ④f 欠账 ⇒ 判红（这正是「全都完成」之后门禁要守住的东西）
+        check("欠账 ⇒ 判红", judge([("a", [])], [], [], [], [], [], ["b"])[0], "red")
+        check("欠账 ⇒ 退出码 1", judge([("a", [])], [], [], [], [], [], ["b"])[1], 1)
+
         # ⑤ CLI 入口识别
         check("认 CLI 入口", has_cli_entry("if __name__ == '__main__':\n    pass\n"), True)
         check("没有 CLI 入口", has_cli_entry("print(1)\n"), False)
@@ -271,7 +345,7 @@ def _selftest() -> int:
         for f in fails:
             print("  ✗ " + f)
         return 1
-    print("入口冒烟守卫自测：22 条断言全过")
+    print("入口冒烟守卫自测：34 条断言全过")
     return 0
 
 
@@ -283,10 +357,32 @@ def main() -> int:
         return _selftest()
 
     declared, missing = scan(HERE)
+    exemptions = load_exemptions()
+    declared_names = {p.name for p, _ in declared}
+    debt = []
+    stale_exempt = []
+    for p in missing:
+        state, _entry = exemption_state(p.name, exemptions)
+        if state == "valid":
+            continue                      # 有有效豁免 ⇒ 不算欠账
+        if state == "stale":
+            stale_exempt.append(p.name)   # 豁免过期 ⇒ 提示重审（黄）
+            continue
+        if state == "incomplete":
+            stale_exempt.append(p.name)
+            continue
+        debt.append(p.name)               # 既没声明又无有效豁免 ⇒ **欠账**
+    # 豁免与声明**重复**（二者只能选一）⇒ 提示
+    dup_exempt = [e.get("script") for e in exemptions
+                  if e.get("script") in declared_names]
     crash, env_missing, timeout, business, no_entry = [], [], [], [], []
     # ⚠️ 并发跑：声明的脚本一多，串行会让 CI 撞超时线
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(run_smoke, p, sargs): p.name for p, sargs in declared}
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        futures = {}
+        for p, sargs in declared:
+            src = p.read_text(encoding="utf-8", errors="ignore")
+            budget = smoke_timeout(src, TIMEOUT_SECONDS)
+            futures[ex.submit(run_smoke, p, sargs, budget)] = p.name
         for fut in as_completed(futures):
             name = futures[fut]
             verdict, detail = fut.result()
@@ -322,17 +418,25 @@ def main() -> int:
               % (len(no_entry), ", ".join(no_entry)))
         print("   ⇒ 请给一组能让它**完整走完 main()** 的参数（可离线、无副作用）；")
         print('      例：SMOKE_ARGS = ["--root", "@repo"]')
-    if missing:
-        print("⚠️ 入口冒烟：%d 个有 CLI 入口的脚本**还没声明** SMOKE_ARGS（判不了，不判红）："
-              % len(missing))
-        for p in missing[:12]:
-            print("     - %s" % p.name)
-        if len(missing) > 12:
-            print("     …（其余 %d 个略）" % (len(missing) - 12))
-        print("   ⇒ 要纳入冒烟，请在脚本里声明一组**无副作用**的参数：")
-        print('      SMOKE_ARGS = ["--root", "@tmpdir"]')
+    if debt:
+        print("❌ 入口冒烟：**%d 个脚本欠账**（有 CLI 入口、没声明冒烟、又没有有效豁免）"
+              % len(debt))
+        for n in debt:
+            print("   - %s" % n)
+        print("   ⇒ 这些脚本的 CLI 入口在 CI 里**零覆盖**（与 issue matrix-tools#170 同类）。")
+        print("   ⇒ 二选一：① 在脚本里声明一组**无副作用**的参数：")
+        print('        SMOKE_ARGS = ["--root", "@repo"]')
+        print("      ② 或写进 scripts/cli_smoke_exemptions.json（逐条带理由 + 内容哈希）。")
+    if stale_exempt:
+        print("⚠️ 入口冒烟：%d 条豁免**已过期或不完整**（脚本内容变了 ⇒ 当初的理由可能已失真）"
+              "：%s" % (len(stale_exempt), ", ".join(stale_exempt)))
+        print("   ⇒ 请重新审一遍并更新 scripts/cli_smoke_exemptions.json 里的 reason / contentSha256。")
+    if dup_exempt:
+        print("⚠️ 入口冒烟：%d 个脚本**既声明又豁免**（二者只能选一）：%s"
+              % (len(dup_exempt), ", ".join(dup_exempt)))
 
-    verdict, rc = judge(declared, crash, env_missing, timeout, missing, business)
+    verdict, rc = judge(declared, crash, env_missing, timeout, missing, business,
+                        debt, stale_exempt)
     if verdict == "yellow" and not declared:
         # ⚠️ 一个脚本都没纳入冒烟 ⇒ 本守卫**什么都没检查** ⇒ 判黄不判绿
         #    （纪律：判不了 ≠ 没问题；「没扫到任何东西」不等于「没问题」）

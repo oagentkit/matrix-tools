@@ -33,6 +33,10 @@ HERE = Path(__file__).resolve().parent
 FILES = ("README.md", "AGENTS.md")
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def generate_for(repos: list[str], gen_root: Path, gen_script: Path | None = None) -> None:
     """在 gen_root 里生成参照文档（gen_docs.py 的骨架）。
 

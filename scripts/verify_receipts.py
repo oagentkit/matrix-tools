@@ -261,6 +261,10 @@ GRACE_MINUTES_AUDIT = 60
 #   判定全在 judge_* 里，自测要掐的也是这几个函数。)
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = ["--fixture", "@repo/scripts/fixtures/receipts_llm29.json"]
+
 def _auto_closed_prs(issue: dict) -> list[int]:
     """该 issue 是被哪些 PR 自动关闭的（空 = 不是被 PR 自动关闭的）。"""
     out: list[int] = []

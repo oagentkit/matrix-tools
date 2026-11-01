@@ -79,6 +79,10 @@ REQUIRE_RE = re.compile(r"^([A-Za-z0-9][\w.\-]*(?:/[\w.\-/]+)+)\s+(v[0-9][\w.\-+
 # ---------------------------------------------------------------- 事实层
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def local_tags(repo_dir: Path) -> list[tuple[str, str]]:
     """本地克隆的 root tag → [(tag, 日期)]，按 semver 升序。
 

@@ -49,6 +49,10 @@ RELEASE_PY = HERE / "release.py"
 FAILS: list[str] = []
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def check(name: str, ok: bool, detail: str = "") -> None:
     if ok:
         print(f"  ✓ {name}")
