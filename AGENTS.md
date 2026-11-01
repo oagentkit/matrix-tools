@@ -99,6 +99,21 @@ scripts/             工具链（见下）
 python3 scripts/selftest_all.py
 ```
 
+#### CLI 入口路径也要被自测覆盖（2026-11-01 加）
+
+**只测 `--selftest` 不等于脚本活着。** 实测形态（`bump_dep_floors.py`）：
+`main()` 里写了 `if args.selftest:`，而 argparse **从没注册** `--selftest`
+⇒ 每次**正常调用**都抛 `AttributeError`
+⇒ schedule 的「Dep floor watch」巡检**每小时红**（从 PR #167 合入起），
+而 **CI 全绿** —— 因为 CI 只跑 `--selftest` 那条早期分支
+（`if "--selftest" in sys.argv`），**从不走 `main()`** ⇒ CI 对 CLI 入口**零覆盖**。
+
+⇒ **纪律**：带 CLI 的脚本，`--selftest` 里必须有一条断言，
+**真跑一次「正常调用」**（subprocess）并断言**输出里没有 Traceback / AttributeError**。
+⚠️ 判定**不能只看退出码**（业务失败也是 1）⇒ 看输出内容。
+⚠️ 用 `--help` 代替是**不够**的：argparse 打完帮助就退出 ⇒ 走不到 `main()` 里出问题的那些行。
+（`bump_dep_floors.py` 现在就有这条断言，变异「把 `if args.selftest:` 加回去」会转红。）
+
 它跑 `scripts/test_*.py` + 所有支持 `--selftest` 的守卫，任一失败则退出码非 0。
 
 > **CI 侧现在也用同一套机制**（2026-10-31 改）：CI 的 `selftest` job 先跑
