@@ -67,6 +67,10 @@ _QUOTED_RE = re.compile(r'"([^"]+)"')
 # ---------------------------------------------------------------- 数据源
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 @dataclass(frozen=True)
 class Matrix:
     """矩阵的机器可读定义（modules.json）。"""

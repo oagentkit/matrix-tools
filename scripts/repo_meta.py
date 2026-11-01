@@ -66,6 +66,10 @@ GRAPHQL_MAX_PAGES = 20
 REST_MAX_PAGES = 20
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def gh_api_status(path: str, retries: int = 3) -> tuple[str | None, str]:
     """调 `gh api <path>`；→ (正文, 状态)，状态 ∈ {ok, not_found, error}。
 

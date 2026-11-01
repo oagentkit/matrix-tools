@@ -104,6 +104,10 @@ BREAKING_IN_TITLE = re.compile(r"^breaking\b", re.IGNORECASE)
 OAGENT_PATH = re.compile(r"github\.com/oagentkit/([A-Za-z0-9_.\-/]+)")
 
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
+SMOKE_ARGS = []
+
 def _moved_packages(body: list[str]) -> dict[str, list[str]]:
     """同一个包 basename 出现在 ≥2 个不同模块前缀下 → 该包在模块之间搬家。
 

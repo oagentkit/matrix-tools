@@ -141,6 +141,9 @@ def plan_for(scripts_dir: Path) -> list[tuple[Path, list[str]]]:
 
 SMOKE_ARGS_NAME = "SMOKE_ARGS"
 SMOKE_TMPDIR_TOKEN = "@tmpdir"
+# @repo = **矩阵根**（各仓克隆的父目录 = 脚本目录的上上级）
+#         ⇒ 给「--root 指矩阵根」的只读脚本用（verify_inventory / verify_repo_tiers …）
+SMOKE_REPO_TOKEN = "@repo"
 
 
 def smoke_args(src: str) -> list:
