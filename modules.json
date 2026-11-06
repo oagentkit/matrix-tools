@@ -123,10 +123,13 @@
    "oekitAnalog": "k8s",
    "packages": [
     "worker",
-    "worker/pglease"
+    "worker/pglease",
+    "sqllease",
+    "sqlqueue"
    ],
    "heavyDeps": [
-    "github.com/lib/pq"
+    "github.com/lib/pq",
+    "modernc.org/sqlite"
    ],
    "ghDescription": "DB 即队列 + Postgres Lease 选主——任务表驱动的工作池与主备单活回调",
    "topics": [
@@ -139,8 +142,10 @@
    "agentNotes": "### 选主语义（正确性红线）\n\n- **`LeaseStore` 必须保证「同一时刻至多一个 leader」。** 条件 UPSERT 不能退化成「先查后写」——\n  那是竞态，不是选主。\n- 租约续期失败/进程失联后，其他实例**必须**能在租约过期后接管。\n- 租约丢失属必须上报事件，`OnStoppedLeading` 要真的执行清理，不得静默吞 error。\n\n### lib/pq 是测试依赖\n\n`github.com/lib/pq` 仅用于 `pglease` 的 DSN 门控集成测试驱动，\n**生产代码禁止 import**。仓内零生产依赖是刻意设计，不要引入。\n集成测试在未设 `postgres://…` DSN 时自动跳过。\n- **层位 t0 → t2**：带 `lib/pq` 驱动地板（PG 选主 Lease 的集成测试也要驱动）——属集成层，不是基础层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
    "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-queue\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- leader 变更、租约丢失属关键事件，kv 字段须带 lease 名与实例 id。",
    "pkgDesc": {
-    "worker": "任务表驱动的工作池（DB 即队列）+ `LeaseStore` 选主存储接口",
-    "worker/pglease": "`worker.LeaseStore` 的 PostgreSQL 实现（条件 UPSERT 一行即成）"
+    "worker": "任务表驱动的工作池（DB 即队列）+ `LeaseStore`/`TaskQueue` 存储接口与参考实现 re-export",
+    "worker/pglease": "`worker.LeaseStore` 的 PostgreSQL 实现（条件 UPSERT 一行即成）",
+    "sqllease": "`worker.LeaseStore` 的 database/sql 参考实现（PG/MySQL/SQLite 三方言）",
+    "sqlqueue": "`worker.TaskQueue` 的 database/sql 参考实现（三方言）"
    }
   },
   {
