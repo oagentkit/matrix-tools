@@ -132,7 +132,7 @@
       "repo": "runtime",
       "url": "https://github.com/oagentkit/runtime",
       "tier": 0,
-      "latest": "v0.9.0",
+      "latest": "v0.10.0",
       "packages": [
         {
           "pkg": "pacer",
@@ -3084,7 +3084,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.64",
+      "latest": "v1.8.65",
       "retiring": true,
       "breakingIndex": [
         {
@@ -4518,6 +4518,17 @@
               "dep": "github.com/oagentkit/queue",
               "from": "v0.8.0",
               "to": "v0.9.0"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.65",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.9.0",
+              "to": "v0.10.0"
             }
           ]
         }
