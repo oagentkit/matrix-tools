@@ -132,7 +132,7 @@
       "repo": "runtime",
       "url": "https://github.com/oagentkit/runtime",
       "tier": 0,
-      "latest": "v0.11.0",
+      "latest": "v0.12.0",
       "packages": [
         {
           "pkg": "pacer",
@@ -271,6 +271,22 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.35.2",
               "to": "v0.36.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.27.0",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.36.0",
+              "to": "v0.37.1"
             }
           ]
         }
@@ -3272,7 +3288,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.66",
+      "latest": "v1.8.67",
       "retiring": true,
       "breakingIndex": [
         {
@@ -4778,6 +4794,22 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.35.2",
               "to": "v0.37.1"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.67",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.5",
+              "to": "v0.8.6"
             }
           ]
         }
