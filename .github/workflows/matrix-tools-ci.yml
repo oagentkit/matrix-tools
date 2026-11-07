@@ -109,6 +109,11 @@ jobs:
         #    ⇒ 不会误跑出「写文件 / 开 issue / 发 PR」的副作用。
         run: python3 scripts/verify_cli_smoke.py
 
+      - name: loggingRule 交叉校验器自测
+        # modules.json 的日志规则 ↔ 代码的交叉校验（agentkit#139）：
+        # 全量扫描需要本地克隆矩阵（本地/巡检时跑），CI 这里钉住判定规则本体。
+        run: python3 scripts/verify_logging_rules.py --selftest
+
       - name: 破坏性变更抽取器自测
         # breakingIndex 的判定规则本体。判据错了整条门禁就是摆设：
         # 漏判 → 矩阵继续说「无破坏性变更」；误判 → 矩阵里塞满假条目。
