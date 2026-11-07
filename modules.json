@@ -55,7 +55,9 @@
     "progress",
     "procx",
     "hotplug",
-    "hookx"
+    "hookx",
+    "notifyx",
+    "notifyx/hook"
    ],
    "heavyDeps": [],
    "hardConstraint": "procx 不能并入 tools —— 它同时被 tier1 的 mcpkit/promptx 使用，并入会造成 tier1→tier2 分层倒挂",
@@ -74,7 +76,9 @@
     "progress": "泛型事件总线 `Bus[T]`（发布订阅 + 慢消费者丢弃计数）",
     "procx": "子进程最小环境构造 `ChildEnv` + 执行封装，供 spawn 外部进程的包共用",
     "hotplug": "运行时插拔与原子热替换：`Plugboard` 启停视图 + `Holder[T]` 快照持有点",
-    "hookx": "外部 hook 拦截协议：在关键拦截点派生子进程，stdin 喂 JSON"
+    "hookx": "外部 hook 拦截协议：在关键拦截点派生子进程，stdin 喂 JSON",
+    "notifyx": "生命周期事件通知出口（notify sink）：归一化事件契约可靠外发（webhook/HTTP），Emit 永不阻塞主流程，丢弃计数 + OnDrop 可观测",
+    "notifyx/hook": "挂点侧官方 shim：平台 shell 协议载荷归一化为 notifyx.Payload，映射表/ack 轮询/跨进程节流单源，cmd/notifyx-hook 供 hooks 一行接入"
    }
   },
   {
