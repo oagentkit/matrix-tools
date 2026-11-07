@@ -297,7 +297,7 @@
     "milvus"
    ],
    "agentNotes": "- **单路召回失败不得降级为 `(nil, nil)`。** 混合召回中任一路 panic 或失败\n  要作为该路失败参与裁决；全部路失败时**返回 panic 错误而非静默空结果**。\n- 向量后端可插拔，新增后端不得改 `Embedding`/`Retriever` 接口形状 —— 那会让所有后端同时 breaking。\n- **层位 t1 → t2**：带 `eino` + `milvus-sdk` 地板（向量化/混合召回本身绑 SDK）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-rag\")`。\n  - 索引/检索路径不得把原始文档内容整段落日志。",
    "pkgDesc": {
     "knowledge/rag": "知识检索：Embedding 接口、向量后端可插拔、混合召回与重排"
    }
