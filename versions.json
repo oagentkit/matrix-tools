@@ -296,7 +296,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.20.0",
+      "latest": "v0.23.0",
       "packages": [
         {
           "pkg": "fence",
@@ -472,6 +472,17 @@
               "to": "v0.36.0"
             }
           ]
+        },
+        {
+          "version": "v0.21.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.36.0",
+              "to": "v0.37.1"
+            }
+          ]
         }
       ]
     },
@@ -479,7 +490,7 @@
       "repo": "queue",
       "url": "https://github.com/oagentkit/queue",
       "tier": 2,
-      "latest": "v0.9.0",
+      "latest": "v0.10.0",
       "packages": [
         {
           "pkg": "worker",
@@ -663,6 +674,22 @@
               "dep": "github.com/oekit/logx",
               "from": "v0.8.3",
               "to": "v0.8.4"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.27.0",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.4",
+              "to": "v0.8.6"
             }
           ]
         }
@@ -1555,7 +1582,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.10.0",
+      "latest": "v0.11.0",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -1784,6 +1811,22 @@
               "to": "v0.37.0"
             }
           ]
+        },
+        {
+          "version": "v0.11.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.5",
+              "to": "v0.8.6"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.37.0",
+              "to": "v0.37.1"
+            }
+          ]
         }
       ]
     },
@@ -1791,7 +1834,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.21.0",
+      "latest": "v0.21.1",
       "packages": [
         {
           "pkg": "llm",
@@ -2125,6 +2168,22 @@
               "to": "v0.37.0"
             }
           ]
+        },
+        {
+          "version": "v0.21.1",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.5",
+              "to": "v0.8.6"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.37.0",
+              "to": "v0.37.1"
+            }
+          ]
         }
       ]
     },
@@ -2132,7 +2191,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.14.0",
+      "latest": "v0.15.0",
       "packages": [
         {
           "pkg": "toolprior",
@@ -2161,6 +2220,13 @@
         }
       ],
       "breakingIndex": [
+        {
+          "version": "v0.15.0",
+          "date": "2026-11-07",
+          "title": "新增(invoke)：补搬迁兼容壳——Deprecated 转发 guardx/invoke,旧 import 路径恢复编译（agent#68）",
+          "summary": "包在模块之间搬家：invoke → guardx/toolgate",
+          "detail": "toolgate v0.12.6 起 invoke 子包整体搬至 guardx/invoke,旧 import 路径直接断裂\n且零转发(oagentkit/agent#68)。本壳逐符号别名转发 guardx/invoke 全部导出符号\n(12 type 别名 + 4 哨兵 var + 4 函数),只转发不改语义——含 guardx v0.20.0 起\nRecord.Allowed「到达执行体即置位,与执行成败无关」语义(guardx#73),不做任何\n兼容性改写。guardx 本就是本仓矩阵内依赖(v0.20.0),零架构成本。\n搬迁公告(本仓 CHANGELOG 由生成器生成不可手改,三行固定格式记于 invoke/doc.go\n并随本 commit body 收录):\nMovedFrom: github.com/oagentkit/toolgate/invoke\nMovedTo: github.com/oagentkit/guardx/invoke\n兼容期截止版本: v0.16.0(壳随 v0.15.0 提供,保一个完整 minor)\n验证:gofmt -l . 空、go vet ./...、go build ./...、go test ./... 全绿;\n新增 invoke/compat_test.go 以旧 import 路径消费代表性符号并断言与上游同实体。\n未触碰 CHANGELOG.md / go.mod / AGENTS.md / matrix-tools,未打 tag。\nRefs oagentkit/agent#68\n\n- 杂务(deps)：依赖地板追到最新——github.com/oagentkit/guardx v0.21.0\n\n| 依赖 | 现地板 | 抬到 |\n|---|---|---|\n| `github.com/oagentkit/guardx` | `v0.20.0` | `v0.21.0` |\n## 为什么\n矩阵的**发版时刻地板时效**门禁（`verify_tag_floor --ref HEAD`）要求：各仓 HEAD\n（= 下次发版会发出去的内容）的依赖地板，相对那一刻的依赖最新版本，不能已落后。\noekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落后一格就会判红。\n## 兼容性实测\n本工具在提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）\n与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。\n只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。\nCo-authored-by: Murphy-Yi <zhangyi@Murphy-YideMac-Mini.local>\n\n- 杂务(deps)：依赖地板追到最新——github.com/oagentkit/runtime v0.12.0\n\n| 依赖 | 现地板 | 抬到 |\n|---|---|---|\n| `github.com/oagentkit/runtime` | `v0.11.0` | `v0.12.0` |\n## 为什么\n矩阵的**发版时刻地板时效**门禁（`verify_tag_floor --ref HEAD`）要求：各仓 HEAD\n（= 下次发版会发出去的内容）的依赖地板，相对那一刻的依赖最新版本，不能已落后。\noekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落后一格就会判红。\n## 兼容性实测\n本工具在提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）\n与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。\n只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。\nCo-authored-by: Murphy-Yi <zhangyi@Murphy-YideMac-Mini.local>"
+        },
         {
           "version": "v0.12.0",
           "date": "2026-10-19",
@@ -2461,6 +2527,22 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.35.0",
               "to": "v0.37.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.15.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.20.0",
+              "to": "v0.21.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
             }
           ]
         }
@@ -2893,7 +2975,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.14.0",
+      "latest": "v0.14.1",
       "packages": [
         {
           "pkg": "agentrun",
@@ -3280,6 +3362,32 @@
               "to": "v0.35.2"
             }
           ]
+        },
+        {
+          "version": "v0.14.1",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.20.0",
+              "to": "v0.21.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.27.0",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.4",
+              "to": "v0.8.6"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.35.2",
+              "to": "v0.37.1"
+            }
+          ]
         }
       ]
     }
@@ -3288,7 +3396,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.67",
+      "latest": "v1.8.68",
       "retiring": true,
       "breakingIndex": [
         {
@@ -4810,6 +4918,42 @@
               "dep": "github.com/oekit/logx",
               "from": "v0.8.5",
               "to": "v0.8.6"
+            }
+          ]
+        },
+        {
+          "version": "v1.8.68",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.14.0",
+              "to": "v0.14.1"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.20.0",
+              "to": "v0.23.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.21.0",
+              "to": "v0.21.1"
+            },
+            {
+              "dep": "github.com/oagentkit/queue",
+              "from": "v0.9.0",
+              "to": "v0.10.0"
+            },
+            {
+              "dep": "github.com/oagentkit/rag",
+              "from": "v0.10.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.14.0",
+              "to": "v0.15.0"
             }
           ]
         }
