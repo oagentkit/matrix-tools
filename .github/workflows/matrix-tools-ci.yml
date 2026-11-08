@@ -592,6 +592,12 @@ jobs:
       - name: 第一方依赖方向（tier 方向 / 依赖声明对账 / 矩阵内不消费门面）
         run: python3 matrix-tools/scripts/verify_import_direction.py --root .
 
+      - name: loggingRule ↔ 代码交叉校验（真判定；guards job 只跑 --selftest 钉判定规则本体）
+        # modules.json 的日志规则不是装饰性文案（agentkit#139）：声明「不引入日志依赖」
+        # 的仓出现 logx import、组件名不带 oagentkit- 前缀 ⇒ 下游按规则做的日志
+        # 过滤/路由失配。需要各仓源码 ⇒ 挂在本 job（克隆一次多守卫共用）。
+        run: python3 matrix-tools/scripts/verify_logging_rules.py --root .
+
       - name: 门面不得新增包（规则级）
         # 判据取自门面自己的 README 废弃声明 + git 历史，**不依赖**冻结快照。
         #

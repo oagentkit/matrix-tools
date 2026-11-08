@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -52,7 +53,12 @@ DEFAULT_VERSIONS = HERE.parent / "versions.json"
 SMOKE_ARGS = []
 
 def local_repo_facts(root: str, repo: str) -> dict | None:
-    """本地取某仓的事实：module 路径 / 包目录 / 嵌套 module 路径。取不到返回 None。"""
+    """本地取某仓的事实：module 路径 / 包目录 / 嵌套 module 路径。取不到返回 None。
+
+    pkg_dirs 收集**全相对路径**（如 `notifyx`、`notifyx/hook`）——合法嵌套包
+    （runtime/notifyx/hook，import 路径 github.com/oagentkit/runtime/notifyx/hook）
+    用「末段=顶层目录」的 leaf 规则会误报「登记了但仓里没有」。
+    """
     base = Path(root) / repo
     if not base.is_dir():
         return None
@@ -61,19 +67,15 @@ def local_repo_facts(root: str, repo: str) -> dict | None:
         gomod.read_text(encoding="utf-8")) if gomod.is_file() else None
     pkg_dirs = set()
     nested = {}
-    # 仓根本身就可能是一个包（包名末段 == 仓名时包落 module 根：llm / rag）。
-    # 只扫子目录会把它们误报成「登记了但仓里没有」。
-    if any(f.suffix == ".go" and f.is_file() for f in base.iterdir() if f.is_file()):
-        pkg_dirs.add(repo)
-    for d in sorted(base.iterdir()):
-        if not d.is_dir() or d.name.startswith((".", "_")):
-            continue
-        if any(f.suffix == ".go" and f.is_file() for f in d.iterdir()):
-            pkg_dirs.add(d.name)
-        sub = d / "go.mod"
-        if sub.is_file():
-            nested[d.name] = repo_meta.module_path_from_gomod(
-                sub.read_text(encoding="utf-8"))
+    for cur, _dirs, files in os.walk(base):
+        _dirs[:] = [d for d in _dirs if not d.startswith((".", "_"))]
+        rel = os.path.relpath(cur, base)
+        if any(f.endswith(".go") for f in files):
+            pkg_dirs.add(repo if rel == "." else rel)
+        gomod_sub = Path(cur) / "go.mod"
+        if gomod_sub.is_file() and rel != ".":
+            nested[rel] = repo_meta.module_path_from_gomod(
+                gomod_sub.read_text(encoding="utf-8"))
     return {"module_path": module_path, "pkg_dirs": pkg_dirs, "nested": nested}
 
 
@@ -84,8 +86,12 @@ def remote_repo_facts(org: str, repo: str) -> dict | None:
     if gomod is None or paths is None:
         return None
     module_path = repo_meta.module_path_from_gomod(gomod)
-    # package_dirs 把仓根记成 "."，这里换回仓名（包名末段 == 仓名时包落 module 根）
+    # package_dirs 把仓根记成 "."，这里换回仓名（包名末段 == 仓名时包落 module 根）；
+    # 再补 .go 文件的**全目录相对路径**（合法嵌套包登记形态，见 local_repo_facts）。
     pkg_dirs = {repo if d == "." else d for d in repo_meta.package_dirs(paths)}
+    for p in paths:
+        if p.endswith(".go") and "/" in p:
+            pkg_dirs.add(p.rsplit("/", 1)[0])
     nested = {}
     for p in paths:
         parts = p.split("/")
@@ -116,7 +122,9 @@ def check_repo(org: str, repo: str, packages: list[dict], facts: dict,
                             f"按规则应是 {expected}")
         # 仓里的目录名 = 包路径的**末段**（modules.json 记的是旧单仓里的路径，
         # 中间层目录在拆分时被丢掉了——规则见 matrix_paths.leaf）
-        if leaf(pkg) not in facts["pkg_dirs"]:
+        # 双形态匹配：合法嵌套包按**整段相对路径**在仓里（notifyx/hook），
+        # 拆分形态按 leaf（旧单仓 knowledge/rag → 新仓顶层 rag）。
+        if pkg not in facts["pkg_dirs"] and leaf(pkg) not in facts["pkg_dirs"]:
             problems.append(f"{repo}/{pkg}: 矩阵登记了这个包，仓里却没有对应的 .go 目录")
         # 由嵌套 module 提供的包：路径必须落在那个 module 上
         # （嵌套 module 路径与它自己 go.mod 是否一致，在下面的 nested 循环里统一查，
