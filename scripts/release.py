@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -118,6 +119,63 @@ def repo_state(repo: Path) -> tuple[bool, str]:
     return (not dirty), branch
 
 
+_MAIN_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
+
+
+def ensure_local_tags_fresh(repo_dir: Path, rep: Report) -> bool:
+    """prewrite / tag 入口的**本地 tag 新鲜度**校验（matrix-tools#193）。
+
+    实例：发 tools v0.14.1 时本地缺 v0.14.0（上游刚发、本地未 fetch），
+    `gen_changelogs.render` 的段范围推导以**本地** tag 为唯一事实源，
+    推导退化成 v0.13.4..HEAD ⇒ 把 v0.14.0 的条目折叠进 v0.14.1 段
+    渲染合入（tools PR #97），main CHANGELOG 与 v0.14.0 tag 快照分叉。
+
+    修法固化为前置条件：
+      1. `git fetch --tags --force origin`（只刷 refs，不动工作区）；
+      2. 断言「本地最高 tag ≥ 远端最高 tag」（ls-remote 对照）；
+         远端读不到 ⇒ 判不了 ⇒ 一律红（硬规则 3：判不了 ≠ 没问题）。
+    不满足即拒绝执行并给出修法命令。
+    """
+    fetch = run(["git", "-C", str(repo_dir), "fetch", "--tags", "--force", "origin"],
+                check=False)
+    if fetch.returncode != 0:
+        rep.red(repo_dir.name, f"git fetch --tags 失败：{fetch.stderr.strip()[:200]}",
+                "网络问题先解决；本地 tag 集未经远端对照，段范围推导不可信")
+        return False
+
+    remote = run(["git", "-C", str(repo_dir), "ls-remote", "--tags", "--refs", "origin"],
+                 check=False)
+    remote_tags = []
+    for line in remote.stdout.splitlines():
+        ref = line.split("refs/tags/")[-1].strip()
+        if ref.startswith("refs/tags/") or "^{}" in ref:
+            continue
+        if _MAIN_TAG_RE.match(ref):
+            remote_tags.append(ref)
+    if remote.returncode != 0 or not remote_tags:
+        rep.red(repo_dir.name, "取不到远端 tag 清单（判不了）",
+                "ls-remote 失败或远端无 tag——判不了 ≠ 没问题，先修取数再发版")
+        return False
+
+    local_tags = gen_changelogs.tags_in_order(repo_dir)   # 降序、主模块形态
+    remote_max = max(remote_tags, key=gen_changelogs.semver_key)
+    if not local_tags:
+        rep.red(repo_dir.name, "本地没有任何版本 tag（浅克隆？）",
+                "浅克隆请完整克隆；或 git fetch --tags --force origin 后重跑")
+        return False
+    if gen_changelogs.semver_key(local_tags[0]) < gen_changelogs.semver_key(remote_max):
+        rep.red(repo_dir.name,
+                f"本地最高 tag {local_tags[0]} 落后于远端最高 tag {remote_max}——"
+                "本地缺已发版 tag 时，段范围推导会把上一版条目折叠进新段"
+                "（tools v0.14.0 段折叠实例）",
+                f"git -C {repo_dir} fetch --tags --force origin 后重跑；"
+                "本命令刚执行过 fetch 仍落后 ⇒ 上游 tag 在本仓 fetch 之后才出现，"
+                "请重跑本命令确认")
+        return False
+    rep.info(repo_dir.name, f"本地 tag 集与远端一致（最高 {local_tags[0]}）")
+    return True
+
+
 # ---------------------------------------------------------------- prewrite
 
 
@@ -135,6 +193,11 @@ def cmd_prewrite(args) -> int:
     if not clean:
         rep.red(args.repo, "工作区不干净，拒绝执行",
                 "先提交或 stash 掉现有改动——发版动作不该混入别人的成果")
+        return emit(rep)
+
+    # 本地 tag 新鲜度（matrix-tools#193）：段范围推导以本地 tag 为事实源，
+    # 缺已发版 tag 会把上一版条目折叠进新段。
+    if not ensure_local_tags_fresh(repo_dir, rep):
         return emit(rep)
 
     # 目标版本必须高于当前最高 tag
@@ -303,6 +366,11 @@ def cmd_tag(args) -> int:
     if branch != "main":
         rep.red(args.repo, f"当前分支是 {branch}，不是 main",
                 "tag 必须打在合并后的 main 上（预写段提交被 squash 后会改写 subject）")
+        return emit(rep)
+
+    # 本地 tag 新鲜度（matrix-tools#193）：tag 时刻的「快照自洽」重生成
+    # 同样以本地 tag 为事实源，盲区与 prewrite 相同。
+    if not ensure_local_tags_fresh(repo_dir, rep):
         return emit(rep)
 
     # tag 不能已存在
@@ -533,6 +601,27 @@ def cmd_doctor(args) -> int:
 
     clean, branch = repo_state(repo_dir)
     rep.info(args.repo, f"分支 {branch}，工作区{'干净' if clean else '不干净'}")
+
+    # 本地 tag 新鲜度 + main 侧 CHANGELOG 连续性（matrix-tools#193）
+    ensure_local_tags_fresh(repo_dir, rep)
+
+    # main 侧连续性：每个已发版 tag 在 main CHANGELOG 里必须有本版段。
+    # #234 的 tag_reachability 守「tag 快照缺本版段」（tag 侧盲区），
+    # 这里补镜像面。判定交给既有独立 oracle（verify_changelog_coverage，
+    # 子进程调用，判定不共享），--repo 裁到本仓。
+    cov = HERE / "verify_changelog_coverage.py"
+    if cov.is_file():
+        p = run([sys.executable, str(cov), "--root", str(root), "--repo", args.repo],
+                check=False)
+        if p.returncode != 0:
+            errs = [ln.strip() for ln in p.stdout.splitlines()
+                    if "❌" in ln or "   ❌" in ln]
+            hint = ("详单：\n" + "\n".join(errs[:10])) if errs else \
+                f"先跑：python3 scripts/verify_changelog_coverage.py --root {root}"
+            rep.red(args.repo, "main CHANGELOG 连续性检查未过（已发版 tag 缺版本段/条目）",
+                    hint)
+        else:
+            rep.info(args.repo, "main CHANGELOG 连续性：已发版 tag 全部有版本段")
 
     tags = gen_changelogs.tags_in_order(repo_dir)
     if tags:

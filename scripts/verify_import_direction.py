@@ -141,8 +141,14 @@ def judge(root: Path, matrix: facts_layer.Matrix, prefer_go_list: bool = True) -
     for repo in matrix.repos:
         facts = facts_layer.read_local_repo(root, repo, org=org, prefer_go_list=prefer_go_list)
         if facts is None:
-            report.yellow(repo, "本地找不到该仓，跳过判定",
-                          "在矩阵根目录下运行，或用 --matrix 指定数据源")
+            # 「仓缺失」是判不了，不是软警告（matrix-tools#197）：这条守卫守的是
+            # 层级不变量，缺一个仓 = 那个仓的 tier 方向/声明对账全部没核过。
+            # 黄灯 + Report.exit_code() 的「仅黄 ⇒ 0」口径 ⇒ 只要克隆少一个仓，
+            # 四个不变量就静默失守而 CI 全绿。同族守卫
+            # （verify_repo_tiers / verify_repo_dep_claims 等）对「判不了」
+            # 一律 fail closed，本守卫此前是唯一漏网的。
+            report.red(repo, "本地找不到该仓，该仓的层级判定整体未执行",
+                       "在矩阵根目录下运行（各仓为其直接子目录），或用 --matrix 指定数据源")
             continue
         if facts.import_source != "go_list":
             report.yellow(
@@ -326,12 +332,23 @@ def selftest() -> int:
         rep2 = judge(root, matrix2, prefer_go_list=False)
         check("修好后转绿", rep2.has_red(), False)
 
+        # 仓缺失必须判红（matrix-tools#197）：删掉一个仓的目录，
+        # 「本地找不到」此前只记黄灯 ⇒ 仅黄退出码 0 ⇒ CI 静默失守。
+        import shutil
+        shutil.rmtree(root / "stale")
+        rep_missing = judge(root, matrix2, prefer_go_list=False)
+        check("仓缺失判红（不再是黄灯降级）",
+              any(f.subject == "stale" and "找不到" in f.message
+                  for f in rep_missing.reds), True)
+        check("修好后转绿", rep2.has_red(), False)
+
     if fails:
         print("❌ verify_import_direction 自测失败：")
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ verify_import_direction 自测通过（tier 倒挂/未声明/陈旧/门面 四类检出 + 不误报）")
+    print("✅ verify_import_direction 自测通过"
+          "（tier 倒挂/未声明/陈旧/门面 四类检出 + 仓缺失判红 + 不误报）")
     return 0
 
 

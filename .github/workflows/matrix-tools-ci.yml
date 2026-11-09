@@ -589,8 +589,27 @@ jobs:
           # 门面仓不在 modules 里（它不是矩阵模块，是兼容层），单独克隆
           git clone -q --depth 1 "https://github.com/oagentkit/agentkit.git" agentkit
 
+      - name: go.mod 依赖预热（go list 需要可解析的依赖，不预热 ⇒ 取数降级 ⇒ 层级门禁静默失守）
+        # matrix-tools#197 复现 3：本 job 只做 depth-1 克隆、不跑 go mod download，
+        # go list 因依赖未预热失败是**常态路径**而非理论可能。
+        # 预热后 go list 失败才是真异常；配合下方 --fail-on-yellow 双保险。
+        run: |
+          set -euo pipefail
+          while IFS= read -r repo; do
+            [ -f "${repo}/go.mod" ] || continue
+            (cd "${repo}" && go mod download >/dev/null 2>&1) || \
+              echo "::warning::${repo}: go mod download 失败（go list 将降级，verify_import_direction 会判黄转红）"
+          done < <(ls -d */ | tr -d '/')
       - name: 第一方依赖方向（tier 方向 / 依赖声明对账 / 矩阵内不消费门面）
-        run: python3 matrix-tools/scripts/verify_import_direction.py --root .
+        # --fail-on-yellow：与同族守卫（verify_repo_tiers / verify_repo_dep_claims /
+        # verify_repo_dep_inventory / verify_facade_no_new_packages）口径对齐——
+        # 「判不了」（仓缺失 / go list 失败降级）必须判失败（matrix-tools#197）。
+        run: python3 matrix-tools/scripts/verify_import_direction.py --root . --fail-on-yellow
+
+      - name: 门面退役条件（retireWhen 机器可答——期限已过 / 改期内矩阵内消费 判红）
+        # matrix-tools#196：退役承诺此前永远判不了（「按 README 写死的期限」
+        # 但 README 从未写死期限）。判定口径见 modules.json 的 agentkit.retireWhen。
+        run: python3 matrix-tools/scripts/verify_facade_retirement.py --root . --fail-on-yellow
 
       - name: loggingRule ↔ 代码交叉校验（真判定；guards job 只跑 --selftest 钉判定规则本体）
         # modules.json 的日志规则不是装饰性文案（agentkit#139）：声明「不引入日志依赖」

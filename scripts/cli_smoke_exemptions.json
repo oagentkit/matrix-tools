@@ -48,9 +48,9 @@
       "script": "release.py",
       "category": "outward-side-effect",
       "reason": "会真的发版（打 tag / 建 Release）⇒ 永不声明",
-      "contentSha256": "e9d762205d554bfd57b062d66618f816a2f4b6cfcd39f82ad666ce5435103ef4",
-      "reviewedAt": "2026-11-01",
-      "reviewNote": "首次登记"
+      "contentSha256": "98949d3cbe5e8568356d7c5ec86f528b9dddde6cfc4145da259a6cd4a8a80d03",
+      "reviewedAt": "2026-11-10",
+      "reviewNote": "重审：#193 改动（加本地 tag 新鲜度门 + doctor 连续性）不引入冒烟可跑面——仍会真发版 ⇒ 理由仍成立，刷新哈希"
     },
     {
       "script": "gen_versions.py",
@@ -64,9 +64,9 @@
       "script": "verify_dep_floors.py",
       "category": "needs-network",
       "reason": "同上（远端最新 tag + 本地克隆一起比）",
-      "contentSha256": "287d49427db8aecb5019f121213c9b5398b2a8a64c0909420b53b1561e1c88e3",
-      "reviewedAt": "2026-11-01",
-      "reviewNote": "同上"
+      "contentSha256": "3020d229ceee29a0237937eb24a2b21774eac98cbb2666b2ed83b6d530ffbe2c",
+      "reviewedAt": "2026-11-10",
+      "reviewNote": "重审：#194 改动（enforce 退出码 2 / tag 缓存 / 自测变异体）不改变「完整执行要联网」⇒ 理由仍成立，刷新哈希"
     },
     {
       "script": "verify_facade_release.py",

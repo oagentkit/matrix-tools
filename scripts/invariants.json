@@ -916,6 +916,30 @@
       "since": "2026-11-06",
       "note": "背景（agentkit#139 实测）：rag 条目的 loggingRule 从 tier0 模板复制未改（声明「不引入日志依赖」）而 rag/local.go 里就有 logx.Delegating——规则与代码各说各话无人发现；queue/llm 等仓代码里残留旧 org 名组件（agentkit-leader/agentkit-worker）会让下游按规则做的日志过滤/路由失配。真判定（--root 全量扫描，需要各仓源码）挂在 matrix-local-guards（克隆一次多守卫共用）；guards job 的 --selftest 只钉判定规则本体。曾漏登记进本表（2026-11-08 inventory 核对红后补登记）。",
       "kind": "gate"
+    },
+    {
+      "id": "facade-retirement-decidable",
+      "claim": "门面退役条件可判定且机器可答：modules.json 的 agentkit.retireWhen 必须存在；条件满足（矩阵内零引用 / notAfter 期限已过）即判红「该退役了」，不满足则门面继续发版合法",
+      "judges": [
+        "verify_facade_retirement.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "modules.json 的 agentkit.retireWhen 字段 + 矩阵各仓源码里的门面/旧单仓 import 扫描（本守卫自扫，不 import check_facade_imports 的判定）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-11-10",
+      "kind": "gate",
+      "note": "matrix-tools#196：原「按 README 写死的期限退役」中 README 从未写死期限 ⇒ 退役承诺永远判不了。机器化后唯一 org 可判条件 = 矩阵内引用计数；外部下游引用超出 CI 视野，由 notAfter 显式期限兜底"
     }
   ],
   "retired": [

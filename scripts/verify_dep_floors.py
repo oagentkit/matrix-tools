@@ -27,13 +27,16 @@ go.mod，**没有回头抬本仓的 require**。后果不是编译失败，而�
 
 用法:
     verify_dep_floors.py                      # 报告全部模块的漂移（恒 exit 0）
-    verify_dep_floors.py --enforce            # 有漂移则 exit 1（发版前自检）
+    verify_dep_floors.py --enforce            # 发版前自检：漂移 exit 1，判不了 exit 2
     verify_dep_floors.py --repo agent         # 只看一个仓
     verify_dep_floors.py --ref v0.9.0         # 查某个已发布 tag 的地板，而不是 main
     verify_dep_floors.py --json               # 机器可读输出
     verify_dep_floors.py --selftest           # 离线自测，不联网
 
-退出码: 0 = 无漂移 / 报告模式恒 0 / selftest 通过；1 = 有漂移（--enforce）或自测失败。
+退出码（--enforce）: 0 = 全部核过且无漂移；1 = 有落后；2 = 存在判不了（取不到 tag /
+非 semver / 取不到 go.mod）——**判不了 ≠ 通过**（matrix-tools#194）：网络坏恰好是最
+需要自检的时候，此时不许放行，也不许打「✅ 无地板漂移」。报告模式恒 0。
+selftest 退出码：0 通过 / 1 失败。
 需要 gh 已认证（GH_TOKEN 或已登录的 gh）。
 """
 
@@ -57,6 +60,10 @@ import repo_meta  # noqa: E402  取数与 tag 判定的唯一实现
 # （oagentkit 的模块大量以 oekit/pkg、oekit/concurrency 为基座），
 # 所以它的 tag 漂移与 oagentkit 内部漂移是同一个故障模式，一并纳入。
 DEFAULT_ORGS = ("github.com/oagentkit/", "github.com/oekit/")
+
+# 依赖级 tag 缓存：一次扫描里同一依赖只读一次远端（#194-③ 判据稳定性）。
+# reset_tag_cache() 负责复位（selftest / 多轮扫描）。
+_TAG_CACHE: dict[str, str | None] = {}
 
 _REQUIRE_RE = re.compile(r"^\s*([\w.\-]+(?:\.[\w\-]+)*/[\w.\-/]+)\s+(v[\w.\-+]+)")
 
@@ -127,7 +134,7 @@ def owner_repo(module_path: str) -> tuple[str, str] | None:
 
 
 def latest_tag(module_path: str) -> str | None:
-    """module path → 远端最新 tag。
+    """module path → 远端最新 tag（按依赖缓存，一次扫描只读一次远端）。
 
     取不到返回 None——**判不出不等于落后**，调用方须区分。
 
@@ -135,12 +142,30 @@ def latest_tag(module_path: str) -> str | None:
     guardx 拆出嵌套模块后，仓里同时有 `v0.6.0` / `audit/v0.1.0` / `bashguard/v0.1.0`，
     "第一个"是谁取决于 API 返回顺序——取错就是把「最新版本」写成 v0.1.0。
     判定与取数都收敛到 repo_meta（唯一实现）。
+
+    ⚠️ 按**依赖**缓存（matrix-tools#194-③）：同一个依赖在多个仓的 go.mod 里出现
+    （如 oekit/pkg 几乎每仓都有），此前每仓各自查一遍远端 ⇒ 同一次扫描里网络抖动
+    会让同一依赖在不同仓得到不同结论（实测 oekit/logx 在 agent 仓判不了、在 llm 仓
+    能判）——**同批数据自相矛盾**且报告不提示。缓存后一次扫描内结论天然一致；
+    collect 侧再用 `_TAG_CACHE` 断言「同依赖同结论」，矛盾即判红（unstable）。
     """
+    global _TAG_CACHE
+    if module_path in _TAG_CACHE:
+        return _TAG_CACHE[module_path]
     parsed = owner_repo(module_path)
     if parsed is None:
+        _TAG_CACHE[module_path] = None
         return None
     owner, repo = parsed
-    return repo_meta.latest_tag(owner, repo)
+    tag = repo_meta.latest_tag(owner, repo)
+    _TAG_CACHE[module_path] = tag
+    return tag
+
+
+def reset_tag_cache() -> None:
+    """清空依赖级 tag 缓存。生产路径不需要；selftest / 多轮扫描用。"""
+    global _TAG_CACHE
+    _TAG_CACHE = {}
 
 
 def repo_go_mod(org: str, repo: str, ref: str) -> str | None:
@@ -211,6 +236,28 @@ def collect(org: str, repo: str, ref: str, prefixes: tuple[str, ...]) -> list[di
             rows.append({"repo": repo, "dep": dep, "pinned": pinned, "latest": latest,
                          "state": "ok", "detail": ""})
     return rows
+
+
+def enforce_exit_code(behind: int, unknown: int, enforce: bool) -> int:
+    """--enforce 退出码判定（matrix-tools#194-①）。
+
+    **判不了必须 fail closed**：unknown > 0 ⇒ exit 2，哪怕 behind == 0。
+    网络坏 / 非 semver / 取不到 go.mod 时，守卫没有核过那批依赖，
+    「没有证据显示落后」不等于「证据显示没有落后」。此前退出码只看 behind，
+    判据不可用时照样 exit 0 放行——发版自检在最该拦的时候放行。
+
+    独立退出码 2（而不是并入 1）：给 release runbook 区分「要先抬地板（1）」
+    还是「先修取数 / 确认网络（2）」，两种修法不同。
+
+    返回值：enforce=False 恒 0（报告模式）；enforce=True：0 / 1 / 2。
+    """
+    if not enforce:
+        return 0
+    if behind:
+        return 1
+    if unknown:
+        return 2
+    return 0
 
 
 def matrix_repos(matrix_path: Path) -> list[str]:
@@ -371,6 +418,42 @@ require github.com/oekit/pkg v0.15.1
         if not callable(fn):
             failures.append(f"{fn.__name__} 应为可调用")
 
+    # --- --enforce 退出码（matrix-tools#194）：判不了必须 fail closed
+    # 负向样本 = 把退出码判定退回「只看 behind」的旧实现：
+    # unknown>0 且 behind==0 时旧实现返回 0（放行），新实现必须返回 2。
+    check("enforce: 干净 ⇒ 0", enforce_exit_code(0, 0, True), 0)
+    check("enforce: 有落后 ⇒ 1", enforce_exit_code(3, 0, True), 1)
+    check("enforce: 只有判不了 ⇒ 2（不放行）", enforce_exit_code(0, 5, True), 2)
+    check("enforce: 落后优先于判不了 ⇒ 1", enforce_exit_code(1, 5, True), 1)
+    check("报告模式恒 0", enforce_exit_code(3, 5, False), 0)
+    check("enforce: 退出码不再只看 behind", enforce_exit_code(0, 1, True) != 0, True)
+
+    # --- 变异体端到端：注入「远端读不到」⇒ --enforce 必须转红，且不许打「✅ 无地板漂移」
+    # 真跑一次 main()（in-process，采集函数打桩成全量 no-tag，离线），
+    # 退出码与输出内容都验（只看退出码不够——业务输出也要对）。
+    import io
+    from contextlib import redirect_stdout
+    saved_collect = collect
+
+    def _stub_collect(org, repo, ref, prefixes):
+        return [{"repo": repo, "dep": "github.com/oekit/pkg", "pinned": "v0.40.0",
+                 "latest": "?", "state": "no-tag", "detail": "取不到远端 tag，判不了"}]
+
+    try:
+        sys.modules[__name__].collect = _stub_collect
+        old_argv = sys.argv
+        sys.argv = ["verify_dep_floors.py", "--enforce", "--org", "oagentkit"]
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = sys.modules[__name__].main()
+        out = buf.getvalue()
+        check("变异体(远端读不到) --enforce 退出码=2", rc, 2)
+        check("变异体 --enforce 不许打「无地板漂移」", "无地板漂移" not in out, True)
+        check("变异体 输出含判不了说明", "判不了" in out, True)
+        sys.argv = old_argv
+    finally:
+        sys.modules[__name__].collect = saved_collect
+
     if failures:
         print("❌ verify_dep_floors 自测失败：")
         for f in failures:
@@ -432,20 +515,23 @@ def main() -> int:
                     line += f" {r['detail']}"
                 print(line)
             print()
-        print(f"共 {len(rows)} 条第一方依赖：落后 {len(behind)}，判不了 {len(unknown)}")
+        # 覆盖缺口必须出现在结论行里，而不是藏在脚注（matrix-tools#194-②）：
+        # 「共 N 条」在取数残缺时读起来像全量结论。改成「已核 X / 共 M」，
+        # 判不了的 K 条显式标注未计入通过口径。
+        checked = len(rows) - len(unknown)
+        print(f"已核 {checked}/{len(rows)} 条第一方依赖：落后 {len(behind)}，"
+              f"判不了 {len(unknown)}（未计入通过口径）")
 
         if behind and not args.enforce:
             print("\n（报告模式：漂移是常态，不失败。发版前自检请加 --enforce）")
             print("修法：go mod edit -require=<dep>@<latest> && go mod tidy，然后跑 go test -race ./...")
         if unknown:
-            print(f"\n注：{len(unknown)} 条判不了（取不到 tag / 非 semver）。"
+            print(f"\n注：{len(unknown)} 条判不了（取不到 tag / 非 semver / 取不到 go.mod）。"
                   "判不了不等于不落后，落地前先用 git ls-remote --tags 人工确认。")
-        if args.enforce and not behind:
-            print("✅ 无地板漂移")
+        if args.enforce and not behind and not unknown:
+            print("✅ 无地板漂移（全部核过）")
 
-    if args.enforce and behind:
-        return 1
-    return 0
+    return enforce_exit_code(len(behind), len(unknown), args.enforce)
 
 
 if __name__ == "__main__":
