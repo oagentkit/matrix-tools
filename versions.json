@@ -15,7 +15,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.10.3",
+      "latest": "v0.10.6",
       "packages": [
         {
           "pkg": "textutil",
@@ -165,7 +165,7 @@
       "repo": "runtime",
       "url": "https://github.com/oagentkit/runtime",
       "tier": 0,
-      "latest": "v0.12.3",
+      "latest": "v0.12.5",
       "packages": [
         {
           "pkg": "pacer",
@@ -377,7 +377,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.23.3",
+      "latest": "v0.24.0",
       "packages": [
         {
           "pkg": "fence",
@@ -604,7 +604,7 @@
       "repo": "queue",
       "url": "https://github.com/oagentkit/queue",
       "tier": 2,
-      "latest": "v0.10.3",
+      "latest": "v0.11.0",
       "packages": [
         {
           "pkg": "worker",
@@ -861,7 +861,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.8.6",
+      "latest": "v0.9.1",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -1077,7 +1077,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.12",
+      "latest": "v0.9.14",
       "packages": [
         {
           "pkg": "langfuse",
@@ -1376,7 +1376,7 @@
       "repo": "skillkit",
       "url": "https://github.com/oagentkit/skillkit",
       "tier": 2,
-      "latest": "v0.10.2",
+      "latest": "v0.10.4",
       "packages": [
         {
           "pkg": "skill",
@@ -1645,7 +1645,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.12.3",
+      "latest": "v0.12.6",
       "packages": [
         {
           "pkg": "mcp",
@@ -1928,7 +1928,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.11.3",
+      "latest": "v0.11.5",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -2243,7 +2243,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.21.4",
+      "latest": "v0.21.7",
       "packages": [
         {
           "pkg": "llm",
@@ -2663,7 +2663,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.15.2",
+      "latest": "v0.16.0",
       "packages": [
         {
           "pkg": "toolprior",
@@ -3076,7 +3076,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.13.3",
+      "latest": "v0.14.1",
       "packages": [
         {
           "pkg": "acpx",
@@ -3582,7 +3582,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.14.4",
+      "latest": "v0.14.7",
       "packages": [
         {
           "pkg": "agentrun",
@@ -4091,7 +4091,7 @@
     {
       "repo": "agentkit",
       "url": "https://github.com/oagentkit/agentkit",
-      "latest": "v1.8.71",
+      "latest": "v1.8.73",
       "retiring": true,
       "breakingIndex": [
         {
