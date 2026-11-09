@@ -926,7 +926,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.9.0",
+      "latest": "v0.9.1",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -1509,7 +1509,7 @@
       "repo": "skillkit",
       "url": "https://github.com/oagentkit/skillkit",
       "tier": 2,
-      "latest": "v0.10.3",
+      "latest": "v0.10.4",
       "packages": [
         {
           "pkg": "skill",
@@ -1799,7 +1799,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.12.5",
+      "latest": "v0.12.6",
       "packages": [
         {
           "pkg": "mcp",
@@ -2439,7 +2439,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.21.6",
+      "latest": "v0.21.7",
       "packages": [
         {
           "pkg": "llm",
@@ -3345,7 +3345,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.14.0",
+      "latest": "v0.14.1",
       "packages": [
         {
           "pkg": "acpx",
@@ -3887,7 +3887,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.14.6",
+      "latest": "v0.14.7",
       "packages": [
         {
           "pkg": "agentrun",
