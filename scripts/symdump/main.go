@@ -66,6 +66,7 @@ type FacadeResult struct {
 	Upstream    string            `json:"upstream"`    // upstream import 路径
 	Declared    map[string]string `json:"declared"`    // 转发出去的符号 → 转发用的 kind
 	LocalDefs   []string          `json:"localDefs"`   // 门面自己定义的（非转发）
+	DeprecatedVars []string       `json:"deprecatedVars"` // 带 // Deprecated: 标记的 var 别名（agentkit#166：setter 支撑的运行期可变 var 别名必须带标记）
 	DocGenerics []string          `json:"docGenerics"` // 文档里声明的泛型函数豁免
 	Imports     []string          `json:"imports"`     // 全部 import 路径
 	Error       string            `json:"error,omitempty"`
@@ -228,7 +229,7 @@ func hasTypeParams(tp *ast.FieldList) bool {
 // 文档里声明了哪些泛型函数豁免。
 func facadeInfo(path string) (FacadeResult, error) {
 	res := FacadeResult{Declared: map[string]string{}, LocalDefs: []string{},
-		DocGenerics: []string{}, Imports: []string{}}
+		DeprecatedVars: []string{}, DocGenerics: []string{}, Imports: []string{}}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
@@ -282,9 +283,13 @@ func facadeInfo(path string) (FacadeResult, error) {
 						break
 					}
 				}
+				deprecated := specDeprecated(gd, s)
 				for _, n := range s.Names {
 					if forwarded {
 						res.Declared[n.Name] = kind
+						if deprecated && kind == "var" {
+							res.DeprecatedVars = append(res.DeprecatedVars, n.Name)
+						}
 					} else {
 						res.LocalDefs = append(res.LocalDefs, n.Name)
 					}
@@ -295,8 +300,29 @@ func facadeInfo(path string) (FacadeResult, error) {
 
 	res.DocGenerics = docGenericExemptions(file)
 	sort.Strings(res.LocalDefs)
+	sort.Strings(res.DeprecatedVars)
 	sort.Strings(res.DocGenerics)
 	return res, nil
+}
+
+// specDeprecated 判断该 spec（或其宿主 decl）是否带 // Deprecated: 标记。
+func specDeprecated(gd *ast.GenDecl, s ast.Spec) bool {
+	check := func(cg *ast.CommentGroup) bool {
+		if cg == nil {
+			return false
+		}
+		for _, c := range cg.List {
+			if strings.Contains(c.Text, "Deprecated:") {
+				return true
+			}
+		}
+		return false
+	}
+	vs, _ := s.(*ast.ValueSpec)
+	if vs != nil && (check(vs.Doc) || check(vs.Comment)) {
+		return true
+	}
+	return check(gd.Doc)
 }
 
 // referencesUpstream 判断表达式里是否引用了 upstream 包（upstream.X）。

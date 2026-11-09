@@ -306,6 +306,23 @@ def check_package(pkg: str, up: dict, fa: dict, matrix_import: str) -> list[str]
             problems.append(
                 f"{pkg}: 幽灵转发 {name}——上游已没有这个导出符号（陈旧转发）")
 
+    # 7. 运行期可变 var 的门面别名必须带 // Deprecated: 标记（agentkit#166）。
+    # 「运行期可变」的可判定代理 = 上游对同一符号导出了 setter（func Set<名>）：
+    # setter 的存在说明该 var 的生效配置走 setter 路径，门面别名只是 init 期
+    # 值拷贝——经门面对别名赋值/append 是死写（写门面副本，上游读自己的快照），
+    # 编译过、运行静默失效。没有 Deprecated 标记 ⇒ 静态分析（gopls/staticcheck
+    # SA1019/IDE 删除线）零信号，陷阱以「正常可用」姿态导出。
+    deprecated = set(fa.get("deprecatedVars") or [])
+    for name in sorted(declared):
+        if declared[name] != "var":
+            continue
+        setter = f"Set{name}"
+        if up.get(setter, {}).get("kind") == "func" and name not in deprecated:
+            problems.append(
+                f"{pkg}: {name} 别名缺 // Deprecated: 标记——上游有 setter "
+                f"{setter}，别名是 init 期拷贝，经门面赋值是死写"
+                "（agentkit#166：运行期可变 var 别名必须带标记退役）")
+
     # 4b. 白名单过期：登记为泛型函数的符号，上游已不是泛型函数了
     for name in sorted(whitelist):
         if name not in up_generic_funcs:
@@ -399,6 +416,52 @@ def selftest() -> int:
               "漏转发上游导出符号 Gen" in joined, True)
         check("泛型函数 GenFn 未被误报成缺失",
               "漏转发上游导出符号 GenFn" in joined, False)
+
+        # 第三组：agentkit#166 规则——上游有 setter 的 var，门面别名缺
+        # 规则：上游有 setter 的 var，门面别名缺 // Deprecated: 标记必须判红；带了标记不误报。
+        (root / "up" / "pkg" / "b.go").write_text(
+            "package pkg\n\n"
+            "var Table = []int{1, 2}\n\n"
+            "func SetTable(t []int) { Table = t }\n",
+            encoding="utf-8")
+        (facade / "pkg" / "b.go").write_text(
+            "package pkg\n\n"
+            'import upstream "github.com/up/pkg"\n\n'
+            "var (\n"
+            "\tTable = upstream.Table\n"
+            ")\n",
+            encoding="utf-8")
+        out2 = run_symdump({
+            "upstream": [{"key": "pkg", "dir": str(root / "up" / "pkg")}],
+            "facade": [{"key": "pkg", "file": str(facade / "pkg" / "b.go")}],
+        })
+        fa2 = out2["facade"]["pkg"]
+        problems2 = check_package("pkg", out2["upstream"]["pkg"]["symbols"], fa2,
+                                  "github.com/up/pkg")
+        joined2 = "\n".join(problems2)
+        check("缺 Deprecated 标记被报出（上游有 setter 的 var 别名）",
+              "Table 别名缺 // Deprecated: 标记" in joined2, True)
+        check("symdump 提取到该别名未带标记", fa2.get("deprecatedVars") == [], True)
+
+        # 正向：同一别名带 // Deprecated: 标记 ⇒ 不报，且 symdump 收进 deprecatedVars
+        (facade / "pkg" / "b.go").write_text(
+            "package pkg\n\n"
+            'import upstream "github.com/up/pkg"\n\n'
+            "var (\n"
+            "\t// Deprecated: use SetTable instead.\n"
+            "\tTable = upstream.Table\n"
+            ")\n",
+            encoding="utf-8")
+        out3 = run_symdump({
+            "upstream": [{"key": "pkg", "dir": str(root / "up" / "pkg")}],
+            "facade": [{"key": "pkg", "file": str(facade / "pkg" / "b.go")}],
+        })
+        fa3 = out3["facade"]["pkg"]
+        problems3 = check_package("pkg", out3["upstream"]["pkg"]["symbols"], fa3,
+                                  "github.com/up/pkg")
+        joined3 = "\n".join(problems3)
+        check("带 Deprecated 标记不误报", "缺 // Deprecated" in joined3, False)
+        check("symdump 收进 deprecatedVars", fa3.get("deprecatedVars"), ["Table"])
 
         # 第二组：const 转发进 var 块 → 必须报 kind 错配
         (facade / "pkg" / "alias.go").write_text(
