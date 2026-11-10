@@ -15,7 +15,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.10.6",
+      "latest": "v0.10.7",
       "packages": [
         {
           "pkg": "textutil",
@@ -178,6 +178,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.39.0",
               "to": "v0.40.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.10.7",
+          "date": "2026-11-10",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.40.0",
+              "to": "v0.41.1"
             }
           ]
         }
@@ -969,7 +980,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.9.2",
+      "latest": "v0.9.3",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -1257,6 +1268,22 @@
               "to": "v0.41.1"
             }
           ]
+        },
+        {
+          "version": "v0.9.3",
+          "date": "2026-11-10",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.10.6",
+              "to": "v0.10.7"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.31.1",
+              "to": "v0.31.2"
+            }
+          ]
         }
       ]
     },
@@ -1264,7 +1291,7 @@
       "repo": "obs",
       "url": "https://github.com/oagentkit/obs",
       "tier": 2,
-      "latest": "v0.9.14",
+      "latest": "v0.9.15",
       "packages": [
         {
           "pkg": "langfuse",
@@ -1582,6 +1609,32 @@
               "to": "v0.40.0"
             }
           ]
+        },
+        {
+          "version": "v0.9.15",
+          "date": "2026-11-10",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.24.0",
+              "to": "v0.24.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.31.0",
+              "to": "v0.31.2"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.12",
+              "to": "v0.9.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.40.0",
+              "to": "v0.41.1"
+            }
+          ]
         }
       ]
     },
@@ -1895,7 +1948,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.12.7",
+      "latest": "v0.12.8",
       "packages": [
         {
           "pkg": "mcp",
@@ -2214,6 +2267,17 @@
               "to": "v0.31.1"
             }
           ]
+        },
+        {
+          "version": "v0.12.8",
+          "date": "2026-11-10",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.31.1",
+              "to": "v0.31.2"
+            }
+          ]
         }
       ]
     },
@@ -2221,7 +2285,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.11.6",
+      "latest": "v0.11.7",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -2579,6 +2643,27 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.40.0",
               "to": "v0.41.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.11.7",
+          "date": "2026-11-10",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.10.6",
+              "to": "v0.10.7"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.31.1",
+              "to": "v0.31.2"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.9.0",
+              "to": "v0.9.1"
             }
           ]
         }
@@ -3557,7 +3642,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.14.2",
+      "latest": "v0.14.3",
       "packages": [
         {
           "pkg": "acpx",
@@ -3605,7 +3690,7 @@
           "date": "2026-11-04",
           "title": "新增(bashguard)：接收 guardx/bashguard —— Shell 静态裁决落到重仓",
           "summary": "包在模块之间搬家：bashguard → guardx/tools",
-          "detail": "自 github.com/oagentkit/guardx/bashguard 迁入（guardx v0.7.0 起该路径退役）。\n为什么迁到 tools：bashguard 依赖 mvdan.cc/sh/v3（真 shell AST 解析），guardx 是\ntier 0 零依赖底层 —— 依赖面按 module 结算，那条 require 会顺着依赖树扩散到\n矩阵每一层。带重依赖的能力该待在带该依赖的仓里；tools 本身就有「git 工作副本\n沙箱」，同属命令执行面。\n包名与语义不变（静态解析、不执行命令；解析失败/含动态词/含写重定向/含复合控制流\n一律非只读），只是 import 路径从 github.com/oagentkit/guardx/bashguard 变为\ngithub.com/oagentkit/tools/bashguard。\n关联 oagentkit/guardx#3\n\n- 杂务(deps)：依赖地板追到最新——github.com/oekit/concurrency v0.23.2\n\n| 依赖 | 现地板 | 抬到 |\n|---|---|---|\n| `github.com/oekit/concurrency` | `v0.23.1` | `v0.23.2` |\n## 为什么\n矩阵的**发版时刻地板时效**门禁（`verify_tag_floor --ref HEAD`）要求：各仓 HEAD\n（= 下次发版会发出去的内容）的依赖地板，相对那一刻的依赖最新版本，不能已落后。\noekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落后一格就会判红。\n## 兼容性实测\n本工具在提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）\n与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。\n只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。\n\n- 杂务(deps)：依赖地板追到最新——github.com/oekit/concurrency v0.23.1\n\noekit 基座又发了一版（`concurrency` v0.23.1，2026-10-29 02:19 CST）⇒ 上一轮抬到\nv0.23.0 的地板已经落后 ⇒ 再抬一格。\n本仓只用到 `concurrency` 的少量 API ⇒ 实测 go build / go vet / go test -race 全绿，\n**零行为差异**；go 指令未被顶起。\n只改 go.mod / go.sum ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。\n\n- 杂务(deps)：依赖地板追到最新——github.com/oekit/concurrency v0.23.0 github.com/oekit/logx v0.8.0 github.com/oekit/pkg v0.31.0\n\noekit 基座发了新版本（pkg v0.31.0 / concurrency v0.23.0 / logx v0.8.0）⇒ 本仓的\n依赖地板落后 ⇒ 抬到最新，让**下一次发版**不再带出落后地板（打 tag 时刻的地板\n必须是当时的最新——`verify_tag_floor` / `release.py doctor` 都在查这条）。\n兼容性实测：本仓只用这些基座包的少量 API ⇒ go build / go vet / go test -race\n全绿，**零行为差异**；go 指令未被顶起（本仓的 go 地板不动）。\n\n- 杂务(deps)：依赖地板追平——guardx v0.17.0 / concurrency v0.22.1 / logx v0.7.2 / pkg v0.29.1\n\n矩阵的**发版时刻地板门禁**（`verify_tag_floor`）要求：打 tag 那一刻的依赖地板\n必须是当时的最新。本仓四条地板都落后了（guardx v0.15.0→v0.17.0、\nconcurrency v0.22.0→v0.22.1、logx v0.7.1→v0.7.2、pkg v0.28.0→v0.29.1）\n⇒ 不抬地板就打不出 tag（tag 受 `protect-tags` 保护**不可重打**）。\nguardx v0.17.0 含本仓要用的 `logredact` 载荷裁剪档与 `invoke.Outcome` 第三格\n——都是**纯增量** API，既有调用点逐字编译通过。\n门禁自检：go build ✅ / go vet ✅ / go test -race ✅ 5 包全绿 /\ngo mod tidy -diff ✅ / gofmt ✅。\n\n- 杂务(deps)：依赖地板追平上游本轮新版本——textx v0.7.1\n\n本仓 HEAD 的依赖地板已落后于 textx 的最新版本（`verify_tag_floor.py --org oagentkit --ref HEAD` 判红）。\n本仓一旦发版，就会把落后地板发出去——而 tag 受 protect-tags ruleset 保护、打完不能重打，\n只能靠后续版本补齐。\n本版只抬依赖地板，不改任何行为：\n- github.com/oagentkit/textx v0.6.2 → v0.7.1\n对应 issue matrix-tools#143。\n\n- 杂务(deps)：依赖地板追平上游本轮新版本——github.com/oagentkit/guardx@v0.15.0、github.com/oekit/concurrency@v0.22.0、github.com/oekit/pkg@v0.28.0\n\n本仓 HEAD 的依赖地板已落后于各依赖的最新版本（`verify_tag_floor.py --org oagentkit --ref HEAD` 判红）。\n本仓一旦发版，就会把落后地板发出去——而 tag 受 protect-tags ruleset 保护、打完不能重打，\n只能靠后续版本补齐。\n本版只抬依赖地板，不改任何行为：\n- github.com/oagentkit/guardx → v0.15.0\n- github.com/oekit/concurrency → v0.22.0\n- github.com/oekit/pkg → v0.28.0\n对应 issue matrix-tools#143。\n\n- 杂务(deps)：依赖地板跟到上游本轮新版本——guardx v0.14.0 concurrency v0.20.2 pkg v0.22.0\n\n## 下游要做什么\n**`go mod tidy`**。地板抬高对下游是**隐式破坏性变更**：不跑就报\n`updates to go.mod needed`，且报错不提真正原因（**不是本仓的 API 变了**）。\n本仓**自身代码零改动**——只看本仓的 diff 看不出这是一次地板抬高：\n本 commit 只改 `go.mod` / `go.sum`，**零 `.go` 变更**。\n## 为什么抬\n上一版 tag 打出去时，它依赖的模块的**新版已经先发出**了——\n即「打 tag 那一刻地板就落后」。矩阵的「发版时刻地板时效」门禁\n（`verify_tag_floor.py --org oagentkit --latest-only`）在本仓**下一次 push**\n时当场报红：\n- github.com/oagentkit/guardx@v0.14.0\n- github.com/oekit/concurrency@v0.20.2\n- github.com/oekit/pkg@v0.22.0\n门禁给的修法是「抬 go.mod 地板 → go mod tidy → 重新发 tag」。\n本 PR 就是那条修法。\n⚠️ 现在门禁还判绿，是因为本仓 HEAD（`9db09f3e`，2026-10-21T10:49:45Z）\n**早于**这三条依赖的 tag 发布时刻——即**静默期**：\n- oekit/pkg v0.22.0        2026-10-22T09:20:11Z   HEAD → 发布 = +22.5h\n- guardx v0.14.0           2026-10-22T09:47:05Z   HEAD → 发布 = +23.0h\n- oekit/concurrency v0.20.2 2026-10-23T03:09:39Z  HEAD → 发布 = +40.3h\n用门禁自己的 `check_ref()` 复现（同一份 go.mod、同一批 tag，只把 ref 时刻\n推进到现在）：HEAD 时刻 ⇒ ✅ 0 处红；此刻 push ⇒ ❌ 3 处红。\n## 为什么无行为差异\n本仓实际 import 的第一方/基座子包与上游改动的交集为**空**：\n**`github.com/oagentkit/guardx` v0.13.1 → v0.14.0**\n上游 `.go` 改动只落在 `permgate/permgate.go`（新增「只读拦截」段）。\n本仓实际 import 的 `guardx/logredact` **一字未动**。\n**`github.com/oekit/concurrency` v0.19.0 → v0.20.2**\n上游 `.go` 改动只落在 `syncx/`（新增 `Gate.TryAcquire`；`KeyedGate` 的\n幂等标记裸 bool → `atomic.Bool` + CAS）。本仓实际 import 的\n`concurrency/async`、`concurrency/singleflight` **一字未动**。\n**`github.com/oekit/pkg` v0.20.0 → v0.22.0**\n上游 diff 只**新增** `pathx/*`（新包）与 `stringx/csv.go`——**纯增量**。\n本仓实际 import 的 `pkg/httpjson`、`pkg/jsonrepair` **一字未动**。\n⇒ 三条都是行为中性的抬地板，本仓转发面与符号集不变。\n## 版本口径\n走 **patch v0.10.4**，依据是**本仓自己的连续先例**：本仓连续两次\n「只抬地板、零代码改动」都走 patch——\n- v0.10.2「依赖地板追平上游本轮新版本——guardx v0.13.1 / concurrency v0.19.0 / pkg v0.20.0」\n- v0.10.3「依赖地板跟到矩阵本轮新版本——runtime v0.7.2 / textx v0.6.2」\n本次同样是零行为差异、不新增任何包，不构成 breaking。\n## 门禁\n```\ngo build / vet / test -race   ✅\ngofmt -l .                    ✅ 空\ngo mod tidy -diff             ✅ 无输出\n```\n\n- 杂务(deps)：依赖地板跟到矩阵本轮新版本——runtime v0.7.2 textx v0.6.2\n\n## 下游要做什么\n**`go mod tidy`**。地板抬高对下游是**隐式破坏性变更**：不跑就报\n`updates to go.mod needed`，且报错不提真正原因（**不是本仓的 API 变了**）。\n本仓**自身代码零改动**——只看本仓的 diff 看不出这是一次地板抬高。\n## 为什么抬\n上一版 tag 打出去时，它依赖的模块的**新版已经先发出**了——\n即「打 tag 那一刻地板就落后」。矩阵的「发版时刻地板时效」门禁\n（`verify_tag_floor.py --org oagentkit --latest-only`）当场报红：\n- github.com/oagentkit/runtime@v0.7.2\n- github.com/oagentkit/textx@v0.6.2\n门禁给的修法是「抬 go.mod 地板 → go mod tidy → 重新发 tag」。\n本 PR 就是那条修法。\n## 为什么无行为差异\n被抬的这几个版本**自身也都是纯依赖地板追平**（各仓代码零改动，只抬\n`oekit/pkg` / `oekit/concurrency` / `guardx` / `llm` 四类地板之一），\n本仓用到的转发面与符号集一字未动。\n## 门禁\n```\ngo build / vet / test -race   ✅\ngofmt -l .                    ✅ 空\n```\n\n- 杂务(deps)：依赖地板追平上游本轮新版本——oagentkit/guardx v0.13.1 oekit/concurrency v0.19.0 oekit/pkg v0.20.0\n\n## 下游要做什么\n**`go mod tidy`**。地板抬高对下游是隐式 breaking：不跑就报\n`updates to go.mod needed`，且报错不提真正原因（**不是本仓的 API 变了**）。\n本仓**自身代码零改动**——只看本仓的 diff 看不出这是一次地板抬高。\n## 抬了哪几块、为什么无行为差异\n**`github.com/oagentkit/guardx` v0.13.0 → v0.13.1**\n上游 diff 只有 `go.mod` / `go.sum` / `CHANGELOG.md`——**没有 Go 源码变更**\n（内容是它自己把 `oekit/pkg` 地板抬到 v0.20.0）。本仓用到的包与转发面一字未动。\n**`github.com/oekit/concurrency` v0.18.0 → v0.19.0**\n上游 diff 只动了 2 个包：\n- `retry`：**抖动 panic 修复**——`rand.Int63n` 的契约是 n > 0，而「退避幅度为 0」\n  是生产可达路径（cfg.Delay=0 / DelayHint 返回 0 / float64→int64 溢出成负数），\n  旧实现在这些路径上直接 panic。改为钳到 [0, MaxInt64]。\n- `syncx`：新增全局在飞闸门原语（`Gate`）+ 说明同步。\n**`breaker` 与 `async` 两个包一字未动。**\n**本仓实际 import 的 `oekit/concurrency` 子包：async singleflight **\n与上游改动相交的：**（无）**\n**`github.com/oekit/pkg` v0.18.0 → v0.20.0**\n上游 diff 只动了 5 个包：\n- `errors`：**纯增量**——新增 `Errorf`（格式化 + `%w` 包装，nil-safe）。\n  `New`/`As`/`Is`/`Unwrap`/`Wrap` 是同型透传，一字未动。\n- `httpjson`：**退避溢出修复**——旧写法 `base << (attempt-1)` 在 attempt 较大时\n  int64 溢出成负数，负数绕过 `MaxDelay` 封顶，`time.After(负数)` 立刻返回\n  ⇒ **该轮退避彻底消失**。改为乘法 + 饱和封顶。正常 attempt 数（1..20）下\n  结果**逐字相同**，差别只在溢出的病态路径。\n- `urlguard`：**纯增量**——新增 `WithExactHosts`，未设置时行为与既有完全一致。\n- `stringx`：**仅注释**（补 `TruncEllipsis` 的 n 语义说明）。\n- `pathx`：新增包（`SanitizeRel` 等）。\n**本仓实际 import 的 `oekit/pkg` 子包：httpjson jsonrepair **\n与上游改动相交的：**httpjson**\n## 门禁\n```\ngo build / vet / test -race   ✅\ngofmt -l .                    ✅ 空\n```\n\n- 杂务(deps)：guardx 依赖地板抬到 v0.13.0\n\n本仓只用 guardx/logredact，而 logredact 在 v0.9.0 → v0.13.0 之间**未变**\n（那几版只加了 sandbox 的 Capable 与 wire）——故这是纯地板追平，无行为差异。\n矩阵的依赖地板时效门禁（verify_dep_floors.py）会把「地板落后远端最新」报出来。\n门禁自检：\n  go build / vet / test   ✅ 5 包全绿\n  gofmt                  ✅\n  go mod tidy            ✅ 无漂移\n* chore(deps): guardx 依赖地板抬到 v0.13.0\n本仓只用 guardx/logredact，而 logredact 在 v0.9.0 → v0.13.0 之间**未变**\n（那几版只加了 sandbox 的 Capable 与 wire）——故这是纯地板追平，无行为差异。\n矩阵的依赖地板时效门禁（verify_dep_floors.py）会把「地板落后远端最新」报出来。\n门禁自检：\n  go build / vet / test   ✅ 5 包全绿\n  gofmt                  ✅\n  go mod tidy            ✅ 无漂移\n\n- 杂务(deps)：oagentkit/guardx 依赖地板抬到 v0.11.0\n\nguardx v0.11.0 新增 sandbox/wire 跨进程调用协议，是**新增能力**而非 API 变更——\n本仓无需改代码，只抬地板。\n为什么现在补：guardx v0.11.0 是本轮刚发布的，本仓上一个 tag 早于它，\n于是这一格欠账一直挂着。依赖地板报告器把「子仓发版让下游落后」显式化，\n但报告器恒不失败——真正的硬约束是「打 tag 时刻地板必须是当时的最新」。\n本地门禁：go mod tidy 无差异 / go build / go vet 通过。\n\n- 杂务(deps)：oagentkit/guardx 依赖地板抬到 v0.9.0\n\nguardx v0.9.0 新增了 toolfail 与 sandbox 两个 tier0 原语，\n是**新增能力**而非 API 变更——本仓无需改代码，只抬地板。\n为什么现在补：guardx v0.9.0 是 2026-10-21 发布的，本仓上一个 tag 早于它，\n于是这一格欠账一直挂着（依赖地板报告器把「子仓发版让下游落后」显式化，\n但报告器恒不失败——真正的硬约束是「打 tag 时刻地板必须是当时的最新」）。\n本地门禁：go mod tidy 无差异 / go build / go vet 通过。\n\n- 杂务(deps)：依赖地板抬到最新\n\n地板对齐到发版时刻的各依赖最新 tag：\n- oekit/pkg、oekit/concurrency 抬到 v0.18.0（oekit/logx 已是最新 v0.7.1）\n- 矩阵内跨仓依赖抬到各仓最新 tag\n依据 matrix-tools#44：最新 tag 的依赖地板在「打 tag 那一刻」就已落后一格，\n只能靠后续版本补齐（tag 受 protect-tags ruleset 保护不能重打）。\n\n\n- 文档(tools)：刷正 README 的外部依赖清单 —— 与 go.mod 实测对账\n\n本仓 README 的「外部依赖」清单与**各仓 go.mod 的事实**对不上。\n矩阵的单一数据源 `matrix-tools/modules.json` 也有同样漂移，已在\n[matrix-tools#126](https://github.com/oagentkit/matrix-tools/pull/126) 同步刷正。\n## 现状核实\n```bash\n$ grep -v indirect tools/go.mod | grep -E \"^\\s+[a-z].*/\"\n\tgithub.com/cloudwego/eino v0.9.21\n\t...\n\tmvdan.cc/sh/v3 v3.13.1\n```\n⇒ 第三方直接依赖是 **2 个**（eino、**mvdan.cc/sh/v3**），本仓 README 只列了 1 个。\n## 影响\n`mvdan.cc/sh/v3` 是 shell 解析器（带 `x/sys` 等传递依赖）。漏列 ⇒ 读者低估依赖面。\n## 改动\n**只改清单那一行（`- `github.com/cloudwego/eino`` ⇒ 多一行 `- `mvdan.cc/sh/v3``）**，其余段落逐字未动。\n## 验收\n- [x] 清单与 `go.mod` 实测一致\n- [x] 与 `matrix-tools/modules.json` 的登记一致（同期在 matrix-tools#126 刷正）\n- [x] **纯 .md 改动** ⇒ 不需要 CHANGELOG 条目、不打 tag、不发版（无发版步骤）\n关联 oagentkit/matrix-tools#125\n\n- 文档(AGENTS)：补「发版顺序」小节，指向 org CONTRIBUTING 单一副本\n\n13 个业务仓的 AGENTS.md 此前对发版顺序零覆盖（只有 textx 有个\n「### 版本与发版」标题，但里面只讲 SemVer 与 module 路径），\n发版顺序只写在 org 规则仓的 .github/CONTRIBUTING.md 里，单仓读者看不到。\n本次只加**指针 + 本仓相关提醒**，runbook 本体保持**单一副本**\n（CONTRIBUTING §发版），避免 13 份副本各自漂移。\n覆盖四条：\n- CHANGELOG.md 由 matrix-tools/scripts/gen_changelogs.py 从 git 历史生成，不要手改\n- tag 必须落在 CHANGELOG 提交之后（下游 go get 拿到的是 tag 快照）\n- 警告：无参重生成会吞掉待发版段，--next-version 是唯一能产出待发版段的开关\n- 本仓相关提醒（见正文）\n\n- 文档(changelog)：按新生成器规则重生成 CHANGELOG.md\n\n生成器修复（oagentkit/matrix-tools#43）落地：\n① `[round-N] ` 前缀被剥离 → conventional commit 解析不再失效，\n   **commit body 保留**（此前整段被丢弃，发布说明只剩标题）；\n② 非 conventional 提交也保留 body；\n③ `--check` 识别「待发版段」（预写了但还没打 tag 的那段）。\n本 PR 恢复的是**本就在 commit body 里**的正文（迁移步骤、代码块、\n判据锚点）——此前被 `[round-N] ` 前缀导致的解析失败丢弃了。\n**没有任何发布说明内容被删除**：删除的行都能在新增行里找到对应\n（规范化掉 `(#N)` 与 `[round-N] ` 前缀后逐行比对）。\n关联：oagentkit/matrix-tools#43、oagentkit/matrix-tools#40\n\n\n- 测试(sast)：测试替身 nopLogger 收编 logx.Nop()——Enabled 恒 false 免掉昂贵参数求值；deps 地板追到最新（concurrency v0.23.3/logx v0.8.2/pkg v0.31.2）"
+          "detail": "自 github.com/oagentkit/guardx/bashguard 迁入（guardx v0.7.0 起该路径退役）。\n为什么迁到 tools：bashguard 依赖 mvdan.cc/sh/v3（真 shell AST 解析），guardx 是\ntier 0 零依赖底层 —— 依赖面按 module 结算，那条 require 会顺着依赖树扩散到\n矩阵每一层。带重依赖的能力该待在带该依赖的仓里；tools 本身就有「git 工作副本\n沙箱」，同属命令执行面。\n包名与语义不变（静态解析、不执行命令；解析失败/含动态词/含写重定向/含复合控制流\n一律非只读），只是 import 路径从 github.com/oagentkit/guardx/bashguard 变为\ngithub.com/oagentkit/tools/bashguard。\n关联 oagentkit/guardx#3\n\n- 杂务(deps)：依赖地板追到最新——github.com/oekit/concurrency v0.23.2\n\n| 依赖 | 现地板 | 抬到 |\n|---|---|---|\n| `github.com/oekit/concurrency` | `v0.23.1` | `v0.23.2` |\n## 为什么\n矩阵的**发版时刻地板时效**门禁（`verify_tag_floor --ref HEAD`）要求：各仓 HEAD\n（= 下次发版会发出去的内容）的依赖地板，相对那一刻的依赖最新版本，不能已落后。\noekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落后一格就会判红。\n## 兼容性实测\n本工具在提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）\n与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。\n只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。\n\n- 杂务(deps)：依赖地板追到最新——github.com/oekit/concurrency v0.23.1\n\noekit 基座又发了一版（`concurrency` v0.23.1，2026-10-29 02:19 CST）⇒ 上一轮抬到\nv0.23.0 的地板已经落后 ⇒ 再抬一格。\n本仓只用到 `concurrency` 的少量 API ⇒ 实测 go build / go vet / go test -race 全绿，\n**零行为差异**；go 指令未被顶起。\n只改 go.mod / go.sum ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。\n\n- 杂务(deps)：依赖地板追到最新——github.com/oekit/concurrency v0.23.0 github.com/oekit/logx v0.8.0 github.com/oekit/pkg v0.31.0\n\noekit 基座发了新版本（pkg v0.31.0 / concurrency v0.23.0 / logx v0.8.0）⇒ 本仓的\n依赖地板落后 ⇒ 抬到最新，让**下一次发版**不再带出落后地板（打 tag 时刻的地板\n必须是当时的最新——`verify_tag_floor` / `release.py doctor` 都在查这条）。\n兼容性实测：本仓只用这些基座包的少量 API ⇒ go build / go vet / go test -race\n全绿，**零行为差异**；go 指令未被顶起（本仓的 go 地板不动）。\n\n- 杂务(deps)：依赖地板追平——guardx v0.17.0 / concurrency v0.22.1 / logx v0.7.2 / pkg v0.29.1\n\n矩阵的**发版时刻地板门禁**（`verify_tag_floor`）要求：打 tag 那一刻的依赖地板\n必须是当时的最新。本仓四条地板都落后了（guardx v0.15.0→v0.17.0、\nconcurrency v0.22.0→v0.22.1、logx v0.7.1→v0.7.2、pkg v0.28.0→v0.29.1）\n⇒ 不抬地板就打不出 tag（tag 受 `protect-tags` 保护**不可重打**）。\nguardx v0.17.0 含本仓要用的 `logredact` 载荷裁剪档与 `invoke.Outcome` 第三格\n——都是**纯增量** API，既有调用点逐字编译通过。\n门禁自检：go build ✅ / go vet ✅ / go test -race ✅ 5 包全绿 /\ngo mod tidy -diff ✅ / gofmt ✅。\n\n- 杂务(deps)：依赖地板追平上游本轮新版本——textx v0.7.1\n\n本仓 HEAD 的依赖地板已落后于 textx 的最新版本（`verify_tag_floor.py --org oagentkit --ref HEAD` 判红）。\n本仓一旦发版，就会把落后地板发出去——而 tag 受 protect-tags ruleset 保护、打完不能重打，\n只能靠后续版本补齐。\n本版只抬依赖地板，不改任何行为：\n- github.com/oagentkit/textx v0.6.2 → v0.7.1\n对应 issue matrix-tools#143。\n\n- 杂务(deps)：依赖地板追平上游本轮新版本——github.com/oagentkit/guardx@v0.15.0、github.com/oekit/concurrency@v0.22.0、github.com/oekit/pkg@v0.28.0\n\n本仓 HEAD 的依赖地板已落后于各依赖的最新版本（`verify_tag_floor.py --org oagentkit --ref HEAD` 判红）。\n本仓一旦发版，就会把落后地板发出去——而 tag 受 protect-tags ruleset 保护、打完不能重打，\n只能靠后续版本补齐。\n本版只抬依赖地板，不改任何行为：\n- github.com/oagentkit/guardx → v0.15.0\n- github.com/oekit/concurrency → v0.22.0\n- github.com/oekit/pkg → v0.28.0\n对应 issue matrix-tools#143。\n\n- 杂务(deps)：依赖地板跟到上游本轮新版本——guardx v0.14.0 concurrency v0.20.2 pkg v0.22.0\n\n## 下游要做什么\n**`go mod tidy`**。地板抬高对下游是**隐式破坏性变更**：不跑就报\n`updates to go.mod needed`，且报错不提真正原因（**不是本仓的 API 变了**）。\n本仓**自身代码零改动**——只看本仓的 diff 看不出这是一次地板抬高：\n本 commit 只改 `go.mod` / `go.sum`，**零 `.go` 变更**。\n## 为什么抬\n上一版 tag 打出去时，它依赖的模块的**新版已经先发出**了——\n即「打 tag 那一刻地板就落后」。矩阵的「发版时刻地板时效」门禁\n（`verify_tag_floor.py --org oagentkit --latest-only`）在本仓**下一次 push**\n时当场报红：\n- github.com/oagentkit/guardx@v0.14.0\n- github.com/oekit/concurrency@v0.20.2\n- github.com/oekit/pkg@v0.22.0\n门禁给的修法是「抬 go.mod 地板 → go mod tidy → 重新发 tag」。\n本 PR 就是那条修法。\n⚠️ 现在门禁还判绿，是因为本仓 HEAD（`9db09f3e`，2026-10-21T10:49:45Z）\n**早于**这三条依赖的 tag 发布时刻——即**静默期**：\n- oekit/pkg v0.22.0        2026-10-22T09:20:11Z   HEAD → 发布 = +22.5h\n- guardx v0.14.0           2026-10-22T09:47:05Z   HEAD → 发布 = +23.0h\n- oekit/concurrency v0.20.2 2026-10-23T03:09:39Z  HEAD → 发布 = +40.3h\n用门禁自己的 `check_ref()` 复现（同一份 go.mod、同一批 tag，只把 ref 时刻\n推进到现在）：HEAD 时刻 ⇒ ✅ 0 处红；此刻 push ⇒ ❌ 3 处红。\n## 为什么无行为差异\n本仓实际 import 的第一方/基座子包与上游改动的交集为**空**：\n**`github.com/oagentkit/guardx` v0.13.1 → v0.14.0**\n上游 `.go` 改动只落在 `permgate/permgate.go`（新增「只读拦截」段）。\n本仓实际 import 的 `guardx/logredact` **一字未动**。\n**`github.com/oekit/concurrency` v0.19.0 → v0.20.2**\n上游 `.go` 改动只落在 `syncx/`（新增 `Gate.TryAcquire`；`KeyedGate` 的\n幂等标记裸 bool → `atomic.Bool` + CAS）。本仓实际 import 的\n`concurrency/async`、`concurrency/singleflight` **一字未动**。\n**`github.com/oekit/pkg` v0.20.0 → v0.22.0**\n上游 diff 只**新增** `pathx/*`（新包）与 `stringx/csv.go`——**纯增量**。\n本仓实际 import 的 `pkg/httpjson`、`pkg/jsonrepair` **一字未动**。\n⇒ 三条都是行为中性的抬地板，本仓转发面与符号集不变。\n## 版本口径\n走 **patch v0.10.4**，依据是**本仓自己的连续先例**：本仓连续两次\n「只抬地板、零代码改动」都走 patch——\n- v0.10.2「依赖地板追平上游本轮新版本——guardx v0.13.1 / concurrency v0.19.0 / pkg v0.20.0」\n- v0.10.3「依赖地板跟到矩阵本轮新版本——runtime v0.7.2 / textx v0.6.2」\n本次同样是零行为差异、不新增任何包，不构成 breaking。\n## 门禁\n```\ngo build / vet / test -race   ✅\ngofmt -l .                    ✅ 空\ngo mod tidy -diff             ✅ 无输出\n```\n\n- 杂务(deps)：依赖地板跟到矩阵本轮新版本——runtime v0.7.2 textx v0.6.2\n\n## 下游要做什么\n**`go mod tidy`**。地板抬高对下游是**隐式破坏性变更**：不跑就报\n`updates to go.mod needed`，且报错不提真正原因（**不是本仓的 API 变了**）。\n本仓**自身代码零改动**——只看本仓的 diff 看不出这是一次地板抬高。\n## 为什么抬\n上一版 tag 打出去时，它依赖的模块的**新版已经先发出**了——\n即「打 tag 那一刻地板就落后」。矩阵的「发版时刻地板时效」门禁\n（`verify_tag_floor.py --org oagentkit --latest-only`）当场报红：\n- github.com/oagentkit/runtime@v0.7.2\n- github.com/oagentkit/textx@v0.6.2\n门禁给的修法是「抬 go.mod 地板 → go mod tidy → 重新发 tag」。\n本 PR 就是那条修法。\n## 为什么无行为差异\n被抬的这几个版本**自身也都是纯依赖地板追平**（各仓代码零改动，只抬\n`oekit/pkg` / `oekit/concurrency` / `guardx` / `llm` 四类地板之一），\n本仓用到的转发面与符号集一字未动。\n## 门禁\n```\ngo build / vet / test -race   ✅\ngofmt -l .                    ✅ 空\n```\n\n- 杂务(deps)：依赖地板追平上游本轮新版本——oagentkit/guardx v0.13.1 oekit/concurrency v0.19.0 oekit/pkg v0.20.0\n\n## 下游要做什么\n**`go mod tidy`**。地板抬高对下游是隐式 breaking：不跑就报\n`updates to go.mod needed`，且报错不提真正原因（**不是本仓的 API 变了**）。\n本仓**自身代码零改动**——只看本仓的 diff 看不出这是一次地板抬高。\n## 抬了哪几块、为什么无行为差异\n**`github.com/oagentkit/guardx` v0.13.0 → v0.13.1**\n上游 diff 只有 `go.mod` / `go.sum` / `CHANGELOG.md`——**没有 Go 源码变更**\n（内容是它自己把 `oekit/pkg` 地板抬到 v0.20.0）。本仓用到的包与转发面一字未动。\n**`github.com/oekit/concurrency` v0.18.0 → v0.19.0**\n上游 diff 只动了 2 个包：\n- `retry`：**抖动 panic 修复**——`rand.Int63n` 的契约是 n > 0，而「退避幅度为 0」\n  是生产可达路径（cfg.Delay=0 / DelayHint 返回 0 / float64→int64 溢出成负数），\n  旧实现在这些路径上直接 panic。改为钳到 [0, MaxInt64]。\n- `syncx`：新增全局在飞闸门原语（`Gate`）+ 说明同步。\n**`breaker` 与 `async` 两个包一字未动。**\n**本仓实际 import 的 `oekit/concurrency` 子包：async singleflight **\n与上游改动相交的：**（无）**\n**`github.com/oekit/pkg` v0.18.0 → v0.20.0**\n上游 diff 只动了 5 个包：\n- `errors`：**纯增量**——新增 `Errorf`（格式化 + `%w` 包装，nil-safe）。\n  `New`/`As`/`Is`/`Unwrap`/`Wrap` 是同型透传，一字未动。\n- `httpjson`：**退避溢出修复**——旧写法 `base << (attempt-1)` 在 attempt 较大时\n  int64 溢出成负数，负数绕过 `MaxDelay` 封顶，`time.After(负数)` 立刻返回\n  ⇒ **该轮退避彻底消失**。改为乘法 + 饱和封顶。正常 attempt 数（1..20）下\n  结果**逐字相同**，差别只在溢出的病态路径。\n- `urlguard`：**纯增量**——新增 `WithExactHosts`，未设置时行为与既有完全一致。\n- `stringx`：**仅注释**（补 `TruncEllipsis` 的 n 语义说明）。\n- `pathx`：新增包（`SanitizeRel` 等）。\n**本仓实际 import 的 `oekit/pkg` 子包：httpjson jsonrepair **\n与上游改动相交的：**httpjson**\n## 门禁\n```\ngo build / vet / test -race   ✅\ngofmt -l .                    ✅ 空\n```\n\n- 杂务(deps)：guardx 依赖地板抬到 v0.13.0\n\n本仓只用 guardx/logredact，而 logredact 在 v0.9.0 → v0.13.0 之间**未变**\n（那几版只加了 sandbox 的 Capable 与 wire）——故这是纯地板追平，无行为差异。\n矩阵的依赖地板时效门禁（verify_dep_floors.py）会把「地板落后远端最新」报出来。\n门禁自检：\n  go build / vet / test   ✅ 5 包全绿\n  gofmt                  ✅\n  go mod tidy            ✅ 无漂移\n* chore(deps): guardx 依赖地板抬到 v0.13.0\n本仓只用 guardx/logredact，而 logredact 在 v0.9.0 → v0.13.0 之间**未变**\n（那几版只加了 sandbox 的 Capable 与 wire）——故这是纯地板追平，无行为差异。\n矩阵的依赖地板时效门禁（verify_dep_floors.py）会把「地板落后远端最新」报出来。\n门禁自检：\n  go build / vet / test   ✅ 5 包全绿\n  gofmt                  ✅\n  go mod tidy            ✅ 无漂移\n\n- 杂务(deps)：oagentkit/guardx 依赖地板抬到 v0.11.0\n\nguardx v0.11.0 新增 sandbox/wire 跨进程调用协议，是**新增能力**而非 API 变更——\n本仓无需改代码，只抬地板。\n为什么现在补：guardx v0.11.0 是本轮刚发布的，本仓上一个 tag 早于它，\n于是这一格欠账一直挂着。依赖地板报告器把「子仓发版让下游落后」显式化，\n但报告器恒不失败——真正的硬约束是「打 tag 时刻地板必须是当时的最新」。\n本地门禁：go mod tidy 无差异 / go build / go vet 通过。\n\n- 杂务(deps)：oagentkit/guardx 依赖地板抬到 v0.9.0\n\nguardx v0.9.0 新增了 toolfail 与 sandbox 两个 tier0 原语，\n是**新增能力**而非 API 变更——本仓无需改代码，只抬地板。\n为什么现在补：guardx v0.9.0 是 2026-10-21 发布的，本仓上一个 tag 早于它，\n于是这一格欠账一直挂着（依赖地板报告器把「子仓发版让下游落后」显式化，\n但报告器恒不失败——真正的硬约束是「打 tag 时刻地板必须是当时的最新」）。\n本地门禁：go mod tidy 无差异 / go build / go vet 通过。\n\n- 杂务(deps)：依赖地板抬到最新\n\n地板对齐到发版时刻的各依赖最新 tag：\n- oekit/pkg、oekit/concurrency 抬到 v0.18.0（oekit/logx 已是最新 v0.7.1）\n- 矩阵内跨仓依赖抬到各仓最新 tag\n依据 matrix-tools#44：最新 tag 的依赖地板在「打 tag 那一刻」就已落后一格，\n只能靠后续版本补齐（tag 受 protect-tags ruleset 保护不能重打）。\n\n\n- 文档(tools)：刷正 README 的外部依赖清单 —— 与 go.mod 实测对账\n\n本仓 README 的「外部依赖」清单与**各仓 go.mod 的事实**对不上。\n矩阵的单一数据源 `matrix-tools/modules.json` 也有同样漂移，已在\n[matrix-tools#126](https://github.com/oagentkit/matrix-tools/pull/126) 同步刷正。\n## 现状核实\n```bash\n$ grep -v indirect tools/go.mod | grep -E \"^\\s+[a-z].*/\"\n\tgithub.com/cloudwego/eino v0.9.21\n\t...\n\tmvdan.cc/sh/v3 v3.13.1\n```\n⇒ 第三方直接依赖是 **2 个**（eino、**mvdan.cc/sh/v3**），本仓 README 只列了 1 个。\n## 影响\n`mvdan.cc/sh/v3` 是 shell 解析器（带 `x/sys` 等传递依赖）。漏列 ⇒ 读者低估依赖面。\n## 改动\n**只改清单那一行（`- `github.com/cloudwego/eino`` ⇒ 多一行 `- `mvdan.cc/sh/v3``）**，其余段落逐字未动。\n## 验收\n- [x] 清单与 `go.mod` 实测一致\n- [x] 与 `matrix-tools/modules.json` 的登记一致（同期在 matrix-tools#126 刷正）\n- [x] **纯 .md 改动** ⇒ 不需要 CHANGELOG 条目、不打 tag、不发版（无发版步骤）\n关联 oagentkit/matrix-tools#125\n\n- 文档(AGENTS)：补「发版顺序」小节，指向 org CONTRIBUTING 单一副本\n\n13 个业务仓的 AGENTS.md 此前对发版顺序零覆盖（只有 textx 有个\n「### 版本与发版」标题，但里面只讲 SemVer 与 module 路径），\n发版顺序只写在 org 规则仓的 .github/CONTRIBUTING.md 里，单仓读者看不到。\n本次只加**指针 + 本仓相关提醒**，runbook 本体保持**单一副本**\n（CONTRIBUTING §发版），避免 13 份副本各自漂移。\n覆盖四条：\n- CHANGELOG.md 由 matrix-tools/scripts/gen_changelogs.py 从 git 历史生成，不要手改\n- tag 必须落在 CHANGELOG 提交之后（下游 go get 拿到的是 tag 快照）\n- 警告：无参重生成会吞掉待发版段，--next-version 是唯一能产出待发版段的开关\n- 本仓相关提醒（见正文）\n\n\n- 测试(sast)：测试替身 nopLogger 收编 logx.Nop()——Enabled 恒 false 免掉昂贵参数求值；deps 地板追到最新（concurrency v0.23.3/logx v0.8.2/pkg v0.31.2）"
         }
       ],
       "depFloor": [
@@ -4132,6 +4217,27 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.41.0",
               "to": "v0.41.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.3",
+          "date": "2026-11-10",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.10.6",
+              "to": "v0.10.7"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.31.1",
+              "to": "v0.31.2"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.9.0",
+              "to": "v0.9.1"
             }
           ]
         }
