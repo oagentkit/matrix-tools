@@ -126,10 +126,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--matrix", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--site", default="https://oagentkit.github.io")
+    ap.add_argument("--site", default="https://oagentkit.github.io",
+                    help="拼进产物的站点对外地址，必须 http(s):// 开头（matrix-tools#199）")
     ap.add_argument("--versions", default=str(HERE.parent / "versions.json"),
                     help="机器可读版本矩阵（破坏性变更段的来源）")
     args = ap.parse_args()
+    if not (args.site.startswith("https://") or args.site.startswith("http://")):
+        print(f"❌ --site 必须是 http(s):// 开头的对外地址，实得 {args.site!r}——"
+              "本地目录路径会被原样拼进对外产物（实测：llms.txt 曾发布 "
+              "/Users/<user>/... 死链并泄露本机目录结构，matrix-tools#199）")
+        return 2
 
     d = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
     org = d["defaultOrg"]
