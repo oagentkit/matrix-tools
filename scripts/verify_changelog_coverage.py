@@ -225,13 +225,23 @@ def is_zero_information(c: dict) -> bool:
     """该提交是否「零信息量」（不该出现在发布说明里）。
 
     ① merge commit（两个以上父提交）；
-    ② 只改 CHANGELOG.md 的提交（生成器自己产出的提交，否则自我指涉）。
+    ② 只改 CHANGELOG.md 的提交（生成器自己产出的提交，否则自我指涉）；
+    ③ 空 diff 提交（没改任何文件——PR squash 撞出零差异时 GitHub 允许产生；
+       git log 的 files 侧对它返回空列表。实测 rag #92/#93 双 squash，
+       2026-11-10）。
 
     ⚠️ ②的判据是**实际改了哪些文件**，不看 subject 文案。
+    ⚠️ 本判定与生成器的 filter_changelog_only 语义对齐但**独立实现**
+    （判定不共享——共享了生成器漏的形态这里也跟着漏）。
     """
     if len(c.get("parents") or []) > 1:
         return True
-    return c.get("files") == ["CHANGELOG.md"]
+    files = c.get("files")
+    if files == ["CHANGELOG.md"]:
+        return True
+    if files is not None and not files:
+        return True
+    return False
 
 
 def last_changelog_commit(repo_dir: Path) -> str | None:
