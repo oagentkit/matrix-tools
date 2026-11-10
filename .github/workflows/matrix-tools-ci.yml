@@ -600,6 +600,17 @@ jobs:
             (cd "${repo}" && go mod download >/dev/null 2>&1) || \
               echo "::warning::${repo}: go mod download 失败（go list 将降级，verify_import_direction 会判黄转红）"
           done < <(ls -d */ | tr -d '/')
+      - name: 幽灵包检测（仓里有、矩阵未登记的包必须为零）
+        # matrix-tools#198：本守卫此前唯一的真判定在 .github 仓的 matrix-docs job
+        # （联网克隆各仓跑），本仓自己的 CI 只剩自测 ⇒ 那个 job 被 fail-fast 掐断时
+        # （oagentkit/.github#35，实测 8 天没人跑）矩阵完整性就完全无人把关——
+        # 真幽灵 guardx/egressproxy 就是在这个盲区里长出来的。
+        # 本 job 已经克隆了全部矩阵仓（平铺在 workspace 根），正好是这条判据的取数面
+        # ⇒ 矩阵完整性的红灯必须由数据源仓自己的 CI 来亮。
+        # 兼容壳豁免读 modules.json 的 compatShells 段（toolgate#93 的机器可读登记；
+        # 壳删除后豁免自然熄灭），不是整仓豁免——同仓其它未登记目录照报。
+        run: python3 matrix-tools/scripts/verify_ghost_packages.py --root .
+
       - name: 第一方依赖方向（tier 方向 / 依赖声明对账 / 矩阵内不消费门面）
         # --fail-on-yellow：与同族守卫（verify_repo_tiers / verify_repo_dep_claims /
         # verify_repo_dep_inventory / verify_facade_no_new_packages）口径对齐——

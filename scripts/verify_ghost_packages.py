@@ -21,6 +21,24 @@
 
 判定：某仓目录下含 *.go 的**包目录集合** vs modules.json 登记的包名集合，双向比对。
 
+**兼容壳暂缓**（2026-11-10，issue matrix-tools#198）：modules.json **`compatShells`
+段登记的兼容壳路径**（如 `toolgate/invoke`）**暂缓判幽灵**——它是待删的
+Deprecated 转发壳，不是忘了登记（给它登记进 `packages` 等于把「该删的壳」
+洗白成正式包，方向正好相反）。豁免**数据驱动**：哪条路径暂缓、什么时候失效，
+全部读 `compatShells` 登记，不在本脚本里写死仓名。与 toolgate#93 的联动：
+
+  · `compatShells` 段是 toolgate#93 建立的**机器可读兼容壳登记**
+    （`{repo, path, module, until, removedIn}`）——migration.md 的兼容壳列
+    同步指向它（「机器可读登记见 modules.json 的 compatShells 段」）。
+  · 首条登记 `toolgate/invoke`（until v0.16.0 / removedIn v0.17.0）：
+    壳随 toolgate v0.17.0 删除（toolgate#94）⇒ 壳目录消失 ⇒ 本豁免对该条
+    **自然熄灭**（没有目录就没有幽灵可暂缓），无需任何人来摘豁免。
+  · 「兼容期已过（版本号 > until）而壳还在」的**到期即删**判定是 #93 的
+    另一条门禁（消费 compatShells 的 until / removedIn），不在本脚本越权——
+    本门禁只回答「这个目录是不是忘了登记」。
+  · `compatShells` 段不存在 / 为空 ⇒ 零豁免（fail-closed）。
+  · 豁免按**路径**生效（不是整仓）：同仓其它未登记目录照报。
+
 退出码: 0 = 一致；1 = 有幽灵包或缺包。
 
 ⚠️ **口径必须与 CONTRIBUTING 一致**：「`go list ./...` 的每个包都登记在 modules.json」。
@@ -101,16 +119,48 @@ def declared_packages(matrix: Path) -> dict[str, set[str]]:
             for m in data["modules"]}
 
 
-def judge(base: Path, declared: dict[str, set[str]]
+def compat_shells(matrix: Path) -> dict[str, set[str]]:
+    """modules.json 的 compatShells 段 → {仓名: 兼容壳包相对路径集合}。
+
+    compatShells 是 toolgate#93 建立的机器可读兼容壳登记（`{repo, path, module,
+    until, removedIn}`）。本门禁只消费 `repo` + `path`——「这条路径是**有意**
+    保留的转发壳，不是忘了登记」；until / removedIn 的「到期即删」判定属于
+    #93 的另一条门禁，这里不越权。
+
+    判据（窄口）：逐条取登记项，**没有** compatShells 段 ⇒ 空集合
+    （fail-closed：豁免的最危险失效形态是「一直豁免、从没核对过」）。
+    豁免自熄：壳真被删掉后目录消失 ⇒ 没有幽灵可暂缓 ⇒ 登记条目自然失效，
+    不需要任何人来摘豁免。
+    """
+    out: dict[str, set[str]] = {}
+    data = json.loads(matrix.read_text(encoding="utf-8"))
+    for entry in data.get("compatShells") or []:
+        repo, path = entry.get("repo"), entry.get("path")
+        if repo and path:
+            out.setdefault(repo, set()).add(path)
+    return out
+
+
+def judge(base: Path, declared: dict[str, set[str]],
+          defer: dict[str, set[str]] | None = None
           ) -> tuple[list[str], dict[str, list[str]], dict[str, list[str]],
-                     int, list[str]]:
-    """判定本体。返回 (不一致的仓, 幽灵包, 缺失包, 实际检查到的仓数, 跳过的仓)。
+                     dict[str, list[str]], int, list[str]]:
+    """判定本体。
+
+    返回 (不一致的仓, 幽灵包, 缺失包, 兼容壳暂缓, 实际检查到的仓数, 跳过的仓)。
+
+    `defer` 是 compat_shells() 的产物：{仓名: 暂缓判幽灵的包相对路径}
+    （来源：modules.json 的 compatShells 段，toolgate#93 建立的机器可读登记）。
+    暂缓不等于放过——暂缓的路径单独返回、由调用方显式打印（豁免必须可见，
+    「安静地跳过」会让豁免名单变成没人核对的黑洞）。
 
     抽成独立函数是为了能离线自测——判据必须能对着**故意造坏**的样本跑。
     """
+    defer = defer or {}
     bad: list[str] = []
     ghosts: dict[str, list[str]] = {}
     missings: dict[str, list[str]] = {}
+    deferred: dict[str, list[str]] = {}
     checked = 0
     skipped: list[str] = []
     for repo, pkgs in sorted(declared.items()):
@@ -123,15 +173,22 @@ def judge(base: Path, declared: dict[str, set[str]]
         # 比对按**包名末段**（矩阵登记的就是末段），幽灵包按相对路径报出，
         # 嵌套的幽灵要看得见是哪一层。
         actual_names = {rel.rsplit("/", 1)[-1] for rel in actual}
-        ghost = sorted(rel for rel in actual if rel.rsplit("/", 1)[-1] not in pkgs)
+        raw_ghost = sorted(rel for rel in actual if rel.rsplit("/", 1)[-1] not in pkgs)
+        # 兼容壳暂缓按**完整相对路径**匹配（窄口：不是整仓豁免——
+        # 同仓其它未登记目录照报，壳路径多出来一层也不算）
+        shells = defer.get(repo, set())
+        held = sorted(rel for rel in raw_ghost if rel in shells)
+        ghost = sorted(rel for rel in raw_ghost if rel not in shells)
         missing = sorted(pkgs - actual_names)
+        if held:
+            deferred[repo] = held
         if ghost or missing:
             bad.append(repo)
             if ghost:
                 ghosts[repo] = ghost
             if missing:
                 missings[repo] = missing
-    return bad, ghosts, missings, checked, skipped
+    return bad, ghosts, missings, deferred, checked, skipped
 
 
 def selftest() -> int:
@@ -147,6 +204,9 @@ def selftest() -> int:
       ⑤ 一个仓都没查到                     → 必须判红（不得「全部跳过显示全绿」）
       ⑥ 全合规                            → 必须不报
       ⑦ SKIP 名单里的目录（cmd/…）         → 必须**不**报（不得误报）
+      ⑧ 兼容壳（modules.json compatShells 段登记）→ 暂缓不报（toolgate/invoke 形态）
+      ⑨ 兼容壳豁免必须窄：同仓其它幽灵     → 仍必报；未登记的路径 → 不豁免；
+         compatShells 段缺失 ⇒ 零豁免（fail-closed）
     """
     fails: list[str] = []
 
@@ -157,9 +217,19 @@ def selftest() -> int:
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)
         matrix = base / "modules.json"
+        # ⑧ compatShells 登记（toolgate/invoke 形态的镜像）：delta 仓除合规包外
+        #    只有一个壳目录；alpha 仓的 shell 同样登记，但同仓还有**未登记**的
+        #    realexghost 与 noshell（⑨ 窄口反证）
         matrix.write_text(json.dumps({"modules": [
             {"repo": "alpha", "packages": ["alpha", "alpha/core"], "tier": 0},
             {"repo": "beta", "packages": ["beta/core"], "tier": 0},
+        ], "compatShells": [
+            {"repo": "alpha", "path": "shell",
+             "module": "github.com/oagentkit/alpha/shell",
+             "until": "v0.2.0", "removedIn": "v0.3.0"},
+            {"repo": "delta", "path": "shell",
+             "module": "github.com/oagentkit/delta/shell",
+             "until": "v0.2.0", "removedIn": "v0.3.0"},
         ]}, ensure_ascii=False), encoding="utf-8")
 
         def mk(repo: str, rel: str, body: str = "package p\n", fname: str = "p.go"):
@@ -168,9 +238,12 @@ def selftest() -> int:
             (d / fname).write_text(body, encoding="utf-8")
             return d
 
-        # alpha：完全合规（仓根也有 .go —— 路径规则允许包落 module 根）
+        # alpha：仓根 + 合规包 + 两个未登记幽灵 + 一个已登记兼容壳
         mk("alpha", ".", "package alpha\n", "a.go")
         mk("alpha", "core")
+        mk("alpha", "shell")
+        mk("alpha", "realexghost")
+        mk("alpha", "noshell")
         # beta：合规包 + 四种异常
         mk("beta", "core")
         mk("beta", "ghostplain")                              # ① 普通幽灵包
@@ -178,15 +251,37 @@ def selftest() -> int:
         mk("beta", "ghosttest", "package ghosttest\n", "t_test.go")  # ③ 测试专用包
         # ⑦ SKIP 名单里的目录：有 .go 但不是库包，不得误报
         mk("beta", "cmd/tool", "package main\n", "m.go")
-        # ④ 登记了但仓里没有：给 matrix 加一个第三仓（gamma），但仓目录不存在
+        # ⑧ delta：合规包 + 只有壳（toolgate/invoke 形态：壳在、矩阵 packages 没它）
+        mk("delta", "core")
+        mk("delta", "shell")
+        # ④ 登记了但仓里没有：给 matrix 加一个仓（gamma），但仓目录不存在
         matrix.write_text(json.dumps({"modules": [
             {"repo": "alpha", "packages": ["alpha", "alpha/core"], "tier": 0},
             {"repo": "beta", "packages": ["beta/core"], "tier": 0},
+            {"repo": "delta", "packages": ["delta/core"], "tier": 0},
             {"repo": "gamma", "packages": ["gamma/core"], "tier": 0},
+        ], "compatShells": [
+            {"repo": "alpha", "path": "shell",
+             "module": "github.com/oagentkit/alpha/shell",
+             "until": "v0.2.0", "removedIn": "v0.3.0"},
+            {"repo": "delta", "path": "shell",
+             "module": "github.com/oagentkit/delta/shell",
+             "until": "v0.2.0", "removedIn": "v0.3.0"},
         ]}, ensure_ascii=False), encoding="utf-8")
 
+        # ⑧ 解析层：登记项逐条进豁免；段缺失 ⇒ 零豁免（fail-closed）
+        shells = compat_shells(matrix)
+        check("⑧ compatShells 登记项被解析", shells.get("alpha"), {"shell"})
+        check("⑧ 第二条登记被解析", shells.get("delta"), {"shell"})
+        check("⑧ 未登记的路径不在豁免里",
+              "noshell" in shells.get("alpha", set()), False)
+        nomatrix = base / "empty-matrix.json"
+        nomatrix.write_text(json.dumps({"modules": []}), encoding="utf-8")
+        check("⑧ 无 compatShells 段 ⇒ 零豁免（fail-closed）", compat_shells(nomatrix), {})
+
         declared = declared_packages(matrix)
-        bad, ghosts, missings, checked, skipped = judge(base, declared)
+        defer = compat_shells(matrix)
+        bad, ghosts, missings, held, checked, skipped = judge(base, declared, defer)
 
         # ① 普通幽灵包
         check("① 普通幽灵包被报出", "ghostplain" in ghosts.get("beta", []), True)
@@ -200,20 +295,34 @@ def selftest() -> int:
         # ⑦ SKIP 名单不得误报
         check("⑦ cmd/ 目录不误报", "cmd/tool" in ghosts.get("beta", []), False)
         check("⑦ cmd/ 目录不计入缺失", "cmd" in missings.get("beta", []), False)
-        # ⑥ alpha 完全合规
-        check("⑥ 合规仓不报", "alpha" in bad, False)
+        # ⑧ 兼容壳暂缓：不进幽灵名单，单独可见；只有壳的仓不判不一致（toolgate 形态）
+        check("⑧ 兼容壳不判幽灵", "shell" in ghosts.get("delta", []), False)
+        check("⑧ 兼容壳暂缓单独可见", held.get("delta"), ["shell"])
+        check("⑧ 只有合规包 + 壳的仓不判不一致", "delta" in bad, False)
+        # ⑨ 豁免必须窄：同仓未登记的幽灵照报，仓仍判不一致
+        check("⑨ 同仓未登记的幽灵仍报出", "realexghost" in ghosts.get("alpha", []), True)
+        check("⑨ 同仓另一个未登记路径也报出", "noshell" in ghosts.get("alpha", []), True)
+        check("⑨ 同仓未登记的幽灵使仓判不一致", "alpha" in bad, True)
+        # ⑥ 豁免不扩散：暂缓只落在登记的两仓；不一致名单恰好 alpha+beta
+        check("⑥ 暂缓清单恰好两仓", sorted(held), ["alpha", "delta"])
+        check("⑥ 不一致名单恰好 alpha+beta", sorted(bad), ["alpha", "beta"])
+
+        # ⑨ fail-closed：defer 为空（compatShells 段被删）⇒ 兼容壳立刻变回真幽灵
+        bad_nc, ghosts_nc, _, held_nc, _, _ = judge(base, declared, {})
+        check("⑨ 无豁免时兼容壳报幽灵", "shell" in ghosts_nc.get("delta", []), True)
+        check("⑨ 无豁免时暂缓清单为空", held_nc, {})
 
         # ④ 反向样本：把 beta/core 删掉 ⇒ 「登记了但仓里没有」必须报出
         (base / "beta" / "core" / "p.go").unlink()
         (base / "beta" / "core").rmdir()
-        bad2, _, missings2, _, _ = judge(base, declared)
+        bad2, _, missings2, _, _, _ = judge(base, declared, defer)
         check("④ 登记了但仓里没有 → 报出", "core" in missings2.get("beta", []), True)
         check("④ 该仓判为不一致", "beta" in bad2, True)
 
         # ⑤ 一个仓都没查到 ⇒ 不得显示全绿（main 里判红）
         empty = base / "empty"
         empty.mkdir()
-        bad3, _, _, checked3, _ = judge(empty, declared)
+        bad3, _, _, _, checked3, _ = judge(empty, declared, defer)
         check("⑤ 一个仓都没查到 → checked==0", checked3, 0)
         check("⑤ 一个仓都没查到 → 判为不一致", bool(bad3) or checked3 == 0, True)
 
@@ -223,7 +332,8 @@ def selftest() -> int:
             print(f"   - {f}")
         return 1
     print("✅ verify_ghost_packages 自测通过"
-          "（幽灵包 / 嵌套幽灵包 / 测试专用包 / 缺包 必报；合规与 SKIP 名单不误报）")
+          "（幽灵包 / 嵌套幽灵包 / 测试专用包 / 缺包 必报；合规与 SKIP 名单不误报；"
+          "兼容壳按 compatShells 登记暂缓且豁免窄口、段缺失即 fail-closed）")
     return 0
 
 
@@ -251,6 +361,13 @@ def main() -> int:
     if not matrix.is_file():
         print(f"❌ 找不到 modules.json: {matrix}")
         return 1
+    defer = compat_shells(matrix)
+    if defer:
+        print("兼容壳暂缓（modules.json compatShells 段登记，toolgate#93；"
+              "壳删除后豁免自然熄灭）:")
+        for repo in sorted(defer):
+            print(f"  {repo:<12} ⏳ {sorted(defer[repo])}")
+        print()
 
     declared = declared_packages(matrix)
     root = Path(args.root).expanduser().resolve()
@@ -266,9 +383,11 @@ def main() -> int:
           f"{sum(len(v) for v in declared.values())} 包")
     print(f"各仓目录: {base}\n")
 
-    bad, ghosts, missings, checked, skipped = judge(base, declared)
+    bad, ghosts, missings, deferred, checked, skipped = judge(base, declared, defer)
     for repo in skipped:
         print(f"  {repo:<12} ⏭  工作目录不存在（跳过）：{base / repo}")
+    for repo in sorted(deferred):
+        print(f"  {repo:<12} ⏳ 兼容壳暂缓（compatShells 登记）: {deferred[repo]}")
     for repo in bad:
         print(f"  {repo:<12} ⚠️")
         if repo in ghosts:

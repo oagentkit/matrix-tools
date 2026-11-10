@@ -90,6 +90,7 @@
         "fence",
         "logredact",
         "egress",
+        "egressproxy",
         "permgate",
         "injectband",
         "invoke",
@@ -112,6 +113,7 @@
         "fence": "中和不可信文本（LLM 产出、用户输入）中的 markdown 结构，防提示词注入",
         "logredact": "日志/审计载荷凭据脱敏：连接串/URL/头中的凭据落盘前打码",
         "egress": "出口围栏：LLM 可控 URL 的字面量层 SSRF 防护",
+        "egressproxy": "进程级出口强制：只监听回环的本地 HTTP 代理（含 CONNECT 隧道），「声明了受限出口」的兑现件——子进程出站流量经目标准入（白/黑名单 + IP 围栏 + 解析钉住）后才能出网",
         "permgate": "工具调用许可判定链：谁在什么模式下对什么输入得到什么许可",
         "injectband": "系统带外注入的防伪包裹通道：给系统提示打来源标记，并转义 body 内伪造的同形标签（含大小写/空白变体），防身份伪造。与 fence 互补——fence 封数据侧越权，injectband 封系统侧伪造",
         "invoke": "工具调用统一契约 + 不可绕过的调用链（构造即保证）；框架无关，不携带 eino / policy 类型",
@@ -387,7 +389,8 @@
         "websearch",
         "workcopy",
         "sast",
-        "bashguard"
+        "bashguard",
+        "bgjob"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
@@ -413,7 +416,8 @@
         "websearch": "公开资料检索抽象，接口可插拔（缺省 SearXNG 自建实例）",
         "workcopy": "Git 工作副本沙箱：隔离环境 + merge-base 校验",
         "sast": "确定性 SAST 前置扫描（不执行被扫代码）",
-        "bashguard": "Shell 命令静态风险裁决（自 guardx/bashguard 迁入）：经真 shell AST 判定只读性，不执行命令"
+        "bashguard": "Shell 命令静态风险裁决（自 guardx/bashguard 迁入）：经真 shell AST 判定只读性，不执行命令",
+        "bgjob": "远程后台作业 marker 协议原语：经宿主既有 SSH 会话起「脱离会话的长任务」，退出码走 marker 文件做终态探测与收尾（tools#106）"
       }
     },
     {

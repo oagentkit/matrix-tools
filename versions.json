@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 56,
+  "packageCount": 58,
   "modules": [
     {
       "repo": "textx",
@@ -458,6 +458,11 @@
           "pkg": "egress",
           "importPath": "github.com/oagentkit/guardx/egress",
           "fromLegacy": "agentkit/egress"
+        },
+        {
+          "pkg": "egressproxy",
+          "importPath": "github.com/oagentkit/guardx/egressproxy",
+          "fromLegacy": "agentkit/egressproxy"
         },
         {
           "pkg": "permgate",
@@ -3668,6 +3673,11 @@
           "pkg": "bashguard",
           "importPath": "github.com/oagentkit/tools/bashguard",
           "fromLegacy": "agentkit/bashguard"
+        },
+        {
+          "pkg": "bgjob",
+          "importPath": "github.com/oagentkit/tools/bgjob",
+          "fromLegacy": "agentkit/bgjob"
         }
       ],
       "matrixDeps": [

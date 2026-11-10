@@ -608,7 +608,7 @@
       ],
       "oracle": "independent",
       "sharedWith": [],
-      "facts": "各仓实际包目录 vs modules.json 的 packages",
+      "facts": "各仓实际包目录 vs modules.json 的 packages（compatShells 段登记的兼容壳路径暂缓）",
       "ci": [
         {
           "file": ".github/.github/workflows/repo-ci.yml",
@@ -618,9 +618,19 @@
             "push",
             "schedule"
           ]
+        },
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
         }
       ],
       "since": "2026-10-20",
+      "note": "2026-11-10（issue matrix-tools#198）：此前真判定只挂在 .github 仓的 matrix-docs job，而它被 fail-fast 掐断时（oagentkit/.github#35）矩阵完整性完全无人把关——真幽灵 guardx/egressproxy（1564 行、导出公开 API、活跃维护）与 tools/bgjob 就是在这个盲区里长出来的，补登记进 modules.json（58 包）。补本仓 CI 真判定腿（matrix-local-guards，已克隆各仓的 job，零额外克隆成本）。toolgate/invoke 是待删 Deprecated 兼容壳（toolgate#93：兼容期截止 v0.16.0，壳随 v0.17.0 删除、toolgate#94）——**不登记**（登记等于把该删的壳洗白成正式包），由本守卫按 modules.json 的 compatShells 段（#93 建立的机器可读兼容壳登记）暂缓判幽灵；壳删除后目录消失，豁免自然熄灭。「版本号 > until 而壳还在」的到期即删判定属于消费 compatShells 的另一条门禁，不在此越权。",
       "kind": "gate"
     },
     {
