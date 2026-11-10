@@ -202,7 +202,11 @@ def filter_changelog_only(repo_dir: Path, commits: list[dict]) -> list[dict]:
 
     1. **只改 CHANGELOG.md** 的提交（见 is_changelog_only 注释）；
     2. **merge commit**——「Merge pull request #N from …」对读者零信息量，
-       它引入的 PR 的各个 commit 本来就单列在段里了。
+       它引入的 PR 的各个 commit 本来就单列在段里了；
+    3. **空 diff 提交**——git show --name-only 对零差异返回空列表，提交本身
+       没改任何文件（实测：PR squash 时 CHANGELOG 内容与父提交完全一致，
+       GitHub 允许 squash 出空提交；subject/作者照写）。落进版本段就是一条
+       「预写 v0.9.3 待发版段」正文重复两遍、且 tag 快照与重生成永远对不上。
 
     剔除 merge commit 还有第二个作用：让「预写 → 提交 → 打 tag」流程与
     「走 PR 合并后再打 tag」两种打法**产出同一份 CHANGELOG**——
@@ -215,8 +219,22 @@ def filter_changelog_only(repo_dir: Path, commits: list[dict]) -> list[dict]:
             continue
         if is_merge_commit(repo_dir, c["sha"]):
             continue
+        if is_empty_commit(repo_dir, c["sha"]):
+            continue
         out.append(c)
     return out
+
+
+def is_empty_commit(repo_dir: Path, sha: str) -> bool:
+    """该提交是否零差异（没改任何文件）。
+
+    实测形态：prewrite 分支被两个 PR 先后 squash、内容一致时，第二个 squash
+    产出空提交（GitHub 允许）。git show --pretty= --name-only 返回**空**——
+    is_changelog_only 的 names == ["CHANGELOG.md"] 判 False，空提交就会
+    混进版本段（promptx v0.9.3 段折叠实例，2026-11-10）。
+    """
+    files = run(["git", "show", "--pretty=", "--name-only", sha], repo_dir)
+    return not files.strip()
 
 
 def dedent_body(body: str) -> list[str]:
