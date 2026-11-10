@@ -32,7 +32,15 @@
     （行级豁免仍在，但它有个洞：行里出现 "import" 一词时整行豁免会失效 ⇒
     `https://github.com/oagentkit/llm/issues/47` 这类**网页地址**会被误报成陈旧包引用，
     实测 2026-10-26 命中过）
-  - 排除「已退役」章节里**有意记录**的历史路径（用 --allow-retired 标注）
+  - 排除**有意记录历史路径**的四类合法形态（全部自动豁免，无需任何标注参数）：
+    ① 标题含「退役 / 历史 / 迁移对照」的章节（in_retired_section，按标题链向上判）；
+    ② 行内迁移映射「旧路径 → 新路径」（has_migration_arrow，要求箭头右侧是
+       当前存在的包——防止把真死包放行）；
+    ③ 宣布退役的引用块（in_retired_blockquote，块内含「已退役 / 已迁出」等标记）；
+    ④ 迁移映射单页（migration.md / MIGRATION.md）里的**映射表格行**
+       （is_migration_table_row，issue matrix-tools#200）——那张表的旧路径列
+       天然要列死路径；豁免要求行内存在至少一个**当前登记的包**（右侧新路径），
+       逐字豁免、不豁免整页更不豁免整仓。
 """
 
 from __future__ import annotations
@@ -51,6 +59,12 @@ URL_SPAN_RE = re.compile(r"https?://\S+")
 
 # 基础设施仓：不在 modules.json 里，但确实存在
 INFRA = {".github", "matrix-tools", "agentkit"}
+
+# 迁移映射单页的文件名（大小写不敏感）：org 约定的「旧路径 → 新路径」权威页。
+# matrix-tools/migration.md（搬迁映射表）与 agentkit/MIGRATION.md（门面拆分映射）。
+# ⚠️ 豁免只对这些文件的**表格行**生效，且要求行内有合法包（见 is_migration_table_row）
+# ——不豁免整页，更不豁免整仓。
+MIGRATION_DOC_NAMES = {"migration.md"}
 
 
 # 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
@@ -114,6 +128,30 @@ def has_migration_arrow(line: str, valid: set[str]) -> bool:
             if f"github.com/oagentkit/{m.group(1)}" in valid:
                 return True
     return False
+
+
+def is_migration_table_row(md: Path, line: str, valid: set[str]) -> bool:
+    """判断该行是否是**迁移映射单页里的映射表格行**（issue matrix-tools#200）。
+
+    实测（2026-11-10）：matrix-tools/migration.md 的搬迁映射表是 Markdown 表格
+    （表头 `| 旧路径 | 新路径 | 搬迁版本 | 兼容壳 |`），**没有箭头**——
+    `has_migration_arrow()` 只认 `→` / `->`，对表格形态完全不命中 ⇒
+    旧路径列的 4 个历史路径被恒报「陈旧引用」。而那张表**天然要列旧路径**
+    （它是消费方升级依赖时查「哪个包搬去哪了」的权威页）。
+
+    豁免三条件，全部收紧（误报是这类扫描的主要风险，但放行真死包更糟）：
+      1. 文件名是迁移映射单页（migration.md，大小写不敏感）——不豁免整仓；
+      2. 该行是 Markdown 表格行（`|` 分列）——同页的**散文**提及不豁免；
+      3. 行内存在至少一个**当前登记的包**——映射表行的右侧（新路径）必然
+         是活包；一行里全是死路径 ⇒ 不是映射，照报（豁免不得成为死包的免死金牌）。
+    """
+    if md.name.lower() not in MIGRATION_DOC_NAMES:
+        return False
+    s = line.strip()
+    if not (s.startswith("|") and s.endswith("|") and s.count("|") >= 3):
+        return False
+    return any(f"github.com/oagentkit/{m.group(1)}" in valid
+               for m in PKG_RE.finditer(s))
 
 
 def in_retired_blockquote(lines: list[str], idx: int) -> bool:
@@ -192,6 +230,9 @@ def scan(root: Path, valid: set[str], verbose: bool) -> list[tuple[str, int, str
             # 行内迁移映射：「旧路径 → 新路径」——保留旧路径是迁移说明的正确写法
             if has_migration_arrow(line, valid):
                 continue
+            # 迁移映射单页里的映射表格行：旧路径列天然要列死路径（matrix-tools#200）
+            if is_migration_table_row(md, line, valid):
+                continue
             # 引用块里的退役警告：点名死路径是为了让读者避开它
             if in_retired_blockquote(lines, i):
                 continue
@@ -217,6 +258,9 @@ def selftest() -> int:
       ① **该报的必报**（反证）
          - 裸写死包路径（无豁免）        → 必须报出
          - 死包出现在当前指引正文里       → 必须报出
+         - migration.md 里**散文**写死路径（非表格行）→ 必须报出（豁免不豁免整页）
+         - migration.md 表格里**一行全死路径**（无活包）→ 必须报出（豁免不是死包的免死金牌）
+         - **普通文档**里的表格行          → 必须报出（豁免只认迁移映射单页）
       ② **不该报的不报**（不误报样本）
          - 合法包引用                     → 不报
          - 迁移箭头（旧 → 新）             → 不报（保留旧路径是正确写法）
@@ -224,6 +268,8 @@ def selftest() -> int:
          - 宣布退役的引用块               → 不报
          - Markdown 链接 URL              → 不报
          - CHANGELOG.md                   → 不扫（那是历史记录）
+         - migration.md / MIGRATION.md 的**映射表格行**（旧路径 + 活新路径）
+           → 不报（那张表的旧路径列天然要列死路径，matrix-tools#200）
 
     误报是这类扫描的主要风险（脚本 docstring 原话），所以不误报样本
     与反证样本同等重要。
@@ -289,6 +335,27 @@ def selftest() -> int:
         # ② CHANGELOG.md → 不扫
         write("alpha/CHANGELOG.md",
               "BREAKING：`github.com/oagentkit/alpha/breaker` 不再存在。\n")
+        # ② 迁移映射单页的映射表格行 → 不报（matrix-tools#200 的误报形态，
+        #   形态照抄 matrix-tools/migration.md 的搬迁映射表：`|` 分列、无箭头、
+        #   旧路径列是死路径、新路径列是当前登记的包）
+        # ① 同页反证样本：散文提及死路径（非表格行）与一行全死路径 → 必报
+        write("mtools/migration.md",
+              "# 矩阵包搬迁映射\n\n"
+              "| 旧路径 | 新路径 | 搬迁版本 | 兼容壳 |\n"
+              "|---|---|---|---|\n"
+              "| `github.com/oagentkit/beta/audit` | `github.com/oagentkit/alpha/core` "
+              "| beta v0.1.0 | 无（当时纪律未立） |\n"
+              "| `github.com/oagentkit/beta/audit` | `github.com/oagentkit/beta/alsodead` "
+              "| beta v0.1.0 | 无 |\n"
+              "\n"
+              "另注：`github.com/oagentkit/beta/audit` 曾短暂存在，已删。\n")
+        # ② 大写 MIGRATION.md（agentkit 门面拆分映射页形态）→ 同样不报
+        write("facade/MIGRATION.md",
+              "| `codeintel` | `textx` | `github.com/oagentkit/alpha/core` |\n")
+        # ① 反证：普通文档里的表格行没有豁免（豁免只认迁移映射单页，不外溢）
+        write("delta/NOTES.md",
+              "| `github.com/oagentkit/beta/audit` | `github.com/oagentkit/alpha/core` "
+              "| v0.1.0 |\n")
 
         hits = scan(root, valid, verbose=False)
         found = {full for _, _, full, _ in hits}
@@ -303,7 +370,7 @@ def selftest() -> int:
         check("② 合法包不误报",
               "github.com/oagentkit/beta/core" in found, False)
         check("② 迁移箭头不误报",
-              "github.com/oagentkit/beta/audit" in found, False)
+              any(p == "beta/AGENTS.md" for p in paths), False)
         check("② 已退役章节不误报",
               "github.com/oagentkit/alpha/breaker" in
               {full for p, _, full, _ in hits if p.startswith("gamma/")}, False)
@@ -319,8 +386,29 @@ def selftest() -> int:
               "github.com/oagentkit/alpha/breaker" in found, True)
         check("② CHANGELOG.md 不扫",
               any(p == "alpha/CHANGELOG.md" for p in paths), False)
-        # 命中总数：恰好三条死包（alpha/ghost、alpha/AGENTS 的 breaker、zeta 的裸 import）
-        check("命中总数恰好 3", len(hits), 3)
+        # ② 迁移映射单页的映射表格行 → 不报（#200 的误报形态）
+        check("② migration.md 映射表格行不误报",
+              any(p == "mtools/migration.md" and ln == 5
+                  for p, ln, _, _ in hits), False)
+        # ② 大写 MIGRATION.md 同页形态 → 不报（文件名大小写不敏感）
+        check("② MIGRATION.md 映射表格行不误报",
+              any(p == "facade/MIGRATION.md" for p in paths), False)
+        # ① 同页散文提及死路径（非表格行）→ 必报（豁免不豁免整页）
+        check("① 同页散文死路径仍报出",
+              any(p == "mtools/migration.md" and ln == 8
+                  for p, ln, _, _ in hits), True)
+        # ① 同页一行全死路径（行内无当前登记的包）→ 必报（豁免不是死包的免死金牌）
+        check("① 全死路径表格行仍报出",
+              any(p == "mtools/migration.md" and ln == 6
+                  for p, ln, _, _ in hits), True)
+        # ① 普通文档里的表格行 → 必报（豁免只认迁移映射单页）
+        check("① 普通文档表格行仍报出",
+              "github.com/oagentkit/beta/audit" in
+              {full for p, _, full, _ in hits if p == "delta/NOTES.md"}, True)
+        # 命中总数：恰好七条死包（alpha/ghost、alpha/AGENTS 的 breaker、zeta 的裸 import、
+        # migration.md 的散文行 + 全死表格行的 audit 与 alsodead 两个引用、
+        # delta/NOTES.md 的表格行）
+        check("命中总数恰好 7", len(hits), 7)
 
     if fails:
         print("❌ scan_stale_refs 自测失败：")
@@ -328,7 +416,8 @@ def selftest() -> int:
             print(f"   - {f}")
         return 1
     print("✅ scan_stale_refs 自测通过"
-          "（死包必报；迁移箭头 / 退役章节 / 退役引用块 / URL / CHANGELOG 不误报）")
+          "（死包必报；迁移箭头 / 退役章节 / 退役引用块 / 映射单页表格行 / URL / "
+          "CHANGELOG 不误报；同页散文与全死表格行、普通文档表格行仍抓）")
     return 0
 
 
@@ -370,8 +459,15 @@ def main() -> int:
         if args.verbose:
             print(f"      {text}")
     print("\n这些是 AI Agent 读得最多的文件里的**错误归属**：照着 import 会 module not found。")
-    print("修法：把归属改到真实存在的包；若是有意记录的历史路径，"
-          "把它挪到标题含「退役 / 历史 / 迁移」的章节下。")
+    print("修法：把归属改到真实存在的包；若是有意记录的历史路径，放进任一豁免形态")
+    print("（豁免条件与判定逐字一致）：")
+    print("  ① 标题含「退役 / 历史 / 迁移对照」的章节（in_retired_section 认这三个词，")
+    print("     「迁移」单写一个字**不算**——措辞必须含「迁移对照」）；")
+    print("  ② 行内映射「旧路径 → 新路径」，箭头右侧必须是当前登记的包（has_migration_arrow）；")
+    print("  ③ 宣布退役的引用块（连续 > 行内含「已退役 / 已迁出 / 已冻结 / 已迁移 /")
+    print("     迁至 / 不再有后续版本」任一标记）；")
+    print("  ④ 迁移映射单页 migration.md / MIGRATION.md 的映射表格行（| 分列，且行内")
+    print("     含至少一个当前登记的包）——旧路径列天然要列死路径（matrix-tools#200）。")
     return 1
 
 

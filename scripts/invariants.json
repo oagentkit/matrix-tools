@@ -654,7 +654,7 @@
         }
       ],
       "since": "2026-10-20",
-      "note": "2026-10-26 实测修掉一处误报（issue matrix-tools#132 连带）：判据「URL 里的 token 算不算包引用」原是**按行**豁免的 —— 行里出现 \"import\" 一词时整行豁免失效，于是 `https://github.com/oagentkit/llm/issues/47` 这种**网页地址**被报成陈旧包引用（站点新增的 issue 链链接命中）。改成**按匹配位置**判：落在 URL 内的 token 不算包引用，行级豁免原样保留 ⇒ 改前红 2（全是误报）/ 改后红 0；召回未降：同一行里 URL 之外的裸死包 import 改前改后都报（自测反证样本）。",
+      "note": "2026-10-26 实测修掉一处误报（issue matrix-tools#132 连带）：判据「URL 里的 token 算不算包引用」原是**按行**豁免的 —— 行里出现 \"import\" 一词时整行豁免失效，于是 `https://github.com/oagentkit/llm/issues/47` 这种**网页地址**被报成陈旧包引用（站点新增的 issue 链链接命中）。改成**按匹配位置**判：落在 URL 内的 token 不算包引用，行级豁免原样保留 ⇒ 改前红 2（全是误报）/ 改后红 0；召回未降：同一行里 URL 之外的裸死包 import 改前改后都报（自测反证样本）。2026-11-10（issue matrix-tools#200）再修一处恒红误报：migration.md 的搬迁映射表是 Markdown 表格（无箭头），has_migration_arrow 只认 →/-> ⇒ 本 org 自己的迁移映射单页恒红 4 处；且修法文案说「标题含『迁移』」而代码只认「迁移对照」、docstring 说有 --allow-retired 参数而 argparse 根本没注册——照提示改改不掉。修法：新增 is_migration_table_row（窄口三条件：文件名是 migration.md/MIGRATION.md + `|` 分列表格行 + 行内含至少一个当前登记的包——旧路径列天然要列死路径，但一行全死路径照报、同页散文提及照报、普通文档的表格行照报）；修法提示改成与判定逐字一致的四种豁免形态清单；--allow-retired 从 docstring 删除（豁免本就自动，无需标注参数）；selftest 补映射页正反样本各三（表格行不报 / 散文与全死行必报 / 普通文档表格行必报）。",
       "kind": "gate"
     },
     {
