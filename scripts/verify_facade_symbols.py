@@ -42,6 +42,36 @@ README：「本仓不接受任何新功能，只做别名转发与安全修复�
 门面的「不得再长出新包」由另一条守卫守：`verify_facade_frozen.py`（冻结基线快照）——
 它守的是**包集合**有没有变宽，本守卫守的是**已冻结的那张脸**有没有长歪。两者不重叠。
 
+## 对账口径：门面 go.mod 钉住的版本（issue matrix-tools#201）
+
+这条门禁判的命题是：**门面 `go.mod` 钉住的上游版本**里导出的每个符号，门面转发齐了吗？
+**不是**「上游 main 有什么」——上游 main 是**未发布**快照，里面的新符号在门面的依赖里
+根本不存在；拿它当对账基准，门禁就会要求门面转发「编译不过的符号」（照提示补别名 ⇒
+门面 `go build` 失败，issue #201 实测 `undefined: upstream.Delivery`）。
+上游 main 的新符号要等**上游发版、门面抬钉**之后才进入本门禁的对账口径。
+
+ref 解析链路（两种模式同一条判据，只有「源码从哪来」不同）：
+
+1. 门面 `go.mod` 的 require ⇒ {module 路径: 钉定版本}
+   （联网模式取**门面 main 快照**里的 go.mod——门禁审的就是当前门面；本地模式取
+   `--facade` 目录里的。解析复用事实层 `matrix_facts.parse_go_mod`，不自己再写一份）；
+2. 门面转发的每个包按 importPath 找**最长 module 前缀**命中（Go module 语义）⇒
+   上游快照 ref = 钉定 tag（顶层 module 钉 v0.24.1 ⇒ ref `v0.24.1`；
+   嵌套 module `github.com/oagentkit/tools/bashguard` 钉 v0.3.0 ⇒ ref `bashguard/v0.3.0`）；
+3. 源码获取按钉定 ref：
+   - 联网模式：`fetch_repo_snapshot(..., ref=钉定tag)`（tarball 端点对 tag 同样一次给全仓）；
+   - 本地模式：从 `--root` 下各仓的 git object store `git archive <钉定tag>` 解出快照——
+     **不拿工作区内容当钉定版本**（工作区/CI 克隆可能检在 main 上，正是 issue #201 的坑）。
+     本地检不出该 tag（浅克隆没带 tag 等）⇒ 显式 shallow fetch 这**一个** tag 再 archive；
+     仍取不到 ⇒ 红。
+4. **fail-closed**：钉定版本解析不出 / 快照取不到（tag 被删、offline 等）⇒ 判红并说明，
+   **绝不静默回落 main**——「判不了 ≠ 没问题」，静默回落会原样复现 issue #201 的假修法。
+
+口径边界（诚实声明）：MVS 语义下，若某条**传递依赖**把某模块抬得比门面 go.mod 的
+require 更高，`go build` 实际选中的是更高版本——那属于依赖地板门禁
+（`verify_facade_release.py` / `verify_dep_floor.py`）的管辖；本门禁按 go.mod require
+对账，不重算 MVS。
+
 ## 判据
 
 对门面的每个包（47 个）：
@@ -104,6 +134,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import repo_meta  # noqa: E402
+import matrix_facts  # noqa: E402  事实层：go.mod require 解析（SHARED_LAYER，不含判定）
 
 SYMDUMP = HERE / "symdump" / "main.go"
 DEFAULT_VERSIONS = HERE.parent / "versions.json"
@@ -170,10 +201,197 @@ def matrix_index(versions_path: Path) -> dict[str, dict]:
     return out
 
 
+# ---------------------------------------------------------------- 对账口径（issue #201）
+
+def versions_org(versions_path: Path) -> str:
+    """矩阵真相源里的 org。importPath 与钉定解析必须共用同一个前缀。"""
+    data = json.loads(versions_path.read_text(encoding="utf-8"))
+    return data.get("org") or data.get("defaultOrg", "oagentkit")
+
+
+def facade_pins(gomod_text: str) -> dict[str, str]:
+    """门面 go.mod 原文 → {module 路径: 钉定版本}。
+
+    解析复用事实层 `matrix_facts.parse_go_mod`（只取事实，不含判定）——
+    自己再写一份迟早与事实层分叉，分叉出来的就是盲区。
+    indirect 的 require 也算钉定：MVS 里它同样参与选版。
+    """
+    out: dict[str, str] = {}
+    for item in matrix_facts.parse_go_mod(gomod_text)["requires"]:
+        path, ver = item.split(" ", 1)
+        out[path] = ver
+    return out
+
+
+def resolve_pin_ref(pins: dict[str, str], org: str, repo: str,
+                    import_path: str) -> "tuple[str | None, str | None]":
+    """importPath → 对账它的 git ref（门面 go.mod 钉定版本对应的 tag）。
+
+    → (ref, None)；解析不出 ⇒ (None, 原因)——调用方判红（fail-closed），不回落 main。
+
+    匹配用 Go module 语义：importPath 命中的**最长 module 前缀**。
+    ref 构造：顶层 module 钉 v ⇒ `v`；嵌套 module（`<top>/<子目录>`）钉 v ⇒
+    `<子目录>/v`（嵌套 module 的 tag 带子目录前缀，与 repo_meta.nested_tag 同一约定）。
+    """
+    best = None
+    for mod in pins:
+        if (import_path == mod or import_path.startswith(mod + "/")) and (
+                best is None or len(mod) > len(best)):
+            best = mod
+    if best is None:
+        return None, (
+            f"门面 go.mod 没钉住 {import_path} 所在的 module——"
+            "按钉定版本对账判不了（fail-closed，不回落 main）")
+    top = f"github.com/{org}/{repo}"
+    if best == top:
+        return pins[best], None
+    if best.startswith(top + "/"):
+        rel = best[len(top) + 1:]
+        return f"{rel}/{pins[best]}", None
+    return None, f"module {best} 不属于 github.com/{org}/{repo}——对账对象错位，判不了"
+
+
+def resolve_repo_refs(pins: dict[str, str], facade_pkgs: list[str],
+                      index: dict, org: str) -> "tuple[dict[str, str], dict[str, str], list[str]]":
+    """门面转发的包 ⇒ 每个上游仓的钉定 ref。→ ({repo: ref}, {pkg: 口径注记}, problems)。
+
+    两模式共用：联网与本地只有「快照从哪来」不同，ref 解析不许有两份实现。
+    """
+    problems: list[str] = []
+    repo_ref: dict[str, str] = {}
+    notes: dict[str, str] = {}
+    for pkg in facade_pkgs:
+        info = index.get(pkg)
+        if info is None:
+            # 矩阵漏登记：local_inputs 会报（幽灵包门禁负责），这里无从解析
+            continue
+        ref, why = resolve_pin_ref(pins, org, info["repo"], info["importPath"])
+        if ref is None:
+            problems.append(f"{pkg}: {why}")
+            continue
+        notes[pkg] = f"{info['repo']}@{ref}"
+        prev = repo_ref.get(info["repo"])
+        if prev is not None and prev != ref:
+            problems.append(
+                f"{info['repo']}: 同一个仓的包解析出两个钉定版本（{prev} vs {ref}）——判不了")
+            continue
+        repo_ref[info["repo"]] = ref
+    return repo_ref, notes, problems
+
+
+def _run_git(repo_dir: Path, *args: str) -> "tuple[bool, str]":
+    proc = subprocess.run(["git", "-C", str(repo_dir), *args],
+                          capture_output=True, text=True)
+    return proc.returncode == 0, (proc.stderr or proc.stdout).strip()
+
+
+def _git_snapshot(repo_dir: Path, ref: str, dest: Path) -> "tuple[Path | None, str | None]":
+    """把本地 git 仓 ref 指向的树 archive 出来，解到 dest/<仓名>。
+
+    → (解出的目录 | None, 取不到时的原因 | None)。
+
+    为什么走 git archive 而不是拿工作区：工作区被检在哪个 ref，门禁不知道
+    （CI 浅克隆检 main、本地可能检在任何提交上）——拿工作区当钉定版本对账，
+    就会把「main 有、钉定版本没有」的符号判成门面漏转发（issue #201 实测形态）。
+
+    tag 不在本地（浅克隆没带 tag 等）⇒ 先显式 shallow fetch 这**一个** tag
+    再 archive（.github repo-ci 的浅克隆走的就是这条路）；仍取不到 ⇒
+    (None, 原因)，由调用方判红——**不静默回落工作区**。
+    """
+    import io
+    import tarfile
+
+    ok, _ = _run_git(repo_dir, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    if not ok:
+        _run_git(repo_dir, "fetch", "--depth", "1", "origin",
+                 f"+refs/tags/{ref}:refs/tags/{ref}")
+        ok, err = _run_git(repo_dir, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        if not ok:
+            return None, (
+                f"钉定版本 {ref} 检不出（本地仓无此 tag，shallow fetch 也失败："
+                f"{err[:200] or '原因不明'}）")
+    proc = subprocess.run(
+        ["git", "-C", str(repo_dir), "archive", "--format=tar", ref],
+        capture_output=True)
+    if proc.returncode != 0 or not proc.stdout:
+        err = (proc.stderr or b"").decode(errors="replace").strip()
+        return None, f"git archive {ref} 失败：{err[:200] or '无输出'}"
+    target = dest / repo_dir.name
+    try:
+        # git archive 的成员名**不带**仓根前缀（与 GitHub tarball 不同），直接是仓相对路径。
+        # 解包只落普通文件：符号链接、硬链接、绝对路径、`..` 路径一律跳过。
+        with tarfile.open(fileobj=io.BytesIO(proc.stdout), mode="r:") as tf:
+            for m in tf.getmembers():
+                if m.issym() or m.islnk():
+                    continue
+                rel = m.name
+                if not rel or rel.startswith("/") or ".." in Path(rel).parts:
+                    continue
+                out = target / rel
+                if m.isdir():
+                    out.mkdir(parents=True, exist_ok=True)
+                elif m.isfile():
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    src = tf.extractfile(m)
+                    if src is not None:
+                        out.write_bytes(src.read())
+    except (tarfile.TarError, OSError, ValueError):
+        return None, "git archive 产物解包失败"
+    if not target.is_dir():
+        return None, f"git archive {ref} 解出来没有内容"
+    return target, None
+
+
+def pinned_snapshots_local(root: Path, facade_dir: Path, index: dict, org: str,
+                           work: Path) -> "tuple[Path | None, dict[str, str], list[str]]":
+    """本地模式的上游快照：按门面 go.mod 钉定版本，从各仓 git object store 取。
+
+    → (上游快照根 | None, {pkg: 口径注记}, problems)。problems 非空 ⇒ 调用方
+    不出任何包级结论（fail-closed：对账口径立不住时，部分判定比不判定更误导）。
+    """
+    gomod = facade_dir / "go.mod"
+    if not gomod.is_file():
+        return None, {}, [
+            f"读不到门面 go.mod（{gomod}）——钉定版本无从解析，判不了"
+            "（fail-closed，不回落 main）"]
+    pins = facade_pins(gomod.read_text(encoding="utf-8"))
+    if not pins:
+        return None, {}, [
+            "门面 go.mod 里解析不出任何 require——钉定版本无从解析，判不了"
+            "（fail-closed，不回落 main）"]
+    # 门面实际转发的包：门面仓下一层含 alias.go 的目录（枚举基准同 local_inputs）。
+    facade_pkgs = sorted(
+        child.name for child in facade_dir.iterdir()
+        if child.is_dir() and not child.name.startswith(".")
+        and (child / "alias.go").is_file()
+    )
+    repo_ref, notes, problems = resolve_repo_refs(pins, facade_pkgs, index, org)
+    for repo in sorted(repo_ref):
+        ref = repo_ref[repo]
+        src = root / repo
+        if not src.is_dir():
+            problems.append(
+                f"{repo}: 本地没有该仓的检出（{src}）——取不到钉定版本 {ref} 的快照，判不了")
+            continue
+        got, why = _git_snapshot(src, ref, work)
+        if got is None:
+            problems.append(
+                f"{repo}: 取不到钉定版本 {ref} 的源码快照（{why}）——按钉定版本对账判不了，"
+                "不回落本地工作区（工作区可能检在 main 上，正是 issue #201 的坑）")
+    if problems:
+        return None, notes, problems
+    return work, notes, []
+
+
 # ---------------------------------------------------------------- 本地模式
 
-def local_inputs(root: Path, facade_dir: Path, index: dict) -> tuple[list, list, list]:
+def local_inputs(root: Path, facade_dir: Path, index: dict,
+                 notes: "dict[str, str] | None" = None) -> tuple[list, list, list]:
     """构造 symdump 的 manifest（本地模式）。→ (manifest, 门面元信息, 问题)
+
+    `notes`（pkg → "repo@ref"）是调用方解析出的**对账口径**：两种模式的调用方都会
+    先把上游源码按门面 go.mod 钉定版本准备好再进来，这里只在报问题时报出口径，
+    让「判不了」的人一眼看到当时按哪个版本对的账。
 
     # 枚举基准：门面**实际转发**的包，不是矩阵的全部包
 
@@ -212,8 +430,12 @@ def local_inputs(root: Path, facade_dir: Path, index: dict) -> tuple[list, list,
             continue
         up_dir = root / info["repo"] / info["subdir"] if info["subdir"] else root / info["repo"]
         alias = facade_dir / pkg / "alias.go"
+        note = (notes or {}).get(pkg)
         if not up_dir.is_dir():
-            problems.append(f"{pkg}: 上游包目录不存在（{up_dir}），判不了")
+            problems.append(
+                f"{pkg}: 上游包目录不存在（{up_dir}）"
+                + (f"——按钉定版本 {note} 对账，该版本里没有这个包" if note else "")
+                + "，判不了")
             continue
         manifest["upstream"].append({"key": pkg, "dir": str(up_dir.resolve())})
         manifest["facade"].append({"key": pkg, "file": str(alias.resolve())})
@@ -226,9 +448,15 @@ def local_inputs(root: Path, facade_dir: Path, index: dict) -> tuple[list, list,
 def remote_inputs(org: str, facade_repo: str, index: dict) -> tuple[list, list, list, str | None]:
     """构造 symdump 的 manifest（联网模式）。
 
-    先把各仓的源码快照（tarball）拉到临时目录，再**复用本地模式那套检查逻辑**——
+    先把源码快照拉到临时目录，再**复用本地模式那套检查逻辑**——
     联网与本地只有「源码从哪来」不同，判据不该有两份实现（两份实现迟早分叉，
     分叉出来的就是盲区）。
+
+    对账 ref（issue #201）：门面快照取 **main**（门禁审的就是当前门面，
+    而它 go.mod 里钉的上游版本就是已发布版本）；上游快照按**钉定 tag** 取
+    （`fetch_repo_snapshot(..., ref=tag)`——此前不传 ref 默认拿 main，那是未发布
+    快照，会要求门面转发它依赖里不存在的符号）。钉定解析不出 / tag 取不到 ⇒
+    红（fail-closed），**不回落 main**。
 
     → (manifest, 门面元信息, 问题, 临时目录)
     """
@@ -236,16 +464,35 @@ def remote_inputs(org: str, facade_repo: str, index: dict) -> tuple[list, list, 
     root = Path(tmpdir)
     problems: list[str] = []
 
-    repos = {info["repo"] for info in index.values()}
-    repos.add(facade_repo)
-    for repo in sorted(repos):
-        if repo_meta.fetch_repo_snapshot(org, repo, root) is None:
-            problems.append(f"取不到 {org}/{repo} 的源码快照，判不了")
+    if repo_meta.fetch_repo_snapshot(org, facade_repo, root) is None:
+        return {"upstream": [], "facade": []}, [], [
+            f"取不到 {org}/{facade_repo} 的源码快照（门面 go.mod 无从读起），判不了"], tmpdir
+    facade_dir = root / facade_repo
+    gomod = facade_dir / "go.mod"
+    pins = facade_pins(gomod.read_text(encoding="utf-8")) if gomod.is_file() else {}
+    if not pins:
+        problems.append(
+            f"{facade_repo} 快照里解析不出 go.mod require——钉定版本无从解析，"
+            "判不了（fail-closed，不回落 main）")
+    # 门面实际转发的包：枚举基准同 local_inputs（门面仓下一层含 alias.go 的目录）。
+    facade_pkgs = sorted(
+        child.name for child in facade_dir.iterdir()
+        if child.is_dir() and not child.name.startswith(".")
+        and (child / "alias.go").is_file()
+    )
+    repo_ref, notes, pin_problems = resolve_repo_refs(pins, facade_pkgs, index, org)
+    problems += pin_problems
+    for repo in sorted(repo_ref):
+        ref = repo_ref[repo]
+        if repo_meta.fetch_repo_snapshot(org, repo, root, ref=ref) is None:
+            problems.append(
+                f"取不到 {org}/{repo}@{ref} 的源码快照（tag 被删？）——"
+                "按钉定版本对账判不了，不回落 main")
     if problems:
         return {"upstream": [], "facade": []}, [], problems, tmpdir
 
     manifest, facade_meta, local_problems = local_inputs(
-        root, root / facade_repo, index)
+        root, facade_dir, index, notes)
     return manifest, facade_meta, local_problems, tmpdir
 
 
@@ -353,7 +600,10 @@ def selftest() -> int:
     """oracle 有效性自测：拿一个**有盲区的被检对象**跑一遍，确认它报得出。
 
     这不是形式检查——如果 oracle 自己也有同一处盲区，它会对着坏对象说「没问题」，
-    那门禁就是假通过。所以自测里故意造六类缺陷，逐一断言它被抓到。
+    那门禁就是假通过。所以自测里故意造多类缺陷，逐一断言它被抓到；
+    第九组（issue matrix-tools#201）用真实 git 仓造「对账口径」变异体：
+    上游 main 有新符号而钉定版本没有时**必须绿**（修前必红）、
+    钉定版本有而门面漏时**必须红**、钉定版本取不到时**必须红且不回落 main**。
     """
     failures: list[str] = []
 
@@ -585,13 +835,135 @@ def selftest() -> int:
                 check(f"白名单命中（{pkg_name}）的泛型函数不算漏转发",
                       "漏转发" in wl_joined, False)
 
+    # 第九组：对账口径变异体（issue matrix-tools#201）
+    #
+    # 真实 git 仓做夹具（全程离线）：上游 v0.1.0 tag = {Foo, Bar}；main 在 tag
+    # 之后新增 NewThing。门面 go.mod 钉 v0.1.0，alias.go 转发 v0.1.0 的全部符号。
+    #   变异体 A（修前必红，修后必须绿）：main 有 NewThing 而钉定版本没有
+    #     ⇒ 门禁**不得**要求门面转发 NewThing——转发它门面编译不过
+    #       （钉定版本的 upstream 里没这个符号），正是 issue #201 实测的破坏性修法。
+    #   变异体 B（反向仍红）：钉定版本有 Bar 而门面漏 ⇒ 仍判红（口径不能变松）。
+    #   变异体 C（fail-closed）：钉定版本取不到 ⇒ 判红并说明，不出包级结论，
+    #     **不许**静默拿 main/工作区内容充数。
+    def _git(cwd: Path, *args: str) -> None:
+        proc = subprocess.run(["git", "-C", str(cwd), *args],
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            failures.append(
+                f"git 夹具 {' '.join(args[:2])} 失败: {proc.stderr.strip()[:200]}")
+
+    with tempfile.TemporaryDirectory() as gd:
+        g_root = Path(gd) / "root"
+        g_facade = Path(gd) / "facade"
+        up = g_root / "gup"
+        (up / "pkg").mkdir(parents=True)
+        (up / "pkg" / "a.go").write_text(
+            "package pkg\n\nconst Bar = 1\n\nfunc Foo() {}\n", encoding="utf-8")
+        _git(up, "init", "-q", "-b", "main")
+        _git(up, "add", "-A")
+        _git(up, "-c", "user.name=t", "-c", "user.email=t@example.com",
+             "commit", "-q", "-m", "init")
+        _git(up, "tag", "v0.1.0")
+        (up / "pkg" / "a.go").write_text(
+            "package pkg\n\nconst Bar = 1\n\nconst NewThing = 2\n\nfunc Foo() {}\n",
+            encoding="utf-8")
+        _git(up, "add", "-A")
+        _git(up, "-c", "user.name=t", "-c", "user.email=t@example.com",
+             "commit", "-q", "-m", "add NewThing on main（不发包）")
+
+        (g_facade / "pkg").mkdir(parents=True)
+        (g_facade / "go.mod").write_text(
+            "module github.com/oagentkit/agentkit\n\ngo 1.26\n\n"
+            "require github.com/oagentkit/gup v0.1.0\n", encoding="utf-8")
+
+        # 钉定解析的单元变异体
+        g_pins = facade_pins((g_facade / "go.mod").read_text(encoding="utf-8"))
+        check("go.mod require 解析出钉定版本",
+              g_pins, {"github.com/oagentkit/gup": "v0.1.0"})
+        g_ref, g_why = resolve_pin_ref(
+            g_pins, "oagentkit", "gup", "github.com/oagentkit/gup/pkg")
+        check("顶层 module 命中 ⇒ ref=钉定 tag", (g_ref, g_why), ("v0.1.0", None))
+        g_nested = dict(g_pins)
+        g_nested["github.com/oagentkit/gup/sub"] = "v0.2.0"
+        check("嵌套 module 命中 ⇒ ref=子目录前缀 tag",
+              resolve_pin_ref(g_nested, "oagentkit", "gup",
+                              "github.com/oagentkit/gup/sub/x")[0],
+              "sub/v0.2.0")
+        g_miss = resolve_pin_ref(g_pins, "oagentkit", "other", "github.com/oagentkit/other/x")
+        check("go.mod 没钉的 module 解析不出 ref（fail-closed）",
+              (g_miss[0] is None, bool(g_miss[1])), (True, True))
+
+        g_index = {"pkg": {"repo": "gup", "subdir": "pkg",
+                           "importPath": "github.com/oagentkit/gup/pkg"}}
+
+        # 门面转发 v0.1.0 的全部符号（钉定版本里有的都转发了 ⇒ 对账应绿）
+        (g_facade / "pkg" / "alias.go").write_text(
+            "package pkg\n\n"
+            'import upstream "github.com/oagentkit/gup/pkg"\n\n'
+            "var (\n"
+            "\tFoo = upstream.Foo\n"
+            ")\n\n"
+            "const (\n"
+            "\tBar = upstream.Bar\n"
+            ")\n", encoding="utf-8")
+
+        # 变异体 A：快照必须取自钉定 tag，而不是检在 main 上的工作区
+        g_work = Path(gd) / "work"
+        up_root_a, notes_a, probs_a = pinned_snapshots_local(
+            g_root, g_facade, g_index, "oagentkit", g_work)
+        check("钉定快照取自 tag（解析无问题）", probs_a, [])
+        check("口径注记带上 repo@tag", notes_a, {"pkg": "gup@v0.1.0"})
+        check("工作区确实检在 main（NewThing 在场，证明 A 不是巧合）",
+              "NewThing" in (up / "pkg" / "a.go").read_text(encoding="utf-8"), True)
+        check("快照内容来自 v0.1.0（不含 main 的 NewThing）",
+              "NewThing" in (up_root_a / "gup" / "pkg" / "a.go").read_text(encoding="utf-8"),
+              False)
+
+        g_manifest_a, _, g_local_a = local_inputs(up_root_a, g_facade, g_index, notes_a)
+        check("变异体 A：按钉定版本枚举无额外问题", g_local_a, [])
+        g_out_a = run_symdump(g_manifest_a)
+        g_problems_a = check_package(
+            "pkg", g_out_a["upstream"]["pkg"]["symbols"], g_out_a["facade"]["pkg"],
+            "github.com/oagentkit/gup/pkg")
+        check("变异体 A：main 新增符号不要求门面转发（修前必红，修后必须绿）",
+              "NewThing" in "\n".join(g_problems_a), False)
+        check("变异体 A：钉定版本符号齐全 ⇒ 门禁绿", g_problems_a, [])
+
+        # 变异体 B：钉定版本有 Bar、门面漏 ⇒ 仍判红
+        (g_facade / "pkg" / "alias.go").write_text(
+            "package pkg\n\n"
+            'import upstream "github.com/oagentkit/gup/pkg"\n\n'
+            "var (\n"
+            "\tFoo = upstream.Foo\n"
+            ")\n", encoding="utf-8")
+        g_manifest_b, _, _ = local_inputs(up_root_a, g_facade, g_index, notes_a)
+        g_out_b = run_symdump(g_manifest_b)
+        g_problems_b = check_package(
+            "pkg", g_out_b["upstream"]["pkg"]["symbols"], g_out_b["facade"]["pkg"],
+            "github.com/oagentkit/gup/pkg")
+        check("变异体 B：钉定版本有而门面漏 ⇒ 仍判红",
+              "漏转发上游导出符号 Bar" in "\n".join(g_problems_b), True)
+
+        # 变异体 C：钉定版本取不到 ⇒ 红 + fail-closed 说明，不出包级结论
+        (g_facade / "go.mod").write_text(
+            "module github.com/oagentkit/agentkit\n\ngo 1.26\n\n"
+            "require github.com/oagentkit/gup v9.9.9\n", encoding="utf-8")
+        up_root_c, _, probs_c = pinned_snapshots_local(
+            g_root, g_facade, g_index, "oagentkit", Path(gd) / "work-c")
+        check("变异体 C：钉定 tag 取不到 ⇒ 判红", len(probs_c) > 0, True)
+        check("变异体 C：红里说明不回落工作区/main",
+              any("不回落" in p for p in probs_c), True)
+        check("变异体 C：不出包级结论（快照根为 None）", up_root_c is None, True)
+
     if failures:
         print("❌ 自测失败：")
         for f in failures:
             print(f"   - {f}")
         return 1
     print("✅ 自测通过：漏转发 / 幽灵转发 / const 降级 / type 降级 / 泛型函数误转发 / "
-          "泛型函数未登记白名单 / 白名单过期 / 泛型类型不误报 全部能被报出")
+          "泛型函数未登记白名单 / 白名单过期 / 泛型类型不误报 / "
+          "钉定版本口径（main 新符号不要求转发 / 钉定版本漏转发仍红 / "
+          "钉定取不到 fail-closed）全部按预期")
     return 0
 
 
@@ -624,7 +996,7 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
-    tmpdir = None
+    tmpdirs: list[str] = []
     if args.root:
         if not args.facade:
             print("本地模式必须给 --facade（门面仓路径）", file=sys.stderr)
@@ -634,12 +1006,25 @@ def main() -> int:
         if not facade_dir.is_dir():
             print(f"❌ 门面仓路径不存在：{facade_dir}", file=sys.stderr)
             return 2
-        manifest, facade_meta, problems = local_inputs(root, facade_dir, index)
-        mode = f"local root={root} facade={facade_dir}"
+        org = args.org or versions_org(versions_path)
+        work = tempfile.mkdtemp(prefix="facade-syms-pins-")
+        tmpdirs.append(work)
+        up_root, notes, problems = pinned_snapshots_local(
+            root, facade_dir, index, org, Path(work))
+        mode = f"local root={root} facade={facade_dir} 口径=门面 go.mod 钉住的版本"
+        if up_root is not None:
+            manifest, facade_meta, local_problems = local_inputs(
+                up_root, facade_dir, index, notes)
+            problems += local_problems
+        else:
+            # 对账口径立不住（fail-closed）：不出任何包级结论，problems 在下面原样报出。
+            manifest, facade_meta = {"upstream": [], "facade": []}, []
     elif args.org:
         manifest, facade_meta, problems, tmpdir = remote_inputs(
             args.org, args.facade_repo, index)
-        mode = f"remote org={args.org} facade={args.facade_repo}"
+        if tmpdir:
+            tmpdirs.append(tmpdir)
+        mode = f"remote org={args.org} facade={args.facade_repo} 口径=门面 go.mod 钉住的版本"
     else:
         print("必须给 --root（本地各仓父目录）或 --org（联网读）", file=sys.stderr)
         return 2
@@ -650,9 +1035,9 @@ def main() -> int:
         print(f"❌ 符号提取失败（判不了，不能当成「没问题」）：{e}", file=sys.stderr)
         return 1
     finally:
-        if tmpdir:
-            import shutil
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        import shutil
+        for td in tmpdirs:
+            shutil.rmtree(td, ignore_errors=True)
 
     for pkg in facade_meta:
         up = out["upstream"].get(pkg, {})
@@ -697,11 +1082,14 @@ def main() -> int:
     print()
     print("修法：")
     print("  1) 漏转发 → 在对应门的 alias.go 里补上别名")
+    print("     （对账口径是门面 go.mod 钉住的版本：该符号在门面的依赖里真实存在，补上即可编译）")
     print("     type 上游 → type 块；const 上游 → const 块；func/var 上游 → var 块")
     print("  2) kind 错配 → 把该条目从 var 块挪到 type/const 块")
-    print("  3) 幽灵转发 → 删掉该别名（上游已无此符号）")
+    print("  3) 幽灵转发 → 删掉该别名（钉定版本已无此符号）")
     print("  4) 泛型函数 → 不要转发，让下游直接引用上游；并登记进 GENERIC_FUNC_WHITELIST")
     print("  5) 文档清单 → 与上游实际泛型函数保持一致")
+    print("  6) 上游 main 新增、钉定版本还没有的符号**不**要求转发——")
+    print("     等上游发版、门面 go.mod 抬钉之后自然进入对账口径（issue matrix-tools#201）")
     return 1
 
 
