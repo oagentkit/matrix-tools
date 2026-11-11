@@ -31,6 +31,9 @@ MT_ROOT = HERE.parent
 SKILL_DIR = MT_ROOT / "skills" / "oagentkit"
 MODULES_JSON = MT_ROOT / "modules.json"
 
+# 入口冒烟守卫声明（verify_cli_smoke.py 真跑一次的参数）：--check 是只读正常调用
+SMOKE_ARGS = ["--check"]
+
 
 def load_modules() -> dict:
     return json.loads(MODULES_JSON.read_text(encoding="utf-8"))
