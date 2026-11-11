@@ -45,16 +45,18 @@
   "",
   "本基线当前为空。下一轮若出现「最新 tag 当时就落后」，门禁会直接硬失败，",
   "把它加进 tags 并在 why 里写清成因——**基线不是「放过」清单，是「已确认的存量欠账」清单**。",
-  "2026-11-05 记入 7 条（上一维护者 2026-11-04 晨批量发版，发版时刻依赖地板已落后）：\n- agentkit@v1.8.60 / llm@v0.19.0 / obs@v0.9.8 / queue@v0.6.6 / runtime@v0.7.3 /\n  toolgate@v0.12.6 / tools@v0.11.1 —— tag 打出时 oekit/pkg 与 oekit/concurrency\n  的更新版本已在 tag 之前发布，但 go.mod 地板仍钉在旧版。\n- 不可重打：tag 受 protect-tags ruleset 保护。\n- 还债路径：本会话已将各仓 main 的 go.mod 地板抬至最新（bump_dep_floors 三轮）。\n  各仓下次发版后，旧 tag 不再是「最新 tag」⇒ 从本基线移出。"
+  "2026-11-05 记入 7 条（上一维护者 2026-11-04 晨批量发版，发版时刻依赖地板已落后）：\n- agentkit@v1.8.60 / llm@v0.19.0 / obs@v0.9.8 / queue@v0.6.6 / runtime@v0.7.3 /\n  toolgate@v0.12.6 / tools@v0.11.1 —— tag 打出时 oekit/pkg 与 oekit/concurrency\n  的更新版本已在 tag 之前发布，但 go.mod 地板仍钉在旧版。\n- 不可重打：tag 受 protect-tags ruleset 保护。\n- 还债路径：本会话已将各仓 main 的 go.mod 地板抬至最新（bump_dep_floors 三轮）。\n  各仓下次发版后，旧 tag 不再是「最新 tag」⇒ 从本基线移出。",
+  "",
+  "2026-11-11 清空（第二轮清零战还债完成，7 条全数复判不落后）：",
+  "- 移出 agentkit@v1.8.60 / llm@v0.19.0 / obs@v0.9.8 / queue@v0.6.6 / runtime@v0.7.3 /",
+  "  toolgate@v0.12.6 / tools@v0.11.1——各仓后续版本的依赖地板在发版时刻即为最新，",
+  "  旧 tag 不再是「最新 tag」，门禁复判为「不落后」（与 2026-10-20 先例同形）。",
+  "- 本轮发版列车动作：guardx v0.24.2/v0.24.3、textx v0.10.8/v0.10.9、obs v0.9.16/v0.9.17、",
+  "  queue v0.11.2、skillkit v0.10.5/v0.10.6、toolgate v0.17.1、tools v0.14.4/v0.14.5、",
+  "  rag v0.11.8、mcpkit v0.12.9/v0.13.0、llm v0.21.9、agent v0.14.9、runtime v0.12.7/v0.12.8、",
+  "  promptx v0.9.4/v0.9.5。",
+  "把它加进 tags 并在 why 里写清成因——**基线不是「放过」清单，是「已确认的存量欠账」清单**。"
  ],
- "checkedAt": "2026-11-05",
- "tags": [
-  "agentkit@v1.8.60",
-  "llm@v0.19.0",
-  "obs@v0.9.8",
-  "queue@v0.6.6",
-  "runtime@v0.7.3",
-  "toolgate@v0.12.6",
-  "tools@v0.11.1"
- ]
+ "checkedAt": "2026-11-11T01:29:45Z",
+ "tags": []
 }
