@@ -21,7 +21,7 @@ MT=~/XiaomiMiMoProjects/oagentkit-matrix/matrix-tools
 ROOT=~/XiaomiMiMoProjects/oagentkit-matrix
 python3 $MT/scripts/release.py --root $ROOT prewrite --repo <repo> --version vX.Y.Z  # ① 预写待发版段（只改 CHANGELOG，自动开分支）
 python3 $MT/scripts/release.py --root $ROOT tag      --repo <repo> --version vX.Y.Z  # ② 提交 CHANGELOG → 打 annotated tag（同提交）
-python3 $MT/scripts/release.py sync-matrix --version vX.Y.Z                          # ③ 刷新矩阵源 versions.json → 同步站点副本
+python3 $MT/scripts/release.py --root $ROOT sync-matrix                            # ③ 刷新矩阵源 versions.json → 自动拷站点副本（副本仓按「源先副本后」另行提交）
 python3 $MT/scripts/release.py --root $ROOT doctor   --repo <repo> --version vX.Y.Z  # ⓪ 发版前体检（只读，随时可跑）
 ```
 
