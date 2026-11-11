@@ -124,6 +124,13 @@ jobs:
         # tag 在同一个仓里，取错「最新」会把矩阵写成 v0.1.0。
         run: python3 scripts/repo_meta.py
 
+      - name: AI skill 入口自测（渲染确定性 / 场景表死键 / 头号判据 / frontmatter）
+        # skill 是 AI 消费矩阵的选型入口——数据错 = AI 全矩阵走错路（oekit 同型门禁的移植）。
+        run: python3 scripts/gen_skill_selftest.py
+
+      - name: AI skill 渲染新鲜度（产物与 modules.json/gen_skill 数据区漂移即红）
+        run: python3 scripts/gen_skill.py --check
+
   changelog-coverage:
     name: CHANGELOG coverage (独立 oracle)
     # 「两级覆盖」门禁（issue matrix-tools#41）：直接扫**原始 git 历史**算「应当出现的
