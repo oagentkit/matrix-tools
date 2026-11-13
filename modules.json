@@ -465,8 +465,8 @@
   "infraRepos": [
     {
       "repo": "agentkit",
-      "role": "门面仓——只做 re-export 零逻辑（转发包集合已冻结，见 matrix-tools/scripts/facade_package_baseline.json）。退役条件机器化为 retireWhen（matrix-tools#196）：notAfter 期限已过 ⇒ verify_facade_retirement 判红，须归档或再次改期并更新理由",
-      "ghDescription": "【门面仓·已迁移】本项目已拆分为 github.com/oagentkit/* 共 13 个独立发版仓，此仓仅保留 re-export 兼容层，v1.x 后退役",
+      "role": "门面仓——已退役（v1.9.0）：48 个 re-export 转发包全部删除，module 保留声明 + 零依赖 go.mod 作墓碑与迁移指引。退役条件机器化为 retireWhen（matrix-tools#196）并已提前执行（见 retired 字段）；门面族守卫（verify_facade_retirement / packages / symbols / tier_table / release）对 retired 状态全部豁免或改判墓碑形状",
+      "ghDescription": "【门面仓·已退役】本项目已拆分为 github.com/oagentkit/* 共 13 个独立发版仓，v1.9.0 起兼容转发层全部删除（BREAKING），旧 import 路径一律改上游真身",
       "topics": [
         "go",
         "deprecated",
@@ -477,10 +477,17 @@
       "moduleNote": "门面仓本身是发布的 Go module（github.com/oagentkit/agentkit），也有自己的破坏性变更（v1.8.0 起 re-export 地板跟到各模块新版）。它不进 modules 列表——门面 v1.x 后退役，不是矩阵的长期成员——但它的 breakingIndex 必须进机器可读源，否则消费方从门面装走的是什么版本没人说得清。",
       "retireWhen": {
         "notAfter": "2027-05-31",
-        "reason": "外部下游仍经旧单仓 module path（git.enjoye.top/enjoydream/agentkit）消费门面语义，归档前必须保活（README 口径一致）；矩阵内已零消费。到期未归档 ⇒ 守卫判红",
+        "reason": "（历史登记，已被 retired 提前兑现）原判定：外部下游仍经旧单仓 module path（git.enjoye.top/enjoydream/agentkit）消费门面语义，归档前必须保活；矩阵内已零消费。到期未归档 ⇒ 守卫判红",
         "matrixInternalZeroImports": true,
         "decidedAt": "2026-11-10",
         "decidedBy": "matrix-tools#196 机器化——原「按 README 写死的期限退役」中 README 从未写死期限"
+      },
+      "retired": {
+        "version": "v1.9.0",
+        "date": "2026-11-13",
+        "packagesDeleted": 48,
+        "reason": "兼容逻辑清仓车道：矩阵内零消费已验证，48 个转发包全部删除（BREAKING），旧 import 路径 github.com/oagentkit/agentkit/* 自 v1.9.0 起编译失败；go.mod 清空全部 require（零代码零依赖），README 留 48 包 → 上游对照表作迁移指引。较 notAfter 2027-05-31 提前退役；归档待旧单仓 git.enjoye.top/enjoydream/agentkit 下线后执行",
+        "decidedBy": "agentkit#198"
       }
     },
     {
@@ -529,21 +536,22 @@
       "timelineModule": "runtime"
     },
     {
-      "kind": "compat",
+      "kind": "retired",
       "pkg": "llm/llm",
       "repo": "llm",
       "importPath": "github.com/oagentkit/llm/llm",
       "canonicalPath": "github.com/oagentkit/llm",
       "availableIn": "llm v0.18.0 起",
-      "impl": "llm/llm/compat.go —— 镜像根包全部 71 个导出符号（31 type / 31 func / 2 var / 7 const）；类型用 type 别名、函数用 var 转发、常量原样转发，一致性由 llm/llm/compat_test.go 的 AST 比对强制",
+      "removedIn": "llm v0.22.0",
+      "impl": "（已删除）原 llm/llm/compat.go —— 镜像根包全部 81 个导出符号；类型用 type 别名、函数用 var 转发、常量原样转发",
       "whyNotInPackages": "规范包清单的 import 路径规则把「包名末段 == 仓名」收口到 module 根（matrix_paths.new_import_path）；登记它会让 versions.json 给根包与它登记同一个 importPath",
       "issueRepo": "oagentkit/llm",
       "issueChain": {
         "47": "需求：llm/llm 扁平化后缺兼容子包 —— 跨大版本升级的下游需整仓改 import 路径（已关闭）",
         "48": "实现：补 llm/llm 兼容层 —— 恢复 v0.7.0~v0.8.0 的历史 import 路径（已合入 llm v0.18.0）"
       },
-      "status": "过渡期兼容镜像 —— 包是活的（v0.18.0 起可 import），只为存量下游存在",
-      "plan": "新代码一律直接 import github.com/oagentkit/llm；本镜像随 0.x 版本线退役",
+      "status": "已完成：llm v0.22.0 删除兼容镜像（BREAKING，llm#181）——旧路径 import 一律改根包 github.com/oagentkit/llm（符号同名，调用点零改动）",
+      "plan": "（已兑现）新代码一律直接 import github.com/oagentkit/llm",
       "timelineModule": "llm"
     }
   ],

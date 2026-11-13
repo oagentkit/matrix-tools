@@ -272,7 +272,7 @@ def main() -> int:
         if not r.get("goModule"):
             continue
         repo = r["repo"]
-        facades.append({
+        entry = {
             "repo": repo,
             "url": f"https://github.com/{org}/{repo}" if org else None,
             "latest": repo_meta.latest_tag(org, repo) if (args.org and org) else None,
@@ -280,7 +280,12 @@ def main() -> int:
             "breakingIndex": build_breaking_index(args.root, args.org if args.org else org, repo),
             # 地板：import 本仓任一包会被拖进消费方模块图的重量级第三方依赖
             "depFloor": dep_floor(args.root, args.org if args.org else org, repo),
-        })
+        }
+        # 退役登记（agentkit v1.9.0 整仓退役）：retired 字段透传 modules.json 的
+        # 单一数据源，供门面族守卫（symbols / release 等）豁免墓碑形态。
+        if isinstance(r.get("retired"), dict) and r["retired"].get("version"):
+            entry["retired"] = r["retired"]
+        facades.append(entry)
         if not facades[-1]["breakingIndex"] and not changelog_text(
                 args.root, args.org if args.org else org, repo):
             missing_changelog.append(repo)

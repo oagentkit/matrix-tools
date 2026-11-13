@@ -345,6 +345,25 @@ def main() -> int:
         print("❌ 一个模块仓的 tag 都没取到，拒绝判定（避免「全绿但什么都没查」）")
         return 1
 
+    # 退役终态（agentkit v1.9.0）：retiredIn 之后的 tag 本该是「零 require 墓碑」——
+    # 无包可转发 ⇒ MVS 陷阱（go get 门面装走拆分初期旧实现）不复存在。
+    # 退役版 go.mod 仍带 require = 退役没删干净，照样红。
+    entry = next((e for e in data.get("infraRepos", [])
+                  if e.get("repo") == args.facade), None)
+    retired = entry.get("retired") if entry else None
+    if isinstance(retired, dict) and retired.get("version") \
+            and semver_key(tag) >= semver_key(retired["version"]):
+        req = parse_requires(gomod_text)
+        base_req = parse_requires_base(gomod_text)
+        if req or base_req:
+            print(f"❌ 门面已登记退役（{retired['version']}），但 tag {tag} 的 go.mod "
+                  f"仍有 require：{sorted(set(req) | set(base_req))}")
+            print("   修法：退役版 go.mod 只许 module 声明（零 require），重新发版。")
+            return 1
+        print(f"✅ 门面已退役（{tag} ≥ {retired['version']}）：go.mod 零 require，"
+              "MVS「装走旧实现」陷阱随包一起删除，地板校验豁免")
+        return 0
+
     return _audit(tag, gomod_text, tags, declared, args.verbose, base_tags)
 
 

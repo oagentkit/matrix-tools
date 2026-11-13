@@ -273,23 +273,50 @@ def main() -> int:
             L.append(f"  - 安装：`go get github.com/{org}/{m['repo']}@latest`")
         L.append("")
 
-    L.append("## 门面仓（迁移过渡 · 已废弃）")
-    L.append("")
-    L.append(f"- [agentkit](https://github.com/{org}/agentkit): 原单仓 "
-             f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面，{nfacade} 包 re-export。"
-             f"**已废弃**：v1.x 退役条件已满足，只保留兼容转发、不接受新功能，"
-             f"**新代码不要引它**。归档待旧单仓 "
-             f"`git.enjoye.top/enjoydream/agentkit` 下线后执行；在此之前本仓继续可用，"
-             f"已有 tag 的 `go get` 照常解析。")
-    L.append(f"- 完整旧→新包路径映射见该仓 [MIGRATION.md](https://github.com/{org}/agentkit/blob/main/MIGRATION.md)。")
-    L.append(f"- 门面**包集合已冻结**：矩阵新增的包不再要求门面跟上（见 "
-             f"`scripts/facade_package_baseline.json` 与 `scripts/verify_facade_frozen.py`）。")
-    if no_facade_pkgs:
-        L.append(f"- **以下 {len(no_facade_pkgs)} 个矩阵包没有门面等价物**"
-                 f"（门面冻结在它们之前，不转发新包是正确行为）：")
-        for pkg, path in no_facade_pkgs:
-            L.append(f"  - `{path.replace('{org}', org)}` —— 直接依赖真实模块，**不要**去门面 import")
-    L.append("")
+    # 门面退役登记（单一数据源：modules.json infraRepos.agentkit.retired）。
+    # 退役后对外口径从「48 包 re-export」改为「已退役 + 强制迁移」——
+    # 继续宣称 re-export 等于让 Agent 照旧索引去 import 已删除的路径。
+    facade_retired = None
+    for r in d.get("infraRepos", []):
+        if r.get("repo") == "agentkit":
+            rr = r.get("retired")
+            if isinstance(rr, dict) and rr.get("version"):
+                facade_retired = rr
+    if facade_retired:
+        L.append("## 门面仓（已退役）")
+        L.append("")
+        L.append(f"- [agentkit](https://github.com/{org}/agentkit): 原单仓 "
+                 f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面**已退役"
+                 f"（{facade_retired['version']}，{facade_retired.get('date', '')}）**："
+                 f"{nfacade} 个转发包全部删除（BREAKING），"
+                 f"`github.com/{org}/agentkit/*` 自该版起编译失败。")
+        L.append(f"- **下游要做什么**：import 一律改上游真身（符号同名、调用点零改动），"
+                 f"go.mod 换掉 `require github.com/{org}/agentkit` 后 `go mod tidy`；"
+                 f"旧单仓 module path `git.enjoye.top/enjoydream/agentkit` 同步作废。")
+        L.append(f"- {nfacade} 包 → 上游真身对照表见该仓 "
+                 f"[README](https://github.com/{org}/agentkit)；批量改写用 matrix-tools 的 "
+                 f"`rewrite_imports.py --print-rules / --apply`。")
+        L.append(f"- 归档待旧单仓 `git.enjoye.top/enjoydream/agentkit` 下线后执行；"
+                 f"已有 tag（v1.8.x 及更早）的 `go get` 照常解析。")
+        L.append("")
+    else:
+        L.append("## 门面仓（迁移过渡 · 已废弃）")
+        L.append("")
+        L.append(f"- [agentkit](https://github.com/{org}/agentkit): 原单仓 "
+                 f"`git.enjoye.top/enjoydream/agentkit` 的兼容门面，{nfacade} 包 re-export。"
+                 f"**已废弃**：v1.x 退役条件已满足，只保留兼容转发、不接受新功能，"
+                 f"**新代码不要引它**。归档待旧单仓 "
+                 f"`git.enjoye.top/enjoydream/agentkit` 下线后执行；在此之前本仓继续可用，"
+                 f"已有 tag 的 `go get` 照常解析。")
+        L.append(f"- 完整旧→新包路径映射见该仓 [MIGRATION.md](https://github.com/{org}/agentkit/blob/main/MIGRATION.md)。")
+        L.append(f"- 门面**包集合已冻结**：矩阵新增的包不再要求门面跟上（见 "
+                 f"`scripts/facade_package_baseline.json` 与 `scripts/verify_facade_frozen.py`）。")
+        if no_facade_pkgs:
+            L.append(f"- **以下 {len(no_facade_pkgs)} 个矩阵包没有门面等价物**"
+                     f"（门面冻结在它们之前，不转发新包是正确行为）：")
+            for pkg, path in no_facade_pkgs:
+                L.append(f"  - `{path.replace('{org}', org)}` —— 直接依赖真实模块，**不要**去门面 import")
+        L.append("")
     L.append("## 基建")
     L.append("")
     L.append(f"- [{org}/.github](https://github.com/{org}/.github) — org profile + "
