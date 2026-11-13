@@ -1,46 +1,47 @@
 #!/usr/bin/env python3
-"""Go 地板门禁：tier0 必须是 1.24.x，tier1+ 不得「依赖链全兼容却声明更高」，
+"""Go 地板门禁：tier0 必须是 1.26.x（随基座，2026-11-13 前 1.24.x），tier1+ 不得「依赖链全兼容却声明更高」，
 且 CI go-version 必须与 go.mod 的 go 指令成对。
 
 ## 为什么要有这条
 
 Go 的 `go` 指令是**真正的地板**：它决定消费方最低能用哪个 Go 编译你的模块。
-下游 `go get` 你的包时，如果你的 go.mod 写着 `go 1.26.0`，那用 Go 1.24 的用户
-**直接构建失败**——`go: module requires go >= 1.26.0`。
+下游 `go get` 你的包时，如果你的 go.mod 写着 `go 1.28.0`，那用 Go 1.26 的用户
+**直接构建失败**——`go: module requires go >= 1.28.0`。
 
-`toolchain` 行**不是**地板（编译器实证）：`go 1.24.0` + `toolchain go1.28.0`
+`toolchain` 行**不是**地板（编译器实证）：`go 1.26.0` + `toolchain go1.28.0`
 在 `GOTOOLCHAIN=local` 下可以通过；真正被拒的是 `go 1.28.0`。
 所以门槛只看 `go` 指令，`toolchain` 只作为「开发时用哪个工具链」的提示。
 
 实测（2026-10-20，本矩阵）：textx / guardx / runtime 三个 **tier0 基础包**声明
-`go 1.26.0`，但它们的依赖链上只有 `oekit/pkg` 与 `oekit/concurrency`
-（两者都是 `go 1.24.0`），代码本身也完全兼容 1.24——**地板被无谓抬高了**。
-基础包抬高地板 = 把「用 Go 1.24 也能用的轻量能力」挡在 Go 1.26 之外。
-顺带扫出的 tier1+ 结论见 matrix-tools#34：7 个仓同样可降，3 个因三方硬要求不可降。
+`go 1.26.0`，但当时依赖链（oekit/pkg / oekit/concurrency 都是 `go 1.24.0`）
+完全兼容 1.24——**地板被无谓抬高了**，随后按裁决降回 1.24.x。
+2026-11-12 起 oekit 基座自身抬到 `go 1.26.0`（pkg v0.46.0+），tier0 目标随之
+上调（见 TIER0_GO_PREFIX 的注释）——规则精神不变：tier0 不高于其依赖基座。
 
-口径依据（负责人裁决 2026-10-20）：
-「基础包需要依赖低版本的 go1.24，业务包依赖 1.24 / 1.25 / 1.26 都行。」
+口径依据（负责人裁决 2026-10-20，2026-11-13 随基座上调）：
+「基础包需要依赖低版本（= 基座地板，当前 go1.26），业务包不设绝对地板。」
 
 ## 判据（四条，逐条独立）
 
-1. **tier0 的 go 指令必须是 1.24.x**
-   tier0 是「需要依赖低版本的」那一类。它的依赖链必须都是 1.24 兼容的，
-   自己声明 1.25+ 就是无谓抬高。
+1. **tier0 的 go 指令必须是 1.26.x（= 基座地板）**
+   tier0 是「需要依赖低版本的」那一类。它的依赖链不得高于基座，
+   自己声明更高就是无谓抬高；低于基座则意味着还没吸收基座地板
+   （依赖基座的仓 `go mod tidy` 会自动顶高——见到这条先 tidy）。
 
 2. **CI go-version 必须与 go.mod 的 go 指令成对**
    两者是同一个承诺的两种表达。CI 用 1.26 构建、go.mod 写 1.24 时，
    CI 全绿但用户按 1.24 编译失败——**门禁绿了，承诺没兑现**。
    这条对**所有** tier 生效（含 tier1+），因为它是「成对」而不是「地板高低」。
 
-3. **tier0 不得有 toolchain 行高于 1.24 的提示**
-   `toolchain` 不构成门槛，但 `toolchain go1.27.2` 会让 `go` 命令**自动下载**
-   1.27.2，与「最低支持版本是 1.24」的精神相悖。tier0 允许无 toolchain 行或
-   `toolchain go1.24.x`；显式写了更高的 → 红。
+3. **tier0 不得有 toolchain 行高于 1.26 的提示**
+   `toolchain` 不构成门槛，但 `toolchain go1.28.0` 会让 `go` 命令**自动下载**
+   1.28.0，与「最低支持版本是 1.26」的精神相悖。tier0 允许无 toolchain 行或
+   `toolchain go1.26.x`；显式写了更高的 → 红。
 
 4. **tier1+ 不得「依赖链全兼容却声明更高」**
-   tier1+ 不设**绝对**地板（业务层 1.24/1.25/1.26 都合法），
+   tier1+ 不设**绝对**地板（业务层 1.26/1.27/1.28 都合法），
    但**相对**地板是硬要求：如果本仓依赖链上**每一个**依赖的 go 指令都
-   ≤ 1.24.x，而本仓自己声明 1.25+，那这个更高地板**没有任何依赖需要它**
+   ≤ 1.26.x，而本仓自己声明 1.27+，那这个更高地板**没有任何依赖需要它**
    ——是无谓抬高，必须降。
 
    判据用 `go list -m -json all` 读每个依赖的 `GoVersion`
@@ -134,15 +135,23 @@ import repo_meta  # noqa: E402
 
 DEFAULT_MATRIX = HERE.parent / "modules.json"
 
-# tier0 允许的 go 指令版本前缀（1.24.x）
-TIER0_GO_PREFIX = "1.24."
+# tier0 允许的 go 指令版本前缀。
+#
+# ⚠️ 2026-11-13 起 = 1.26.x（原 1.24.x）：oekit 基座（pkg / concurrency / logx，
+# 自 pkg v0.46.0 起）把 go 指令抬到 1.26.0 ⇒ `go mod tidy` 会把**所有**依赖基座的
+# tier0 仓的 go 指令跟着顶高（Go 1.21+ 语义：模块指令不得低于依赖的要求）。
+# 「tier0 = 1.24.x」自 2026-11-12 起结构性不可满足（matrix-tools main 连红实测），
+# 硬维持只能产出永远的红灯。规则的精神是「tier0 不高于其依赖基座的地板」——
+# 基座到 1.26 ⇒ tier0 目标随之到 1.26。基座回落时这里跟着降回。
+TIER0_GO_PREFIX = "1.26."
 
-# tier0 允许的 toolchain 版本前缀（1.24.x）；不写 toolchain 行也算合规
-TIER0_TOOLCHAIN_PREFIX = "1.24."
+# tier0 允许的 toolchain 版本前缀（与 go 指令同版）；不写 toolchain 行也算合规
+TIER0_TOOLCHAIN_PREFIX = "1.26."
 
 # tier1+ 的「相对地板」判据：依赖链上每个依赖的 go 指令都 ≤ 这个版本时，
-# 本仓自己声明更高就是无谓抬高。这个前缀是本矩阵的**目标地板**。
-TARGET_GO_PREFIX = "1.24."
+# 本仓自己声明更高就是无谓抬高。这个前缀是本矩阵的**目标地板**
+#（= 基座地板，随 oekit 基座的 go 指令走，依据同上）。
+TARGET_GO_PREFIX = "1.26."
 
 # ---------------------------------------------------------------------------
 # 豁免清单：依赖链上确有要求更高版本的三方包的仓。
@@ -600,76 +609,76 @@ def selftest() -> int:
         if got != want:
             fails.append(f"{name}: 期望 {want!r}，实得 {got!r}")
 
-    # tier0 合规：go 1.24.0 + CI 1.24
-    check("tier0 合规", check_repo("x", 0, "1.24.0", None, "1.24"), [])
+    # tier0 合规：go 1.26.0 + CI 1.26（目标随基座，见 TIER0_GO_PREFIX 注释）
+    check("tier0 合规", check_repo("x", 0, "1.26.0", None, "1.26"), [])
     # tier0 无 toolchain 行也算合规
-    check("tier0 无 toolchain", check_repo("x", 0, "1.24.0", None, "1.24"), [])
-    # tier0 toolchain 1.24.x 合规
-    check("tier0 toolchain 1.24", check_repo("x", 0, "1.24.0", "1.24.3", "1.24"), [])
-    # tier0 go 1.26 → 红（CI 也给 1.26，隔离出「地板抬高」这一条）
-    p = check_repo("x", 0, "1.26.0", None, "1.26")
-    check("tier0 go 1.26 被抓", len(p), 1)
-    check("tier0 go 1.26 指名道姓", "x" in p[0] and "1.26.0" in p[0], True)
-    # tier0 go 1.26 + CI 1.24 → 两条判据同时命中
-    check("tier0 地板抬高+不成对=2条", len(check_repo("x", 0, "1.26.0", None, "1.24")), 2)
+    check("tier0 无 toolchain", check_repo("x", 0, "1.26.0", None, "1.26"), [])
+    # tier0 toolchain 1.26.x 合规
+    check("tier0 toolchain 1.26", check_repo("x", 0, "1.26.0", "1.26.3", "1.26"), [])
+    # tier0 go 1.28 → 红（CI 也给 1.28，隔离出「地板抬高」这一条）
+    p = check_repo("x", 0, "1.28.0", None, "1.28")
+    check("tier0 go 1.28 被抓", len(p), 1)
+    check("tier0 go 1.28 指名道姓", "x" in p[0] and "1.28.0" in p[0], True)
+    # tier0 go 1.28 + CI 1.26 → 两条判据同时命中
+    check("tier0 地板抬高+不成对=2条", len(check_repo("x", 0, "1.28.0", None, "1.26")), 2)
     # tier0 toolchain 1.27 → 红
-    p = check_repo("x", 0, "1.24.0", "1.27.2", "1.24")
+    p = check_repo("x", 0, "1.26.0", "1.27.2", "1.26")
     check("tier0 toolchain 1.27 被抓", len(p), 1)
-    # tier1 及以上：go 1.26 不报（业务层合法——前提是依赖链确有要求更高的包）
-    dep_high = {"github.com/oekit/pkg": "1.24.0", "github.com/x/y": "1.26.0"}
-    check("tier1 go 1.26 不报",
-          check_repo("x", 1, "1.26.0", "go1.27.2", "1.26", dep_high), [])
-    check("tier2 go 1.26 不报",
-          check_repo("x", 2, "1.26.0", "go1.27.2", "1.26", dep_high), [])
-    check("tier3 go 1.26 不报",
-          check_repo("x", 3, "1.26.0", "go1.27.2", "1.26", dep_high), [])
+    # tier1 及以上：go 1.28 不报（业务层合法——前提是依赖链确有要求更高的包）
+    dep_high = {"github.com/oekit/pkg": "1.26.0", "github.com/x/y": "1.28.0"}
+    check("tier1 go 1.28 不报",
+          check_repo("x", 1, "1.28.0", "go1.28.2", "1.28", dep_high), [])
+    check("tier2 go 1.28 不报",
+          check_repo("x", 2, "1.28.0", "go1.28.2", "1.28", dep_high), [])
+    check("tier3 go 1.28 不报",
+          check_repo("x", 3, "1.28.0", "go1.28.2", "1.28", dep_high), [])
     # tier1 及以上：CI 与 go.mod 不成对仍要红（成对纪律对所有 tier 生效）
-    p = check_repo("x", 1, "1.26.0", None, "1.24", dep_high)
+    p = check_repo("x", 1, "1.28.0", None, "1.26", dep_high)
     check("tier1 CI 不成对被抓", len(p), 1)
-    p = check_repo("x", 2, "1.24.0", None, "1.26", dep_high)
+    p = check_repo("x", 2, "1.26.0", None, "1.28", dep_high)
     check("tier2 CI 不成对被抓", len(p), 1)
     # go 指令读不到 → 判不了即红
-    check("go 指令缺失即红", len(check_repo("x", 0, None, None, "1.24")), 1)
+    check("go 指令缺失即红", len(check_repo("x", 0, None, None, "1.26")), 1)
     # CI go-version 读不到 → 判不了即红
-    check("CI 缺失即红", len(check_repo("x", 0, "1.24.0", None, None)), 1)
+    check("CI 缺失即红", len(check_repo("x", 0, "1.26.0", None, None)), 1)
 
     # ---- 判据 4：tier1+ 不得「依赖链全兼容却声明更高」 ----
-    all124 = {"github.com/oekit/pkg": "1.24.0", "github.com/oekit/concurrency": "1.24.0"}
-    # 依赖链全 1.24、自己声明 1.26 → 红
-    p = check_relative_floor("x", 2, "1.26.0", all124)
+    all126 = {"github.com/oekit/pkg": "1.26.0", "github.com/oekit/concurrency": "1.26.0"}
+    # 依赖链全 1.26、自己声明 1.28 → 红
+    p = check_relative_floor("x", 2, "1.28.0", all126)
     check("tier1+ 依赖链全兼容却声明更高被抓", len(p), 1)
-    check("判据4 指名道姓", "x" in p[0] and "1.26.0" in p[0], True)
-    # 依赖链全 1.24、自己声明 1.24 → 绿
-    check("tier1+ 已是 1.24 不报", check_relative_floor("x", 2, "1.24.0", all124), [])
-    # 依赖链有要求 1.25.5 的 → 本仓声明 1.26 是有依据的 → 绿
+    check("判据4 指名道姓", "x" in p[0] and "1.28.0" in p[0], True)
+    # 依赖链全 1.26、自己声明 1.26 → 绿
+    check("tier1+ 已是 1.26 不报", check_relative_floor("x", 2, "1.26.0", all126), [])
+    # 依赖链有要求 1.27.5 的 → 本仓声明 1.28 是有依据的 → 绿
     check("tier1+ 依赖要求更高则不报",
-          check_relative_floor("x", 2, "1.26.0",
-                               {**all124, "github.com/mark3labs/mcp-go": "1.25.5"}), [])
+          check_relative_floor("x", 2, "1.28.0",
+                               {**all126, "github.com/mark3labs/mcp-go": "1.27.5"}), [])
     # 依赖链读不到 → 判不了即红
-    check("tier1+ 依赖链读不到即红", len(check_relative_floor("x", 2, "1.26.0", None)), 1)
+    check("tier1+ 依赖链读不到即红", len(check_relative_floor("x", 2, "1.28.0", None)), 1)
     # tier0 不走判据 4（由判据 1 绝对约束）
-    check("tier0 不走判据4", check_relative_floor("x", 0, "1.26.0", all124), [])
+    check("tier0 不走判据4", check_relative_floor("x", 0, "1.28.0", all126), [])
 
     # ---- 豁免清单：依据仍成立 → 绿；依据失效 → 红 ----
     check("mcpkit 豁免依据成立",
-          check_relative_floor("mcpkit", 2, "1.26.0",
-                               {**all124, "github.com/mark3labs/mcp-go": "1.25.5"}), [])
+          check_relative_floor("mcpkit", 2, "1.27.0",
+                               {**all126, "github.com/mark3labs/mcp-go": "1.25.5"}), [])
     # 豁免的 blocker 已不在依赖链上 → 豁免失效 → 红
-    p = check_relative_floor("mcpkit", 2, "1.26.0", all124)
+    p = check_relative_floor("mcpkit", 2, "1.27.0", all126)
     check("mcpkit 豁免依据失效被抓", len(p), 1)
     check("豁免失效提示撤豁免", "撤掉这条豁免" in p[0], True)
     # 上游放宽了（要求变成 1.24） → 豁免失效 → 红
-    p = check_relative_floor("mcpkit", 2, "1.26.0",
-                             {**all124, "github.com/mark3labs/mcp-go": "1.24.0"})
+    p = check_relative_floor("mcpkit", 2, "1.27.0",
+                             {**all126, "github.com/mark3labs/mcp-go": "1.24.0"})
     check("mcpkit 豁免依据放宽被抓", len(p), 1)
-    # tools 豁免：sh/v3 要求 1.26.0，声明 1.26.0 成立
+    # tools 豁免：sh/v3 要求 1.26.0，声明 1.27.0 成立
     check("tools 豁免依据成立",
-          check_relative_floor("tools", 2, "1.26.0",
-                               {**all124, "mvdan.cc/sh/v3": "1.26.0"}), [])
+          check_relative_floor("tools", 2, "1.27.0",
+                               {**all126, "mvdan.cc/sh/v3": "1.26.0"}), [])
     # toolgate 豁免：间接依赖 mcpkit，登记的 blocker 是 mcpkit 本身
     check("toolgate 豁免依据成立",
-          check_relative_floor("toolgate", 2, "1.26.0",
-                               {**all124, "github.com/oagentkit/mcpkit": "1.25.5"}), [])
+          check_relative_floor("toolgate", 2, "1.27.0",
+                               {**all126, "github.com/oagentkit/mcpkit": "1.25.5"}), [])
 
     # 豁免清单的每条都必须带依据字段（防止有人只加仓名）
     for repo, ex in EXEMPTIONS.items():
@@ -715,7 +724,7 @@ def selftest() -> int:
         for f in fails:
             print(f"   - {f}")
         return 1
-    print("✅ verify_go_floor 自测通过（tier0 地板 1.24.x / tier1+ 相对地板 / "
+    print("✅ verify_go_floor 自测通过（tier0 地板随基座（当前 1.26.x）/ tier1+ 相对地板 / "
           "豁免依据复核 / CI 与 go.mod 成对对所有 tier 生效 / 判不了即红）")
     return 0
 
