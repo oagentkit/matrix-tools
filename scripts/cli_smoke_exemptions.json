@@ -56,9 +56,9 @@
       "script": "gen_versions.py",
       "category": "needs-network",
       "reason": "完整执行要读各仓远端状态 ⇒ 联网 ⇒ 冒烟会超时",
-      "contentSha256": "8481eab097e8f526c8cf0956bf7b469bc3cdd20de9163b95cdaae1d26bf55c14",
-      "reviewedAt": "2026-11-01",
-      "reviewNote": "改动只是删掉了 SMOKE_ARGS 声明 ⇒ 「完整执行要联网」的理由**仍成立** ⇒ 刷新哈希并留重审痕迹"
+      "contentSha256": "d2ec1dfe0219f313bbafceb9d9709ad7c56a778e87eb76719486013dce104937",
+      "reviewedAt": "2026-11-13",
+      "reviewNote": "门面 v1.9.0 整仓退役联动改动（retired 登记 / 退役版 go.mod 零 require 口径）——不涉及联网取数形态，「完整执行要联网」的豁免理由仍成立 ⇒ 刷新哈希并留重审痕迹"
     },
     {
       "script": "verify_dep_floors.py",
@@ -72,9 +72,9 @@
       "script": "verify_facade_release.py",
       "category": "needs-network",
       "reason": "同上",
-      "contentSha256": "fb9df0f632b4ded7621b7f88eaadba4826b9cc8c94889256ccff6a09e6dd1cdd",
-      "reviewedAt": "2026-11-01",
-      "reviewNote": "同上"
+      "contentSha256": "dae90b47d1dbbb571035b250d751b1dbb88f6e8c002b9e8d3053d76db881df27",
+      "reviewedAt": "2026-11-13",
+      "reviewNote": "门面 v1.9.0 整仓退役联动改动（retired 登记 / 退役版 go.mod 零 require 口径）——不涉及联网取数形态，「完整执行要联网」的豁免理由仍成立 ⇒ 刷新哈希并留重审痕迹"
     },
     {
       "script": "verify_versions_drift.py",
