@@ -28,6 +28,12 @@ python3 $MT/scripts/release.py --root $ROOT doctor   --repo <repo> --version vX.
 - prewrite 自动开分支 `chore/changelog-prewrite-<version>`；tag 步在**同一提交**上打 annotated tag
 - tag 步带「地板时效」检查：那一刻依赖的 oekit/* 与本矩阵模块必须是最新已发布版本——
   落后即拦；`--skip-floor-check "理由"` 显式逃生（理由留痕，tag 不可重打）
+- **本机 golangci-lint 必须与 CI 同版**（v2.14.0，go-ci.yml default 同源，
+  oagentkit/matrix-tools#212）：v2.15 起 errcheck 检查 error 型 channel 接收、
+  与 staticcheck S1005 互斥——本机 2.15 判红而 CI 2.14 判绿的假红卡发版。
+  doctor 已实弹比对（装了但版本不符 ⇒ 红）；brew 装的 2.15 在 PATH 前面时，
+  `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`
+  装到 ~/go/bin 或 ~/.local/bin 并前置 PATH
 
 ## 两类历史事故（本流水线存在的理由）
 
