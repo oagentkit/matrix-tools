@@ -490,7 +490,7 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
 与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。
 
 只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
-{ci_note_block}"""
+{ci_note}"""
     body = f"""## 依赖地板抬升
 
 | 依赖 | 现地板 | 抬到 |
@@ -508,7 +508,7 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
 提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）与 `go mod tidy -diff`（无漂移）⇒ **零行为差异**。
 
 只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
-{ci_note_block}
+{ci_note}
 """
     # 提交信息与 PR 正文先落盘。⚠️ **PR 正文文件必须活到 gh pr create 之后**——
     # 提前删掉 ⇒ `gh pr create --body-file <不存在>` ⇒ **提交与分支都推了、PR 却没开**
