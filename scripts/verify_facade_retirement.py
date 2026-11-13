@@ -98,6 +98,30 @@ def judge(root: Path, matrix_path: Path) -> Report:
     if entry is None:
         rep.red(FACADE_REPO, "modules.json 里没有门面仓条目")
         return rep
+
+    # 已退役（终态）：retired 字段是 retireWhen 的**兑现凭证**。
+    # 登记形态：{"version": "vX.Y.Z", "date": "...", "reason": "..."}。
+    # 退役后本守卫只保留一条判红路径——矩阵内出现对已退役门面的消费
+    # （那比消费活门面更不可原谅：包已删，import 必然编译失败）。
+    retired = entry.get("retired")
+    if isinstance(retired, dict) and retired.get("version"):
+        repos = [m.get("repo") for m in data.get("modules", []) if m.get("repo")]
+        hits = scan_facade_imports(root, repos)
+        total = sum(len(v) for v in hits.values())
+        if total:
+            for repo, lines in sorted(hits.items()):
+                rep.red(FACADE_REPO,
+                        f"矩阵内 {repo} 仍在 import 已退役门面"
+                        f"（{lines[0]}，共 {len(lines)} 处）——"
+                        "退役版没有转发包，这些 import 必然编译失败",
+                        "改 import 到上游真身（对照表见门面 README / migration.md）")
+        else:
+            rep.info(FACADE_REPO,
+                     f"门面已退役（{retired['version']}，{retired.get('date', '日期未登记')}）"
+                     f"——{retired.get('reason', '')[:120]}")
+            rep.info(FACADE_REPO, "矩阵内门面/旧单仓 import：0 处（终态干净）")
+        return rep
+
     rw = entry.get("retireWhen")
     if not isinstance(rw, dict):
         rep.red(FACADE_REPO,
@@ -231,6 +255,24 @@ def selftest() -> int:
     check("合规不误红", reds, [])
     check("输出引用计数事实", any("import：0 处" in i for i in infos), True)
 
+    # ⑤ 已退役（retired 终态）：零消费 ⇒ 不红且报「已退役」；
+    #    退役后矩阵内消费 ⇒ 红（import 已删除的包必然编译失败）。
+    retired_entry = {"retired": {"version": "v1.9.0", "date": "2026-11-13",
+                                 "reason": "清仓退役"},
+                     "retireWhen": {"notAfter": "2020-01-01",
+                                    "reason": "历史登记（已提前兑现）"}}
+    root, td = fixture(retired_entry, None)
+    reds, infos = run_judge(root)
+    check("退役终态不误红（期限已过也不红）", reds, [])
+    check("退役终态报已退役", any("已退役" in i for i in infos), True)
+    td.cleanup()
+
+    root, td = fixture(retired_entry, "package demo")
+    reds, _ = run_judge(root)
+    check("退役后矩阵内消费判红",
+          any("已退役门面" in r for r in reds), True)
+    # 这个 root 不 cleanup：下面的 CLI 冒烟继续用它（与原「合规」样本同用法）
+
     # CLI 入口冒烟：subprocess 真跑一次正常调用，输出不许有 Traceback/AttributeError
     # （判定不能只看退出码——业务失败也是 1 ⇒ 看输出内容）
     buf = io.StringIO()
@@ -248,7 +290,8 @@ def selftest() -> int:
             print(f"   - {f}")
         return 1
     print("✅ verify_facade_retirement 自测通过"
-          "（缺登记/无期限/过期/改期内消费 四类判红 + 合规不误红 + CLI 冒烟）")
+          "（缺登记/无期限/过期/改期内消费/退役后消费 五类判红"
+          " + 合规不误红 + 退役终态不误红 + CLI 冒烟）")
     return 0
 
 

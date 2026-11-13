@@ -209,6 +209,24 @@ def versions_org(versions_path: Path) -> str:
     return data.get("org") or data.get("defaultOrg", "oagentkit")
 
 
+def facade_retired_from_versions(versions_path: Path, facade_repo: str) -> dict | None:
+    """versions.json facades[] 的 retired 登记（agentkit v1.9.0 整仓退役）。
+
+    与 modules.json 的 infraRepos.retired 同源（gen_versions 透传）。
+    退役门面没有 alias.go 可对账——符号级校验对墓碑形态整体豁免；
+    「门面包数 = 0」的形状校验由 verify_facade_packages（retired 口径）负责。
+    """
+    try:
+        data = json.loads(versions_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for f in data.get("facades", []):
+        if f.get("repo") == facade_repo:
+            r = f.get("retired")
+            return r if isinstance(r, dict) and r.get("version") else None
+    return None
+
+
 def facade_pins(gomod_text: str) -> dict[str, str]:
     """门面 go.mod 原文 → {module 路径: 钉定版本}。
 
@@ -993,6 +1011,16 @@ def main() -> int:
     if not index:
         print(f"❌ {versions_path} 里没有可用的包清单", file=sys.stderr)
         return 2
+
+    # 退役终态：门面已删光转发包，没有符号可对账（豁免 ≠ 停跑——
+    # 墓碑形状由 verify_facade_packages 的 retired 口径守）。
+    retired = facade_retired_from_versions(
+        versions_path, Path(args.facade).name if args.facade else args.facade_repo)
+    if retired:
+        print(f"✅ 门面已退役（{retired['version']}，{retired.get('date', '日期未登记')}）："
+              f"0 个 alias.go，符号级转发校验豁免（墓碑形状由 "
+              f"verify_facade_packages --retired 口径守）")
+        return 0
 
     problems: list[str] = []
     checked = 0

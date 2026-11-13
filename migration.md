@@ -10,7 +10,7 @@
 | `github.com/oagentkit/guardx/bashguard` | `github.com/oagentkit/tools/bashguard` | guardx v0.7.0（2026-10-19） | 无（同上；`audit/v0.1.0`、`bashguard/v0.1.0` 两个嵌套 module tag 已冻结） |
 | `github.com/oagentkit/toolgate/invoke` | `github.com/oagentkit/guardx/invoke` | toolgate v0.12.6 | **已删除**——壳随 toolgate v0.15.0~v0.16.1 提供，兼容期截止 toolgate v0.16.0，**已于 toolgate v0.17.0 删除**（toolgate#93）；机器可读登记见 `modules.json` 的 `compatShells` 段 |
 | `github.com/oagentkit/obs/obsx` | `github.com/oagentkit/llm/obsx` | llm v0.12.0 迁入 / obs 同期迁出（llm CHANGELOG「obsx 已于 v0.12.0 从 obs/obsx 迁入本仓」） | 无（当时纪律未立） |
-| `github.com/oagentkit/agentkit/*`（单仓门面，48 包） | 13 个拆分模块仓各自路径 | agentkit v1.0.0 起（过渡门面仍全量转发，退役条件见 agentkit MIGRATION.md） | 门面本身即兼容层 |
+| `github.com/oagentkit/agentkit/*`（单仓门面，48 包） | 13 个拆分模块仓各自路径 | agentkit v1.0.0 起（过渡门面仍全量转发，退役条件见 agentkit MIGRATION.md） | **已删除**——门面本身即兼容层，**已于 agentkit v1.9.0 整仓退役**（48 个转发包全删、BREAKING，agentkit#198）；逐包对照表见门面 README，机器可读登记见 `modules.json` infraRepos 的 `retired` 字段 |
 
 ## 注意
 

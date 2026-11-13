@@ -571,6 +571,51 @@ def _selftest() -> int:
 
 # ---------------------------------------------------------------- main
 
+def facade_retired(matrix_path: Path, repo_name: str) -> dict | None:
+    """读 modules.json infraRepos 的 retired 登记（门面整仓退役的单一数据源）。
+
+    登记形态见 modules.json agentkit 条目：{"version": "vX.Y.Z", "date": …, "reason": …}。
+    取不到 / 未登记 ⇒ None（守卫按活门面口径继续判）。
+    """
+    try:
+        data = json.loads(Path(matrix_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for e in data.get("infraRepos", []):
+        if e.get("repo") == repo_name:
+            r = e.get("retired")
+            return r if isinstance(r, dict) and r.get("version") else None
+    return None
+
+
+def check_retired(retired: dict, facade: dict, llms_text: str | None) -> int:
+    """已退役门面的守卫口径：墓碑形状（0 转发包）+ 对外声明同步说「已退役」。
+
+    - 门面仍有包目录 ⇒ 红（登记了退役却没删干净，覆盖校验不能豁免一个半退役的门面）；
+    - llms.txt 仍宣称「N 包 re-export」或没说「已退役」⇒ 红（对外产物在撒谎）。
+    """
+    if facade:
+        names = ", ".join(sorted(facade))
+        print(f"❌ modules.json 已登记退役（{retired['version']}），"
+              f"但门面仍有 {len(facade)} 个包目录：{names}")
+        print("   修法：把剩余目录删干净（v1.9.0 形态 = 零 .go、零 require），或撤掉退役登记。")
+        return 1
+    if llms_text is not None:
+        problems: list[str] = []
+        if _LLMS_FACADE_COUNT_RE.search(llms_text):
+            problems.append("llms.txt 仍宣称「N 包 re-export」——退役后对外不许再说门面在转发")
+        if "已退役" not in llms_text:
+            problems.append("llms.txt 没有声明门面「已退役」——重新生成："
+                            "python3 scripts/gen_llms_txt.py --matrix modules.json --out …")
+        if problems:
+            for p in problems:
+                print(f"❌ {p}")
+            return 1
+    print(f"✅ 门面已退役（{retired['version']}，{retired.get('date', '日期未登记')}）："
+          f"0 个转发包（墓碑形态），覆盖 / 迁移映射 / 包数对账豁免")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="校验门面仓的 re-export 覆盖率")
     ap.add_argument("--matrix", default=str(HERE.parent / "modules.json"))
@@ -601,6 +646,17 @@ def main() -> int:
 
     matrix_pkgs = matrix_packages(matrix_path)
     facade = facade_packages(facade_path)
+
+    # 退役终态（agentkit v1.9.0）：覆盖 / 陈旧转发 / 包数对账对墓碑无意义，
+    # 换判「墓碑形状」——登记退役而包没删干净必须红，那是「假退役」。
+    retired = facade_retired(matrix_path, facade_path.name)
+    if retired:
+        llms_text = None
+        if args.llms:
+            llms_path = Path(args.llms)
+            llms_text = llms_path.read_text(encoding="utf-8") if llms_path.is_file() else ""
+        return check_retired(retired, facade, llms_text)
+
     baseline = baseline_packages(Path(args.baseline) if args.baseline else None)
     problems, notes = check(matrix_pkgs, facade, baseline)
     # 迁移映射表的一致性：下游唯一的迁移指引，必须与实际转发一一对应

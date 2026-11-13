@@ -155,9 +155,39 @@ def baseline_packages(baseline_path: Path | None) -> tuple[set[str], set[str]]:
     return names_of(data.get("packages")), names_of(data.get("knownExceptions"))
 
 
+def _facade_retired(facade_repo: str) -> dict | None:
+    """modules.json infraRepos 的 retired 登记（agentkit v1.9.0 整仓退役）。
+
+    退役墓碑（零包零依赖）上「不得新增包」物理上不可能违约——但退役后的
+    README 不再保留旧废弃标记词、浅克隆又读不到历史，本守卫会退化为
+    「判不了」的黄。retired 登记是比 README 措辞更强的承诺源：登记在册
+    即判绿（若墓碑上重新出现包目录，verify_facade_packages 的 retired
+    口径与 verify_facade_frozen 的墓碑外检查会当场判红）。
+    """
+    mp = HERE.parent / "modules.json"
+    try:
+        data = json.loads(mp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for e in data.get("infraRepos", []):
+        if e.get("repo") == facade_repo:
+            r = e.get("retired")
+            return r if isinstance(r, dict) and r.get("version") else None
+    return None
+
+
 def judge(facade_dir: Path, baseline: set[str], known: set[str], markers: list[str],
           report: Report) -> None:
     repo = facade_dir.name
+
+    retired = _facade_retired(repo)
+    if retired:
+        report.info(repo,
+                    f"门面已退役（{retired['version']}）：零包零依赖墓碑，"
+                    "「不得新增包」无违约可言（墓碑形状由 verify_facade_packages "
+                    "的 retired 口径守）")
+        return
+
     sha, marker = deprecation_commit(facade_dir, markers)
     if sha is None:
         # 判不了 ≠ 没问题（硬规则 3）。

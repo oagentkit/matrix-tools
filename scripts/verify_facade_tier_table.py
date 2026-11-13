@@ -302,6 +302,23 @@ def main() -> int:
     if not facade_path.is_dir():
         print(f"❌ 找不到门面仓目录：{facade_path}")
         return 2
+
+    # 退役终态（agentkit v1.9.0）：README 重写为退役公告 + 48 包对照表，
+    # 分层表生成区不复存在——门面既已退役，「门面 README 与矩阵分层一致」
+    # 这条承诺随之失效（矩阵分层仍有两处载体：profile 与各仓 AGENTS/README）。
+    try:
+        data = json.loads(matrix_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"❌ 读不了 {matrix_path}：{e}")
+        return 2
+    entry = next((e for e in data.get("infraRepos", [])
+                  if e.get("repo") == facade_path.name), None)
+    retired = entry.get("retired") if entry else None
+    if isinstance(retired, dict) and retired.get("version"):
+        print(f"✅ 门面已退役（{retired['version']}）：README 为退役公告，"
+              "分层表生成区豁免（矩阵分层仍由 profile / 各仓声明两处载体守）")
+        return 0
+
     readme = facade_path / "README.md"
     if not readme.is_file():
         print(f"❌ 找不到门面 README：{readme}")

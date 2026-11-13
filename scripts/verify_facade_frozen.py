@@ -273,6 +273,24 @@ def _conclusion(state: str, packages: int, baseline: int, problems: list[dict],
           f"baseline={baseline} new_packages={new_packages} new_targets={new_targets}")
 
 
+def _facade_retired(facade_repo: str) -> dict | None:
+    """modules.json infraRepos 的 retired 登记（agentkit v1.9.0 整仓退役）。
+
+    退役后「门面一个包都没有」是**预期形态**（墓碑），不再是「指错目录」的
+    假绿形态——退役登记本身就是「门面被清空」的显式解释。
+    """
+    mp = HERE.parent / "modules.json"
+    try:
+        data = json.loads(mp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for e in data.get("infraRepos", []):
+        if e.get("repo") == facade_repo:
+            r = e.get("retired")
+            return r if isinstance(r, dict) and r.get("version") else None
+    return None
+
+
 # ---------------------------------------------------------------- 自测
 
 def _write_facade(root: Path, pkgs: dict[str, str | None]) -> None:
@@ -438,6 +456,21 @@ def main() -> int:
 
     reason = unreadable_reason(actual, baseline)
     if reason:
+        # 退役终态（agentkit v1.9.0）：空门面 = 墓碑形态，是退役登记的**预期结果**。
+        # 防假绿：本地模式还要确认这个目录真的是 agentkit 仓（有 module 声明的
+        # go.mod）——把 --facade 指到任意空目录不能靠 retired 登记洗绿。
+        repo_name = facade_dir.name if args.facade else args.facade_repo
+        retired = _facade_retired(repo_name)
+        looks_like_facade = True
+        if args.facade:
+            gomod = facade_dir / "go.mod"
+            looks_like_facade = (gomod.is_file()
+                                 and "module github.com/oagentkit/agentkit" in gomod.read_text(encoding="utf-8"))
+        if retired and looks_like_facade:
+            _conclusion(state, 0, len(baseline), [], args.as_json)
+            print(f"⚠️  门面已退役（{retired['version']}）：0 个包 = 墓碑形态，"
+                  "「继续长出新包」物理上不可能发生，判定通过。", file=sys.stderr)
+            return 0
         print(f"❌ 判不了（不能当成「没问题」）：{reason}", file=sys.stderr)
         _conclusion(state, len(actual), len(baseline), [], args.as_json,
                     ok=False, reason=reason)
