@@ -144,6 +144,19 @@ def first_party_requires(go_mod_text: str) -> dict[str, str]:
     return out
 
 
+_GO_DIRECTIVE_RE = re.compile(r"^go\s+(\d+\.\d+(?:\.\d+)?)\s*$", re.M)
+
+
+def go_directive_of(go_mod_text: str) -> str:
+    """go.mod 的 `go` 指令值（如 "1.26.0"）；缺失按 Go 语义取 "1.16"。
+
+    依赖抬升会把它顶高（`go mod tidy` 按 deps 的最低要求上浮），ci.yml 的
+    go-version 输入不会自己跟——#210 的同 PR 同步就锚定在这里。
+    """
+    m = _GO_DIRECTIVE_RE.search(go_mod_text or "")
+    return m.group(1) if m else "1.16"
+
+
 def latest_versions(paths: list[str], org_default: str) -> tuple[dict[str, str], list[str]]:
     """→ ({模块路径: 远端最新 tag}, [取不到的模块路径])。
 
@@ -397,6 +410,12 @@ def apply_repo(repo_dir: Path, repo: str, floors: list[tuple[str, str, str]],
     branch = f"chore/deps-floor-{stamp}"
     git(repo_dir, "checkout", "-B", branch)
 
+    gomod_path = repo_dir / "go.mod"
+    try:
+        go_before = go_directive_of(gomod_path.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return False, f"读 go 指令失败：{e}"
+
     for path, _cur, tgt in floors:
         # ⚠️ 必须用**完整模块路径**（github.com/oekit/pkg）——`go mod edit` 认的是
         # module path，不是仓库短名。写成 `oekit/pkg@v…` 会被 `go mod tidy` 当成
@@ -408,6 +427,32 @@ def apply_repo(repo_dir: Path, repo: str, floors: list[tuple[str, str, str]],
     r = go(repo_dir, "mod", "tidy")
     if r.returncode != 0:
         return False, f"go mod tidy 失败：{(r.stderr or '').strip()[:200]}"
+
+    # go 指令若被依赖抬升顶高，必须同 PR 同步 ci.yml 的 go-version 输入（#210）——
+    # 共享 CI（oagentkit/.github go-ci.yml）setup-go 装的是薄调用层声明的版本且
+    # GOTOOLCHAIN=local，不同步 ⇒ bump PR 自己红在 CI（go.mod requires go >= …），
+    # 2026-11-12 八仓实录。找不到锚点就黄灯提示人工，不让 PR 带病上 CI。
+    ci_note = ""
+    try:
+        go_after = go_directive_of(gomod_path.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return False, f"复核 go 指令失败：{e}"
+    if go_before != go_after:
+        ci = repo_dir / ".github" / "workflows" / "ci.yml"
+        if not ci.exists():
+            ci_note = (f"⚠️ go 指令 {go_before} → {go_after}，但本仓没有 "
+                       f".github/workflows/ci.yml——若走共享 CI，请人工确认 go-version 输入")
+        else:
+            ci_text = ci.read_text(encoding="utf-8")
+            new_ci, n = re.subn(
+                rf"(go-version:\s*['\"]){re.escape(go_before)}(['\"])",
+                rf"\g<1>{go_after}\g<2>", ci_text)
+            if n:
+                ci.write_text(new_ci, encoding="utf-8")
+                ci_note = f"ci.yml go-version {go_before} → {go_after}（{n} 处，同 PR 同步）"
+            else:
+                ci_note = (f"⚠️ go 指令 {go_before} → {go_after}，但 ci.yml 里没有 "
+                           f"go-version: '{go_before}' 锚点——go-version 输入需人工同步")
     # 复核：改完的 go.mod 里地板必须真的到目标版本（防「编辑被回滚」这类静默 no-op）。
     try:
         after = first_party_requires((repo_dir / "go.mod").read_text(encoding="utf-8"))
@@ -445,7 +490,7 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
 与 `go mod tidy -diff`（无漂移）⇒ 改动**只影响依赖版本**，零行为差异。
 
 只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
-"""
+{ci_note}"""
     body = f"""## 依赖地板抬升
 
 | 依赖 | 现地板 | 抬到 |
@@ -463,6 +508,7 @@ oekit 基座与矩阵模块都在高频发版 ⇒ 地板是**跑步机**，落�
 提交前跑完 `go build` / `go vet` / `go test -race -count=1 ./...`（全绿才提交）与 `go mod tidy -diff`（无漂移）⇒ **零行为差异**。
 
 只改 `go.mod` / `go.sum` ⇒ 不需要 CHANGELOG 条目（版本段由下次发版的 `prewrite` 生成）。
+{ci_note}
 """
     # 提交信息与 PR 正文先落盘。⚠️ **PR 正文文件必须活到 gh pr create 之后**——
     # 提前删掉 ⇒ `gh pr create --body-file <不存在>` ⇒ **提交与分支都推了、PR 却没开**
@@ -771,6 +817,16 @@ def selftest() -> int:
           {"github.com/oekit/concurrency": "v0.19.0"})
     mixed = single + "\nrequire (\n\tgithub.com/oekit/logx v0.8.0\n)\n"
     check("两种形态同时认", len(first_party_requires(mixed)), 2)
+
+    # go 指令解析（#210）：抬依赖会顶高 go 指令，ci.yml 的 go-version 输入必须同 PR 同步
+    check("go 指令三段认得出", go_directive_of(single), "1.26.0")
+    check("go 指令两段认得出", go_directive_of("module x\n\ngo 1.26\n"), "1.26")
+    check("缺指令回退 1.16（Go 语义）", go_directive_of("module x\n"), "1.16")
+    ci_old = "jobs:\n  call:\n    uses: oagentkit/.github/.github/workflows/go-ci.yml@main\n    with:\n      go-version: '1.24'\n"
+    ci_new, n_sub = re.subn(r"(go-version:\s*['\"])1\.24(['\"])",
+                            r"\g<1>1.26\g<2>", ci_old)
+    check("ci.yml go-version 锚点可替换", n_sub == 1 and "go-version: '1.26'" in ci_new,
+          n_sub)
 
     # ⚠️ **CLI 入口路径必须能走通**（2026-11-01 实测事故）
     #
