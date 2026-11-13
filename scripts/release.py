@@ -50,10 +50,16 @@
 
 from __future__ import annotations
 
+# CI 共享 workflow（oagentkit/.github go-ci.yml）的 golangci-lint-version
+# default——doctor 用它比对本机版本（oagentkit/matrix-tools#212）。
+# 改门禁版本时两处同步：go-ci.yml default 与本常量。
+CI_GOLANGCI_VERSION = "v2.14.0"
+
 import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -601,6 +607,29 @@ def cmd_doctor(args) -> int:
 
     clean, branch = repo_state(repo_dir)
     rep.info(args.repo, f"分支 {branch}，工作区{'干净' if clean else '不干净'}")
+
+    # 本机 golangci-lint 版本 vs CI default（oagentkit/matrix-tools#212）：
+    # CI（oagentkit/.github go-ci.yml）固定 golangci-lint-version default——
+    # 本机版本不一致时同一份代码两版结论可能相反（v2.15 起 errcheck 检查
+    # error 型 channel 接收、与 staticcheck S1005 对 `_ =` 形态互斥，v2.14
+    # 不报 ⇒ 假红卡发版）。装了但版本不符 ⇒ 红（用错版本判红绿都不可信）；
+    # 没装 ⇒ 放行（CI 兜底）。
+    _gcl = shutil.which("golangci-lint")
+    if _gcl:
+        # ⚠️ 不用 --format：v2.x CLI 无该 flag（oekit 侧 fba39c8 同款踩坑，
+        # returncode!=0 ⇒ _local="" ⇒ 检查静默失效）——裸 version 输出正则提版。
+        _lv = run(["golangci-lint", "version"], check=False)
+        _m = re.search(r"v?\d+\.\d+\.\d+", (_lv.stdout or "") + (_lv.stderr or ""))
+        _local = _m.group(0) if (_lv.returncode == 0 and _m) else ""
+        if _local and not _local.lstrip("vV").startswith(
+                CI_GOLANGCI_VERSION.lstrip("vV")):
+            rep.red(args.repo, f"本机 golangci-lint {_local} ≠ CI "
+                    f"{CI_GOLANGCI_VERSION}（go-ci.yml default）——两版判据有差，"
+                    "先装 CI 版本再本地判红绿",
+                    f"装法示例：go install github.com/golangci/golangci-lint/v2/"
+                    f"cmd/golangci-lint@v{CI_GOLANGCI_VERSION.lstrip('v')}")
+        elif _local:
+            rep.info(args.repo, f"本机 golangci-lint {_local}（= CI default，判定口径一致）")
 
     # 本地 tag 新鲜度 + main 侧 CHANGELOG 连续性（matrix-tools#193）
     ensure_local_tags_fresh(repo_dir, rep)
