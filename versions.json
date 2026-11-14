@@ -15,7 +15,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.11.0",
+      "latest": "v0.12.0",
       "packages": [
         {
           "pkg": "textutil",
@@ -211,6 +211,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.43.0",
               "to": "v0.44.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.0",
+          "date": "2026-11-14",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.44.0",
+              "to": "v0.48.0"
             }
           ]
         }
