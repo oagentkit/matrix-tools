@@ -4420,7 +4420,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.14.6",
+      "latest": "v0.14.7",
       "packages": [
         {
           "pkg": "acpx",
@@ -5125,6 +5125,22 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.44.0",
               "to": "v0.48.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.7",
+          "date": "2026-11-14",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.36.0",
+              "to": "v0.36.1"
             }
           ]
         }
