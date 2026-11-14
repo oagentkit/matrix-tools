@@ -525,7 +525,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.25.1",
+      "latest": "v0.25.2",
       "packages": [
         {
           "pkg": "fence",
