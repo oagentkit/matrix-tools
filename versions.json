@@ -2327,7 +2327,7 @@
       "repo": "mcpkit",
       "url": "https://github.com/oagentkit/mcpkit",
       "tier": 2,
-      "latest": "v0.13.2",
+      "latest": "v0.14.0",
       "packages": [
         {
           "pkg": "mcp",
@@ -2699,6 +2699,27 @@
               "dep": "github.com/oagentkit/runtime",
               "from": "v0.12.8",
               "to": "v0.12.9"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.0",
+          "date": "2026-11-14",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.12.9",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.33.0",
+              "to": "v0.36.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": null,
+              "to": "v0.48.0"
             }
           ]
         }
