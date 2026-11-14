@@ -3818,7 +3818,7 @@
       "repo": "toolgate",
       "url": "https://github.com/oagentkit/toolgate",
       "tier": 2,
-      "latest": "v0.17.3",
+      "latest": "v0.17.4",
       "packages": [
         {
           "pkg": "toolprior",
@@ -4411,6 +4411,37 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.44.0",
               "to": "v0.46.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.17.4",
+          "date": "2026-11-14",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.24.4",
+              "to": "v0.25.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.13.2",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.12.9",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.34.0",
+              "to": "v0.36.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.46.0",
+              "to": "v0.48.0"
             }
           ]
         }
