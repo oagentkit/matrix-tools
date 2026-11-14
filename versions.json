@@ -3239,7 +3239,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.23.0",
+      "latest": "v0.24.0",
       "packages": [
         {
           "pkg": "llm",
