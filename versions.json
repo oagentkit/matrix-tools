@@ -812,7 +812,7 @@
       "repo": "queue",
       "url": "https://github.com/oagentkit/queue",
       "tier": 2,
-      "latest": "v0.11.4",
+      "latest": "v0.12.0",
       "packages": [
         {
           "pkg": "worker",
@@ -1140,6 +1140,27 @@
               "dep": "github.com/oekit/concurrency",
               "from": "v0.34.0",
               "to": "v0.34.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.0",
+          "date": "2026-11-14",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.34.1",
+              "to": "v0.36.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.10.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.46.0",
+              "to": "v0.48.0"
             }
           ]
         }
