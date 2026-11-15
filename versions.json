@@ -3239,7 +3239,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.24.0",
+      "latest": "v0.26.0",
       "packages": [
         {
           "pkg": "llm",
@@ -3830,6 +3830,38 @@
               "dep": "github.com/oekit/logx",
               "from": "v0.10.0",
               "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.25.0",
+          "date": "2026-11-15",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.36.1",
+              "to": "v0.37.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.48.0",
+              "to": "v0.49.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.26.0",
+          "date": "2026-11-16",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.37.0",
+              "to": "v0.38.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.49.0",
+              "to": "v0.51.0"
             }
           ]
         }
