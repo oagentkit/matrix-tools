@@ -525,7 +525,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.26.0",
+      "latest": "v0.27.0",
       "packages": [
         {
           "pkg": "fence",
@@ -814,6 +814,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.46.0",
               "to": "v0.48.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.27.0",
+          "date": "2026-11-16",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.48.0",
+              "to": "v0.51.0"
             }
           ]
         }
