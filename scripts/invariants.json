@@ -950,6 +950,36 @@
       "since": "2026-11-10",
       "kind": "gate",
       "note": "matrix-tools#196：原「按 README 写死的期限退役」中 README 从未写死期限 ⇒ 退役承诺永远判不了。机器化后唯一 org 可判条件 = 矩阵内引用计数；外部下游引用超出 CI 视野，由 notAfter 显式期限兜底"
+    },
+    {
+      "id": "org-repo-coverage",
+      "claim": "org 内已发版的 Go 仓必须被矩阵登记（modules ∪ infraRepos）；已打 tag 却没发 Release 的仓必须报出",
+      "judges": [
+        "verify_repo_coverage.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [
+        {
+          "module": "repo_meta",
+          "by": "verify_repo_coverage.py",
+          "why": "只取 main_tags / list_releases / release_tags / tag_commit_date / fetch_file_status 这些**事实**函数（取数层），不复用它的任何判定——判定逻辑在本脚本内独立实现（事实可共享，判定不可共享）。"
+        }
+      ],
+      "facts": "org 仓清单 + 各仓根 go.mod 存在性 + 主版本线 tag 集合 + GitHub Release 集合",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-truth",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-11-23",
+      "note": "实测 2026-11-22：org 新建了已发版的 toolname 仓（v0.1.0 / v0.2.0），矩阵没登记 ⇒ llms.txt 不列它、import 改写映射不出它、地板/幽灵包/依赖方向门禁对它全失明，而**全矩阵门禁全绿**——「CI 绿」不等于「矩阵完整」。这条守的就是那个缺口。判据 2（已打 tag 未发 Release）来自 toolname v0.1.0 的形态：tag 在、Release 缺 ⇒ 矩阵面与发布面都看不见它；带 24h 宽限窗口，避免发版过程中的一瞬状态把无关的矩阵 PR 顶红。反向验证：把 toolname 从 modules.json 拿掉 ⇒ 本门禁立刻红并指名道姓。",
+      "kind": "gate"
     }
   ],
   "retired": [

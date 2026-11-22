@@ -10,6 +10,7 @@
 | tier0 | [`guardx`](https://github.com/oagentkit/guardx) | 脱敏/出口围栏/权限判定/沙箱档位/跨进程协议 | — | `guardx/AGENTS.md` |
 | tier0 | [`runtime`](https://github.com/oagentkit/runtime) | agent 进程运行时——流式节控/泛型事件总线/子进程环境/热插拔/钩子 | — | `runtime/AGENTS.md` |
 | tier0 | [`textx`](https://github.com/oagentkit/textx) | 文本/差异/会话/报告纯函数集 | — | `textx/AGENTS.md` |
+| tier0 | [`toolname`](https://github.com/oagentkit/toolname) | 工具名 → 程序内标识符的单一真相（规范名判定 + 规整） | — | `toolname/AGENTS.md` |
 | tier1 | [`promptx`](https://github.com/oagentkit/promptx) | system prompt 分段组装/运行中转向/文件读后写一致性 | — | `promptx/AGENTS.md` |
 | tier2 | [`llm`](https://github.com/oagentkit/llm) | 模型客户端/降级链/预算/成本/阶段路由/调用观测 | eino、openai、go-openai、otel、sdk、trace | `llm/AGENTS.md` |
 | tier2 | [`mcpkit`](https://github.com/oagentkit/mcpkit) | MCP 客户端/工具池/建连单飞 | mcp-go、jsonschema、eino | `mcpkit/AGENTS.md` |

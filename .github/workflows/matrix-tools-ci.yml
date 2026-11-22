@@ -274,16 +274,33 @@ jobs:
         # 它同时驱动 gen_docs.py 生成的 README「外部依赖地板」小节 ⇒ 登记错了，文档也是错的。
         run: python3 scripts/verify_dep_floor.py --org oagentkit
 
-      - name: Go 地板（tier0 必须 1.24.x）+ CI go-version 与 go.mod 成对
-        # ① tier0 的 go 指令必须 1.24.x——tier0 是「需要依赖低版本 Go」的那一类，
-        #    抬高地板会把 Go 1.24 用户挡在门外（issue matrix-tools#22）；
+      - name: Go 地板（tier0 必须 1.26.x）+ CI go-version 与 go.mod 成对
+        # ① tier0 的 go 指令必须 1.26.x（= 基座地板，随基座走）——tier0 是
+        #    「需要依赖低版本 Go」的那一类，抬高地板会把 Go 1.26 用户挡在门外
+        #    （issue matrix-tools#22）；
         # ② CI go-version 必须与 go.mod 的 go 指令成对——CI 用高版本构建、
         #    go.mod 承诺低版本时，CI 全绿但用户按最低版本编译失败。
         #
         # 判据独立：直接解析各仓 go.mod 与 ci.yml 原文，
         # 不复用任何生成器的推导（共享判断逻辑 = 共同盲区）。
-        # tier1 及以上**不设 1.24 约束**——业务层 1.24/1.25/1.26 都合法。
+        # tier1 及以上**不设绝对地板**——业务层 1.26/1.27/1.28 都合法。
+        #
+        # ⚠️ **零依赖仓不是「判不了」**：依赖链为空是确知事实（读到了，只是它
+        #    没有依赖），照常参与判据 4 的「全兼容」判定；「读不到」才判不了。
+        #    （实测 2026-11-22：纯 stdlib 的 toolname 曾被判红「没给出任何依赖的
+        #    go 指令（判不了）」——零依赖被误判成判不了。）
         run: python3 scripts/verify_go_floor.py --org oagentkit
+
+      - name: org 仓覆盖（已发版的 Go 仓必须被矩阵登记）
+        # 实测 2026-11-22：org 新建了已发版的 toolname 仓（v0.1.0 / v0.2.0），
+        # 而矩阵的 modules.json 里没有它 ⇒ llms.txt 不列它、import 改写映射不出它、
+        # 地板/幽灵包/依赖方向门禁对它全失明——而**全矩阵门禁全绿**。
+        # ⇒「CI 绿」不等于「矩阵完整」。这条守的就是那个缺口。
+        #
+        # 判据 2（已打 tag 却没发 Release）来自 toolname v0.1.0 的形态：
+        # tag 在、Release 缺 ⇒ 矩阵面与发布面都看不见它。
+        # 带 24h 宽限窗口，避免发版过程中的一瞬状态把无关的矩阵 PR 顶红。
+        run: python3 scripts/verify_repo_coverage.py --org oagentkit
 
   floor-bumps:
     name: Floor bumps (依赖地板抬高的登记对账)
@@ -549,11 +566,20 @@ jobs:
         # 公开仓，走 HTTPS 匿名克隆即可（与 matrix-local-guards 克隆各模块仓同法）。
         run: git clone -q --depth 1 https://github.com/oagentkit/oagentkit.github.io.git site
 
-      - name: 站点 data/modules.json 与矩阵源逐字段一致
-        # 副本漂了 ⇒ 站点对外清单（13 个模块页 / 首页矩阵表 / 依赖图）与权威源矛盾，
+      - name: 站点 modules.json 的两份副本与矩阵源逐字段一致
+        # 副本漂了 ⇒ 站点对外清单（14 个模块页 / 首页矩阵表 / 依赖图）与权威源矛盾，
         # 而 llms.txt 仍与源一致 ⇒ 两套互相矛盾的对外清单
         # （站点 AGENTS.md 点名的形态）。修法：源先、副本后。
-        run: python3 scripts/verify_modules_copy.py --matrix modules.json --compare site/data/modules.json
+        #
+        # ⚠️ **两份**副本都要看（实测 2026-11-23）：站点仓有 data/modules.json
+        #    （VuePress 数据源）与 docs/public/modules.json（对外发布的静态副本），
+        #    此前只有前者被守 ⇒ 后者漂了（缺 toolname）而 CI 全绿——
+        #    对外同时存在两份互相矛盾的机器可读清单。
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_modules_copy.py --matrix modules.json \
+            --compare site/data/modules.json \
+            --compare site/docs/public/modules.json
 
   matrix-local-guards:
     name: Matrix local guards (层级方向 / 门面规则 / 仓文档)

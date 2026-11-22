@@ -129,6 +129,28 @@
       }
     },
     {
+      "repo": "toolname",
+      "tier": 0,
+      "desc": "工具名 → 程序内标识符的单一真相（规范名判定 + 规整）",
+      "oekitAnalog": "pkg/toolname（曾内嵌 oekit/pkg：v0.58.2 标记 Deprecated、v0.59.0 删除）",
+      "packages": [
+        "toolname"
+      ],
+      "heavyDeps": [],
+      "ghDescription": "工具名净化原语——工具名→程序内标识符的单一真相（JS 标识符判定 + 规整），装配两侧必须逐字一致",
+      "topics": [
+        "go",
+        "tools",
+        "naming",
+        "llm"
+      ],
+      "agentNotes": "- **保持零依赖纯函数形态**：本包被 tier0 核心与工具治理链共同依赖，地板抬高会波及全矩阵。\n- `Normalize` **不保证唯一**（`get-logs` 与 `get_logs` 同得 `get_logs`），撞名是否允许由调用方判定——本包只提供规则，不做集合级判定。\n- 规整规则必须**两侧一致**：生产侧（形态派生）与消费侧（绑定挂载）共用同一套字符规则；改一边不改另一边 ⇒ 契约静默断掉（症状是「工具在目录里，程序就是调不通」）。",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "toolname": "工具名 → 程序内标识符：IsJSIdent 判定原样可用、Normalize 给出规整名（数字开头补 _、前导非法字符跳过、已开始后记 _）"
+      }
+    },
+    {
       "repo": "queue",
       "tier": 2,
       "desc": "DB 即队列 + Postgres 选主 Lease",
@@ -484,7 +506,7 @@
     {
       "repo": "agentkit",
       "role": "门面仓——已退役（v1.9.0）：48 个 re-export 转发包全部删除，module 保留声明 + 零依赖 go.mod 作墓碑与迁移指引。退役条件机器化为 retireWhen（matrix-tools#196）并已提前执行（见 retired 字段）；门面族守卫（verify_facade_retirement / packages / symbols / tier_table / release）对 retired 状态全部豁免或改判墓碑形状",
-      "ghDescription": "【门面仓·已退役】本项目已拆分为 github.com/oagentkit/* 共 13 个独立发版仓，v1.9.0 起兼容转发层全部删除（BREAKING），旧 import 路径一律改上游真身",
+      "ghDescription": "【门面仓·已退役】本项目已拆分为 github.com/oagentkit/* 共 14 个独立发版仓，v1.9.0 起兼容转发层全部删除（BREAKING），旧 import 路径一律改上游真身",
       "topics": [
         "go",
         "deprecated",

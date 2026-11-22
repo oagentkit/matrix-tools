@@ -162,6 +162,24 @@ def deep_diff(src, cp, path: str, out: list, limit: int = 60) -> None:
         out.append((path, src, cp))
 
 
+def judge_all(src_path: Path, cp_paths: list[Path]) -> Report:
+    """判定本体：矩阵源 vs **一个或多个**站点副本。
+
+    为什么支持多个：站点仓有**两份** modules.json 副本——
+    `data/modules.json`（VuePress 的数据源）与 `docs/public/modules.json`
+    （对外发布的静态副本，https://oagentkit.github.io/modules.json）。
+    实测 2026-11-23：后者**从未被任何门禁看守**，已与源漂移 ⇒
+    对外同时存在两份互相矛盾的机器可读清单。
+    ⇒ 两份都进守卫面。
+    """
+    rep = Report(title="站点 modules.json 副本一致性")
+    for cp_path in cp_paths:
+        one = judge(src_path, cp_path)
+        rep.findings.extend(one.findings)
+        rep.notes.extend(one.notes)
+    return rep
+
+
 def judge(src_path: Path, cp_path: Path) -> Report:
     """判定本体：矩阵源 vs 站点副本。抽成独立函数是为了能离线自测。"""
     rep = Report(title="站点 data/modules.json 副本一致性")
@@ -211,8 +229,8 @@ def judge(src_path: Path, cp_path: Path) -> Report:
 
     if diffs:
         rep.red("站点副本", f"与矩阵源有 {len(diffs)} 处逐字段差异",
-                "先改 matrix-tools/modules.json（源是权威），再把源拷到站点 "
-                "data/modules.json——源先、副本后")
+                "先改 matrix-tools/modules.json（源是权威），再把源拷到站点的每一份 "
+                "副本（data/modules.json 与 docs/public/modules.json）——源先、副本后")
         for path, a, b in diffs[:40]:
             rep.note(f"  · {path}：源={_short(a)} 副本={_short(b)}")
         if len(diffs) > 40:
@@ -339,7 +357,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="站点 data/modules.json 与矩阵源 modules.json 的逐字段一致性门禁")
     ap.add_argument("--matrix", help="矩阵源 modules.json 路径")
-    ap.add_argument("--compare", help="站点副本 data/modules.json 路径")
+    ap.add_argument("--compare", action="append", default=None,
+                    help="站点副本路径（**可给多个**：站点仓有两份 modules.json 副本——"
+                         "data/modules.json（VuePress 数据源）与 "
+                         "docs/public/modules.json（对外发布的静态副本）；"
+                         "两份都曾无人看守，实测已漂）")
     ap.add_argument("--selftest", action="store_true",
                     help="离线反证自测（带故意造坏的样本）")
     args = ap.parse_args()
@@ -351,7 +373,8 @@ def main() -> int:
         print("❌ 缺少 --matrix 或 --compare（或用 --selftest）")
         return 1
 
-    rep = judge(Path(args.matrix).resolve(), Path(args.compare).resolve())
+    rep = judge_all(Path(args.matrix).resolve(),
+                    [Path(c).resolve() for c in args.compare])
     return rep.emit()
 
 

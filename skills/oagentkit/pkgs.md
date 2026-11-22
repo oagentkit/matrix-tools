@@ -1,4 +1,4 @@
-# oagentkit 子包速查（13 模块全包面）
+# oagentkit 子包速查（14 模块全包面）
 
 > 由 gen_skill.py 从 modules.json 的 packages/pkgDesc 渲染；API 以 `go doc github.com/oagentkit/<repo>/<pkg>` 为准。
 
@@ -42,6 +42,12 @@
 | `compact` | 会话压缩策略面：auto-compact 判定（阈值/熔断/token 三轨）+ 压缩/恢复 |
 | `conversation` | 多轮会话历史原语：滚动窗口切分、历史渲染 |
 | `reportutil` | 评审/评测报告后处理：severity 归并、sampling、stats、Fingerprint 精确指纹 |
+
+### toolname（tier0）
+
+| 子包 | 用途 |
+|---|---|
+| `toolname` | 工具名 → 程序内标识符：IsJSIdent 判定原样可用、Normalize 给出规整名（数字开头补 _、前导非法字符跳过、已开始后记 _） |
 
 ### promptx（tier1）
 

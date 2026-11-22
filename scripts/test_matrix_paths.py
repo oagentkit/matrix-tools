@@ -26,6 +26,8 @@ sys.path.insert(0, str(HERE))
 from matrix_paths import (  # noqa: E402
     OLD_ROOT,
     build_historical_mapping,
+    build_mapping,
+    legacy_label,
     misleading,
     new_import_path,
     short_legacy,
@@ -107,7 +109,11 @@ def main() -> int:
     # 所以它有自己的数据源（historical_paths.json）与自己的构造点。
     # 期望值硬编码，不从被测实现推导。
     hist = build_historical_mapping("oagentkit")
-    want_hist = {"github.com/oagentkit/llm/llm": "github.com/oagentkit/llm"}
+    want_hist = {
+        "github.com/oagentkit/llm/llm": "github.com/oagentkit/llm",
+        # toolname 自 oekit/pkg 归位而来：旧路径在**旧单仓之外**
+        "github.com/oekit/pkg/toolname": "github.com/oagentkit/toolname",
+    }
     ok = hist == want_hist
     print(f"  {'✅' if ok else '❌'} build_historical_mapping('oagentkit') = {hist}")
     if not ok:
@@ -116,12 +122,36 @@ def main() -> int:
 
     # 占位符形态：同一张表要服务多个 org（姊妹矩阵 oekit 也用改写器）
     hist_ph = build_historical_mapping("{org}")
-    want_ph = {"github.com/{org}/llm/llm": "github.com/{org}/llm"}
+    want_ph = {
+        "github.com/{org}/llm/llm": "github.com/{org}/llm",
+        "github.com/oekit/pkg/toolname": "github.com/{org}/toolname",
+    }
     ok = hist_ph == want_ph
     print(f"  {'✅' if ok else '❌'} build_historical_mapping('{{org}}') = {hist_ph}")
     if not ok:
         print(f"      期望 {want_ph}")
         fails.append("build_historical_mapping:placeholder")
+
+    # 不是旧单仓拆出来的包（toolname 自 oekit/pkg 归位）⇒ 旧单仓路径从未存在过
+    # ⇒ 既不合成 agentkit/toolname 这条假旧路径，fromLegacy 也据实写真实旧路径。
+    got_label = legacy_label("toolname", "toolname", "oagentkit")
+    ok = got_label == "oekit/pkg/toolname"
+    print(f"  {'✅' if ok else '❌'} legacy_label(toolname) = {got_label}")
+    if not ok:
+        print("      期望 oekit/pkg/toolname")
+        fails.append("legacy_label:toolname")
+
+    ok = legacy_label("textx", "textutil", "oagentkit") == "agentkit/textutil"
+    print(f"  {'✅' if ok else '❌'} legacy_label(textx/textutil) = 旧单仓路径")
+    if not ok:
+        fails.append("legacy_label:textx")
+
+    mapping = build_mapping([{"repo": "toolname", "packages": ["toolname"]}], "oagentkit")
+    ok = ("git.enjoye.top/enjoydream/agentkit/toolname" not in mapping
+          and mapping.get("github.com/oekit/pkg/toolname") == "github.com/oagentkit/toolname")
+    print(f"  {'✅' if ok else '❌'} 假旧单仓路径未被合成，真实旧路径已登记")
+    if not ok:
+        fails.append("build_mapping:toolname")
 
     if fails:
         print(f"\n❌ {len(fails)} 项不符：{fails}")

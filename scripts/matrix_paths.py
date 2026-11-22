@@ -100,6 +100,35 @@ def short_legacy(pkg: str) -> str:
     return f"agentkit/{pkg}"
 
 
+def legacy_exclusions() -> dict[str, str]:
+    """{新路径模板: 真实旧路径}——来自 historical_paths.json 里标了 notFromLegacyRepo 的条目。
+
+    这些包**不是旧单仓拆出来的**（典型：toolname 自 oekit/pkg 归位而来）⇒
+    旧单仓路径从未存在过 ⇒ 不能合成 `agentkit/<pkg>` 这样的旧路径：
+    那会把一个**从未存在过**的路径当成「可机械替换的旧路径」发布出去
+    （下游照着 fromLegacy 做替换时，它会指向一个不存在的模块）。
+    """
+    out: dict[str, str] = {}
+    for entry in load_historical_paths():
+        if entry.get("notFromLegacyRepo"):
+            out[entry["to"]] = entry["from"]
+    return out
+
+
+def legacy_label(repo: str, pkg: str, org: str) -> str:
+    """该包在**旧路径**里的短形态（去掉 github.com/ 前缀）——供 versions.json 的
+    fromLegacy 字段用。
+
+    - 常态：旧单仓路径 `agentkit/<pkg>`；
+    - 例外（historical_paths.json 标了 notFromLegacyRepo）：真实旧路径
+      （如 `oekit/pkg/toolname`）——旧单仓路径从未存在过，不能合成。
+    """
+    old = legacy_exclusions().get(new_import_path("{org}", repo, pkg))
+    if old:
+        return old[len("github.com/"):] if old.startswith("github.com/") else old
+    return short_legacy(pkg)
+
+
 def build_mapping(modules: list[dict], org: str) -> dict[str, str]:
     """返回 {旧完整 import 路径: 新 import 路径}。
 
@@ -110,9 +139,13 @@ def build_mapping(modules: list[dict], org: str) -> dict[str, str]:
        曾经发布过 ⇒ 下游可能正引用着 ⇒ 必须同样能机械改写。
     """
     mapping: dict[str, str] = {}
+    excl = legacy_exclusions()
     for mod in modules:
         repo = mod["repo"]
         for pkg in mod["packages"]:
+            # 该包若不是旧单仓拆出来的 ⇒ 旧单仓路径从未存在过 ⇒ 不合成这条规则
+            if new_import_path("{org}", repo, pkg) in excl:
+                continue
             mapping[legacy_import_path(pkg)] = new_import_path(org, repo, pkg)
     mapping.update(build_historical_mapping(org))
     return mapping

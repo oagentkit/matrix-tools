@@ -8,8 +8,8 @@
   "orgUrl": "https://github.com/oagentkit",
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
-  "moduleCount": 13,
-  "packageCount": 65,
+  "moduleCount": 14,
+  "packageCount": 66,
   "modules": [
     {
       "repo": "textx",
@@ -866,6 +866,23 @@
           ]
         }
       ]
+    },
+    {
+      "repo": "toolname",
+      "url": "https://github.com/oagentkit/toolname",
+      "tier": 0,
+      "latest": "v0.2.0",
+      "packages": [
+        {
+          "pkg": "toolname",
+          "importPath": "github.com/oagentkit/toolname",
+          "fromLegacy": "oekit/pkg/toolname"
+        }
+      ],
+      "matrixDeps": [],
+      "breakingIndex": [],
+      "depFloor": [],
+      "floorBumps": []
     },
     {
       "repo": "queue",

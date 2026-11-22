@@ -40,6 +40,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from matrix_paths import (  # noqa: E402  import 路径构造规则与 rewrite_imports.py 同源
     OLD_ROOT,
+    legacy_label,
     new_import_path,
     short_legacy,
 )
@@ -226,8 +227,11 @@ def main() -> int:
             entry = {
                 "pkg": p,
                 "importPath": new_import_path(org, repo, p) if org else None,
-                # 旧单仓里的包路径，供工具做机器可读的旧→新替换，不必解析脚本源码
-                "fromLegacy": short_legacy(p),
+                # 旧路径里的包路径，供工具做机器可读的旧→新替换，不必解析脚本源码
+                # ⚠️ 常态是旧单仓路径（agentkit/<pkg>）；但**不是每个包都来自旧单仓**
+                #    （toolname 自 oekit/pkg 归位而来 ⇒ 旧单仓路径从未存在过，
+                #    合成 agentkit/toolname 会把一个不存在的路径发布成可替换的旧路径）。
+                "fromLegacy": legacy_label(repo, p, org),
             }
             # 由嵌套模块提供的包：版本线在那个模块上，机器必须知道去哪儿取
             if p in nested_owner:
