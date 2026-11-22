@@ -208,6 +208,8 @@ def main() -> int:
     ap.add_argument("--matrix", default=str(DEFAULT_MATRIX))
     ap.add_argument("--org", help="要查的 org 名（必填；不默认取 defaultOrg——"
                           "默认联网会让入口冒烟守卫每次都撞 15s 超时）")
+    ap.add_argument("--repo", help="只判这一个仓（tag 面用：打 tag 的那个仓 "
+                          "必须已在矩阵登记面里）")
     ap.add_argument("--grace-hours", type=int, default=DEFAULT_GRACE_HOURS,
                     help="「已打 tag 未发 Release」的宽限窗口（小时）")
     ap.add_argument("--selftest", action="store_true")
@@ -238,7 +240,13 @@ def main() -> int:
     registered = registered_repos(matrix)
     facts: dict[str, RepoFacts] = {}
     for name in sorted(names):
+        if args.repo and name != args.repo:
+            continue
         facts[name] = collect_facts(org, name)
+
+    if args.repo and not facts:
+        print(f"❌ org {org} 里没有名为 {args.repo} 的仓（判不了）")
+        return 1
 
     now = datetime.now(timezone.utc)
     problems, notes = judge(facts, registered, now=now, grace_hours=args.grace_hours)
@@ -253,6 +261,11 @@ def main() -> int:
         return 1
 
     go_mods = sum(1 for f in facts.values() if f.is_go_module)
+    if args.repo:
+        print(f"✅ {args.repo} 已在矩阵登记面里（{org}；tag 面判定）")
+        for n in notes:
+            print(f"  · {n}")
+        return 0
     print(f"✅ org 仓覆盖合规（{org} 共 {len(facts)} 个仓，"
           f"其中 Go module {go_mods} 个；矩阵登记 {len(registered)} 个；"
           f"已发版未登记 0 个；已发版但无 Release 0 个）")

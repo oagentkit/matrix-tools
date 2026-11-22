@@ -282,7 +282,8 @@
       "desc": "MCP 客户端/工具池/建连单飞",
       "oekitAnalog": "registry",
       "packages": [
-        "mcp"
+        "mcp",
+        "iface"
       ],
       "heavyDeps": [
         "github.com/mark3labs/mcp-go",
@@ -302,7 +303,8 @@
       "agentNotes": "- **建连必须单飞。** 同一 server 的并发建连要合并为一次，\n  不得每次 `Allow` 都新建连接。\n- **等待方的 ctx 取消要各自生效**，不能干等 leader。\n- 工具注解（`mcp.ToolAnnotation`）归一时，`nil` 视为规范缺省，**不得当成「无限制」**。\n- **层位 t1 → t2**：带 `eino` + `mcp-go` 地板（MCP 客户端本身绑框架）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
       "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
       "pkgDesc": {
-        "mcp": "MCP 客户端/工具池：工具目录、建连单飞、自愈与租约管理"
+        "mcp": "MCP 客户端/工具池：工具目录、建连单飞、自愈与租约管理",
+        "iface": "MCP 工具调用面的协议中立声明：失败分类学（ErrorKind）、结果分类载体（ClassifiedError）与工具能力接口（RawNamer/OutputSchemer）——只依赖标准库，供不要 mcp-go 的消费方使用"
       }
     },
     {

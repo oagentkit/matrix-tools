@@ -73,6 +73,7 @@
 | 子包 | 用途 |
 |---|---|
 | `mcp` | MCP 客户端/工具池：工具目录、建连单飞、自愈与租约管理 |
+| `iface` | MCP 工具调用面的协议中立声明：失败分类学（ErrorKind）、结果分类载体（ClassifiedError）与工具能力接口（RawNamer/OutputSchemer）——只依赖标准库，供不要 mcp-go 的消费方使用 |
 
 ### obs（tier2）
 
