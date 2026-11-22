@@ -16,6 +16,9 @@
 | `toolfail` | 工具调用失败的分类与处置契约：类别 → 可重试性/退避/需人工/重发安全/面向模型的处置指引。不可分类即不可重试；重发安全与重试价值是两个正交维度 |
 | `sandbox` | 执行沙箱的档位语义与后端协议：Level（none/process/os/machine，序即强弱）+ Provider + Registry。要求档位是下限，选不到满足者即拒绝、绝不降级 |
 | `wire` | 跨进程调用协议：帧格式（4B 大端长度 + JSON 负载，不用行分隔——工具输出可能含换行）+ 两条通道（启动通道 Starter/Runner 一次执行、调用通道 Server/Client N 次工具调用）；失败分类跨进程同源（取 toolfail 的分类）、预算权威在父侧、在途调用有硬上限、取消传播靠管道关闭 |
+| `netguard` | 出站 URL 守卫（SSRF 防护）：凡服务端代发 HTTP 的出口统一判定；IP 策略依据单源 egress，不私补网段表 |
+| `rbac` | 角色能力矩阵机制：角色→能力集查表、只读档由矩阵推导、授权面指纹；词表是宿主数据，本包只收机制 |
+| `ticket` | 一次性短时授权票据：签发/消费/过期/用途绑定，消费即作废（用过即焚）；机制与策略分离 |
 
 ### runtime（tier0）
 
@@ -80,12 +83,15 @@
 | `worker/pglease` | `worker.LeaseStore` 的 PostgreSQL 实现（条件 UPSERT 一行即成） |
 | `sqllease` | `worker.LeaseStore` 的 database/sql 参考实现（PG/MySQL/SQLite 三方言） |
 | `sqlqueue` | `worker.TaskQueue` 的 database/sql 参考实现（三方言） |
+| `outbox` | 统一副作用 outbox 队列：宿主按 kind 注册退避规格与处理器，机制面只认规格不认业务（与 sqlqueue 的任务认领划清边界） |
 
 ### rag（tier2）
 
 | 子包 | 用途 |
 |---|---|
 | `knowledge/rag` | 知识检索：Embedding 接口、向量后端可插拔、混合召回与重排 |
+| `wiki` | 持久 wiki 的写入面：页面 upsert/删除/乐观版本 + 增量摄取与结构检查；不做检索（读侧索引由宿主交给 Indexer 接缝） |
+| `wiki/fsstore` | wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换 |
 
 ### skillkit（tier2）
 
@@ -113,6 +119,7 @@
 | `sast` | 确定性 SAST 前置扫描（不执行被扫代码） |
 | `bashguard` | Shell 命令静态风险裁决（自 guardx/bashguard 迁入）：经真 shell AST 判定只读性，不执行命令 |
 | `bgjob` | 远程后台作业 marker 协议原语：经宿主既有 SSH 会话起「脱离会话的长任务」，退出码走 marker 文件做终态探测与收尾（tools#106） |
+| `cmdpolicy` | 命令级放行裁决与事实面：命令解析后判定放行/拒绝，裁决与事实同仓；只收机制，业务词表由宿主注入 |
 
 ### agent（tier3）
 

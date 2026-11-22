@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 13,
-  "packageCount": 58,
+  "packageCount": 65,
   "modules": [
     {
       "repo": "textx",
@@ -576,6 +576,21 @@
           "pkg": "wire",
           "importPath": "github.com/oagentkit/guardx/wire",
           "fromLegacy": "agentkit/wire"
+        },
+        {
+          "pkg": "netguard",
+          "importPath": "github.com/oagentkit/guardx/netguard",
+          "fromLegacy": "agentkit/netguard"
+        },
+        {
+          "pkg": "rbac",
+          "importPath": "github.com/oagentkit/guardx/rbac",
+          "fromLegacy": "agentkit/rbac"
+        },
+        {
+          "pkg": "ticket",
+          "importPath": "github.com/oagentkit/guardx/ticket",
+          "fromLegacy": "agentkit/ticket"
         }
       ],
       "matrixDeps": [],
@@ -877,6 +892,11 @@
           "pkg": "sqlqueue",
           "importPath": "github.com/oagentkit/queue/sqlqueue",
           "fromLegacy": "agentkit/sqlqueue"
+        },
+        {
+          "pkg": "outbox",
+          "importPath": "github.com/oagentkit/queue/outbox",
+          "fromLegacy": "agentkit/outbox"
         }
       ],
       "matrixDeps": [],
@@ -2800,6 +2820,16 @@
           "pkg": "knowledge/rag",
           "importPath": "github.com/oagentkit/rag",
           "fromLegacy": "agentkit/knowledge/rag"
+        },
+        {
+          "pkg": "wiki",
+          "importPath": "github.com/oagentkit/rag/wiki",
+          "fromLegacy": "agentkit/wiki"
+        },
+        {
+          "pkg": "wiki/fsstore",
+          "importPath": "github.com/oagentkit/rag/fsstore",
+          "fromLegacy": "agentkit/wiki/fsstore"
         }
       ],
       "matrixDeps": [
@@ -4649,6 +4679,11 @@
           "pkg": "bgjob",
           "importPath": "github.com/oagentkit/tools/bgjob",
           "fromLegacy": "agentkit/bgjob"
+        },
+        {
+          "pkg": "cmdpolicy",
+          "importPath": "github.com/oagentkit/tools/cmdpolicy",
+          "fromLegacy": "agentkit/cmdpolicy"
         }
       ],
       "matrixDeps": [
