@@ -525,7 +525,7 @@
       "repo": "guardx",
       "url": "https://github.com/oagentkit/guardx",
       "tier": 0,
-      "latest": "v0.27.0",
+      "latest": "v0.29.0",
       "packages": [
         {
           "pkg": "fence",
@@ -825,6 +825,28 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.48.0",
               "to": "v0.51.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.28.0",
+          "date": "2026-11-16",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.51.0",
+              "to": "v0.52.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.29.0",
+          "date": "2026-11-23",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.52.0",
+              "to": "v0.59.0"
             }
           ]
         }
@@ -2799,6 +2821,7 @@
         "github.com/cloudwego/eino",
         "github.com/milvus-io/milvus-sdk-go/v2",
         "github.com/oekit/logx",
+        "gopkg.in/yaml.v3",
         "github.com/bahlo/generic-list-go",
         "github.com/buger/jsonparser",
         "github.com/bytedance/gopkg",
@@ -2845,8 +2868,7 @@
         "golang.org/x/text",
         "google.golang.org/genproto",
         "google.golang.org/grpc",
-        "google.golang.org/protobuf",
-        "gopkg.in/yaml.v3"
+        "google.golang.org/protobuf"
       ],
       "floorBumps": [
         {
@@ -3250,7 +3272,7 @@
       "repo": "llm",
       "url": "https://github.com/oagentkit/llm",
       "tier": 2,
-      "latest": "v0.26.0",
+      "latest": "v0.27.0",
       "packages": [
         {
           "pkg": "llm",
@@ -3310,16 +3332,22 @@
         "github.com/cloudwego/eino-ext/components/model/openai",
         "github.com/meguminnnnnnnnn/go-openai",
         "github.com/oekit/logx",
+        "go.opentelemetry.io/otel",
+        "go.opentelemetry.io/otel/sdk",
+        "go.opentelemetry.io/otel/trace",
         "github.com/bahlo/generic-list-go",
         "github.com/buger/jsonparser",
         "github.com/bytedance/gopkg",
         "github.com/bytedance/sonic",
         "github.com/bytedance/sonic/loader",
+        "github.com/cespare/xxhash/v2",
         "github.com/cloudwego/base64x",
         "github.com/cloudwego/eino-ext/libs/acl/openai",
         "github.com/dustin/go-humanize",
         "github.com/eino-contrib/jsonschema",
         "github.com/evanphx/json-patch",
+        "github.com/go-logr/logr",
+        "github.com/go-logr/stdr",
         "github.com/google/uuid",
         "github.com/goph/emperror",
         "github.com/json-iterator/go",
@@ -3336,6 +3364,9 @@
         "github.com/twitchyliquid64/golang-asm",
         "github.com/wk8/go-ordered-map/v2",
         "github.com/yargevad/filepathx",
+        "go.opentelemetry.io/auto/sdk",
+        "go.opentelemetry.io/otel/log",
+        "go.opentelemetry.io/otel/metric",
         "golang.org/x/arch",
         "golang.org/x/exp",
         "golang.org/x/sys",
@@ -3873,6 +3904,78 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.49.0",
               "to": "v0.51.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.26.1",
+          "date": "2026-11-16",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.51.0",
+              "to": "v0.52.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.27.0",
+          "date": "2026-11-17",
+          "bumps": [
+            {
+              "dep": "github.com/cespare/xxhash/v2",
+              "from": null,
+              "to": "v2.3.0"
+            },
+            {
+              "dep": "github.com/go-logr/logr",
+              "from": null,
+              "to": "v1.4.4"
+            },
+            {
+              "dep": "github.com/go-logr/stdr",
+              "from": null,
+              "to": "v1.2.2"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.38.0",
+              "to": "v0.38.1"
+            },
+            {
+              "dep": "go.opentelemetry.io/auto/sdk",
+              "from": null,
+              "to": "v1.2.1"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/log",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/metric",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/sdk",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/trace",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "golang.org/x/sys",
+              "from": "v0.29.0",
+              "to": "v0.48.0"
             }
           ]
         }
@@ -4515,7 +4618,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.15.0",
+      "latest": "v0.16.0",
       "packages": [
         {
           "pkg": "acpx",
@@ -5249,6 +5352,32 @@
               "to": "v0.26.0"
             }
           ]
+        },
+        {
+          "version": "v0.16.0",
+          "date": "2026-11-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.26.0",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.36.1",
+              "to": "v0.40.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.11.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.48.0",
+              "to": "v0.59.0"
+            }
+          ]
         }
       ]
     },
@@ -5317,16 +5446,19 @@
         "github.com/bytedance/gopkg",
         "github.com/bytedance/sonic",
         "github.com/bytedance/sonic/loader",
+        "github.com/cespare/xxhash/v2",
         "github.com/cloudwego/base64x",
         "github.com/cloudwego/eino-ext/libs/acl/openai",
         "github.com/dustin/go-humanize",
         "github.com/eino-contrib/jsonschema",
         "github.com/evanphx/json-patch",
+        "github.com/go-logr/logr",
+        "github.com/go-logr/stdr",
         "github.com/google/uuid",
         "github.com/goph/emperror",
         "github.com/json-iterator/go",
         "github.com/klauspost/cpuid/v2",
-        "github.com/kr/pretty",
+        "github.com/kr/text",
         "github.com/mailru/easyjson",
         "github.com/mattn/go-colorable",
         "github.com/meguminnnnnnnnn/go-openai",
@@ -5336,16 +5468,19 @@
         "github.com/oekit/logx",
         "github.com/pelletier/go-toml/v2",
         "github.com/pkg/errors",
-        "github.com/rogpeppe/go-internal",
         "github.com/sirupsen/logrus",
         "github.com/slongfield/pyfmt",
         "github.com/twitchyliquid64/golang-asm",
         "github.com/wk8/go-ordered-map/v2",
         "github.com/yargevad/filepathx",
+        "go.opentelemetry.io/auto/sdk",
+        "go.opentelemetry.io/otel",
+        "go.opentelemetry.io/otel/log",
+        "go.opentelemetry.io/otel/metric",
+        "go.opentelemetry.io/otel/trace",
         "golang.org/x/arch",
         "golang.org/x/exp",
-        "golang.org/x/sys",
-        "gopkg.in/check.v1"
+        "golang.org/x/sys"
       ],
       "floorBumps": [
         {
