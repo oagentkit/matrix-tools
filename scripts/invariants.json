@@ -975,13 +975,6 @@
             "push",
             "schedule"
           ]
-        },
-        {
-          "file": ".github/.github/workflows/go-ci.yml",
-          "job": "matrix-registration",
-          "triggers": [
-            "workflow_call"
-          ]
         }
       ],
       "since": "2026-11-23",
