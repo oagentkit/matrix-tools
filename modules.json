@@ -295,7 +295,8 @@
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
-        "github.com/milvus-io/milvus-sdk-go/v2"
+        "github.com/milvus-io/milvus-sdk-go/v2",
+        "gopkg.in/yaml.v3"
       ],
       "dependsOn": [
         "textx"
@@ -331,8 +332,11 @@
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
+        "github.com/cloudwego/eino-ext/components/model/openai",
         "github.com/meguminnnnnnnnn/go-openai",
-        "github.com/cloudwego/eino-ext/components/model/openai"
+        "go.opentelemetry.io/otel",
+        "go.opentelemetry.io/otel/sdk",
+        "go.opentelemetry.io/otel/trace"
       ],
       "dependsOn": [
         "textx"
