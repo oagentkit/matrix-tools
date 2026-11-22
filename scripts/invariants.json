@@ -978,7 +978,7 @@
         }
       ],
       "since": "2026-11-23",
-      "note": "实测 2026-11-22：org 新建了已发版的 toolname 仓（v0.1.0 / v0.2.0），矩阵没登记 ⇒ llms.txt 不列它、import 改写映射不出它、地板/幽灵包/依赖方向门禁对它全失明，而**全矩阵门禁全绿**——「CI 绿」不等于「矩阵完整」。这条守的就是那个缺口。判据 2（已打 tag 未发 Release）来自 toolname v0.1.0 的形态：tag 在、Release 缺 ⇒ 矩阵面与发布面都看不见它；带 24h 宽限窗口，避免发版过程中的一瞬状态把无关的矩阵 PR 顶红。反向验证：把 toolname 从 modules.json 拿掉 ⇒ 本门禁立刻红并指名道姓。",
+      "note": "实测 2026-11-22：org 新建了已发版的 toolname 仓（v0.1.0 / v0.2.0），矩阵没登记 ⇒ llms.txt 不列它、import 改写映射不出它、地板/幽灵包/依赖方向门禁对它全失明，而**全矩阵门禁全绿**——「CI 绿」不等于「矩阵完整」。这条守的就是那个缺口。判据 2（已打 tag 未发 Release）来自 toolname v0.1.0 的形态：tag 在、Release 缺 ⇒ 矩阵面与发布面都看不见它；带 24h 宽限窗口，避免发版过程中的一瞬状态把无关的矩阵 PR 顶红。反向验证：把 toolname 从 modules.json 拿掉 ⇒ 本门禁立刻红并指名道姓。 共享 workflow 侧（.github/.github/workflows/go-ci.yml 的 matrix-registration job）也接了同一条判据：tag 事件下判「打 tag 的那个仓必须在矩阵登记面里」（登记是发版的前提，早熟不构成误伤理由 ⇒ 可当红项）；而「有 tag 无 Release」**不放进 tag CI**（Release 是 tag 之后才建 ⇒ tag CI 跑时必然红 ⇒ 永久红），它的牙齿在矩阵侧每日 job（24h 宽限过后仍无 Release 才判红）。",
       "kind": "gate"
     }
   ],
