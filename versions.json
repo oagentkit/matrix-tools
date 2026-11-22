@@ -4669,7 +4669,7 @@
       "repo": "tools",
       "url": "https://github.com/oagentkit/tools",
       "tier": 2,
-      "latest": "v0.16.0",
+      "latest": "v0.16.1",
       "packages": [
         {
           "pkg": "acpx",
@@ -5432,6 +5432,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.48.0",
               "to": "v0.59.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.16.1",
+          "date": "2026-11-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.28.0",
+              "to": "v0.29.0"
             }
           ]
         }
