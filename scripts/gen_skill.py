@@ -161,12 +161,30 @@ REDLINES: list[str] = [
     "panic 收编先确认丢上下文可接受：RunSafe* 无哨兵类型（llm）",
 ]
 
-SKILL_DESCRIPTION = """\
-在 Go 业务代码中使用/重构时选用 oagentkit 框架包的选型与用法入口（13 模块 + agentkit 废弃门面）。
+def _matrix_counts() -> tuple[int, int]:
+    """(模块数, 子包总数)——从 modules.json 算，不写死。
+
+    ## 为什么必须算（实测 2026-11-23）
+
+    toolname 入矩阵后模块数 13 → 14、子包数 48 → 66，而这里写死的「13 模块 /
+    48 子包」**不会**随数据源更新 ⇒ **产物自动更新 ≠ 事实自动正确**：
+    skill 文档会对外宣称一个错的模块数，而没有任何门禁会红。
+
+    ⇒ 凡是从数据源能算出来的数字，一律在渲染时算。
+    """
+    mods = load_modules()["modules"]
+    return len(mods), sum(len(m.get("packages", [])) for m in mods)
+
+
+def skill_description() -> str:
+    """skill 的 frontmatter 描述（模块数/子包数按数据源实时计算）。"""
+    nmod, npkg = _matrix_counts()
+    return f"""\
+在 Go 业务代码中使用/重构时选用 oagentkit 框架包的选型与用法入口（{nmod} 模块 + agentkit 废弃门面）。
 触发场景：建 agent（ReAct/反思/路由/多专家）、模型调用（降级链/预算/阶段路由）、工具体系
 （MCP/调度/审计门/调用契约）、安全围栏（提示词注入/出口 SSRF/脱敏/许可沙箱）、RAG、DB 队列、
 prompt 组装、SKILL 技能装配、观测审计、文本处理，或不确定该用哪个模块/子包时。
-含场景选型表、tier/heavyDeps 红线、48 子包速查。发版/tag/CHANGELOG 用 oagentkit-release；
+含场景选型表、tier/heavyDeps 红线、{npkg} 子包速查。发版/tag/CHANGELOG 用 oagentkit-release；
 issue 扫描复用 oekit-sweep（--org oagentkit）。"""
 
 
@@ -219,8 +237,9 @@ def render_modules() -> str:
 
 
 def render_pkgs() -> str:
+    nmod, _npkg = _matrix_counts()
     return (
-        "# oagentkit 子包速查（13 模块全包面）\n\n"
+        f"# oagentkit 子包速查（{nmod} 模块全包面）\n\n"
         "> 由 gen_skill.py 从 modules.json 的 packages/pkgDesc 渲染；API 以 `go doc github.com/oagentkit/<repo>/<pkg>` 为准。\n\n"
         f"{_pkg_tables()}"
     )
@@ -231,7 +250,7 @@ def render_skill() -> str:
         "---\n"
         "name: oagentkit\n"
         "description: >-\n"
-        + "".join(f"  {ln}\n" for ln in SKILL_DESCRIPTION.splitlines())
+        + "".join(f"  {ln}\n" for ln in skill_description().splitlines())
         + "---\n\n"
     )
     sc = []
@@ -242,9 +261,10 @@ def render_skill() -> str:
         for r in rows:
             sc.append(f"| {r['scene']} | {r['use']} | {r.get('tips', '—')} | {r.get('redline', '—')} |")
         sc.append("")
+    nmod, _npkg = _matrix_counts()
     body = f"""# oagentkit 包选型与用法入口
 
-> oagentkit = Open Agent Kit：13 模块（tier0-3 自底向上）+ 已废弃 agentkit 门面。
+> oagentkit = Open Agent Kit：{nmod} 模块（tier0-3 自底向上）+ 已废弃 agentkit 门面。
 > 本 skill 由 `matrix-tools/scripts/gen_skill.py` 渲染——场景表为手写数据、模块/子包索引为
 > modules.json 渲染产物；修订改 gen_skill.py 数据区（或 modules.json），勿手改本文件。
 

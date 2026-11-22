@@ -32,6 +32,7 @@ import json
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 # 主模块版本线的 tag：v1.2.3（不含嵌套模块的 audit/v1.2.3 形态）
@@ -497,16 +498,19 @@ def fetch_repo_snapshot(org: str, repo: str, dest: "Path", ref: str = "main") ->
     return target if target.is_dir() else None
 
 
-def _all_tags(org: str, repo: str) -> list[str]:
+def _all_tags(org: str, repo: str) -> list[str] | None:
     # 分页取全量：默认只回第一页（30 条）⇒ 会漏掉较旧的 tag，
     # 让「tag 数量/集合」类判据假报缺口（实测 agentkit 真实 63 个、默认只回 30）。
+    #
+    # ⚠️ 取不到返回 **None**（判不了），不是 []（没有 tag）。
+    # 折叠成同一个值 ⇒ 守卫会把一次网络失败当成「这个仓没发过版」而静默放过。
     raw = gh_api_paginated(f"repos/{org}/{repo}/tags")
-    if not raw:
-        return []
+    if raw is None:
+        return None
     try:
         return [t.get("name", "") for t in json.loads(raw)]
     except ValueError:
-        return []
+        return None
 
 
 def latest_tag(org: str, repo: str) -> str | None:
@@ -515,7 +519,7 @@ def latest_tag(org: str, repo: str) -> str | None:
     ⚠️ 不能用「tags 数组的第一个」——嵌套模块的 tag（`audit/v0.1.0`）也在同一个
     仓里，"第一个"是谁取决于 API 返回顺序。
     """
-    tags = [t for t in _all_tags(org, repo) if MAIN_TAG_RE.match(t)]
+    tags = [t for t in (_all_tags(org, repo) or []) if MAIN_TAG_RE.match(t)]
     if not tags:
         return None
     return max(tags, key=version_key)
@@ -524,10 +528,79 @@ def latest_tag(org: str, repo: str) -> str | None:
 def nested_tag(org: str, repo: str, prefix: str) -> str | None:
     """嵌套模块的最新 tag（prefix 形如 `audit/`），取不到返回 None。"""
     pat = re.compile(rf"^{re.escape(prefix)}v\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
-    tags = [t for t in _all_tags(org, repo) if pat.match(t)]
+    tags = [t for t in (_all_tags(org, repo) or []) if pat.match(t)]
     if not tags:
         return None
     return max(tags, key=lambda t: version_key(t[len(prefix):]))
+
+
+def main_tags(org: str, repo: str) -> list[str] | None:
+    """主模块版本线（`vX.Y.Z`）的全部 tag；**取不到返回 None**（判不了 ≠ 没有 tag）。
+
+    ## 为什么不能直接用 `latest_tag`
+
+    `latest_tag` 把「取不到」与「没有 tag」都折叠成 None ⇒ 守卫无法区分
+    「这个仓没发过版」与「这次没取到」。对「已发版仓必须被矩阵登记」这类判据，
+    折叠的后果是**一次网络失败就把全部仓变成「未发版」⇒ 覆盖门禁全绿**。
+    ⇒ 事实层必须把这两个状态分开，判定层自己决定怎么判。
+    """
+    tags = _all_tags(org, repo)
+    if tags is None:
+        return None
+    return [t for t in tags if MAIN_TAG_RE.match(t)]
+
+
+def list_releases(org: str, repo: str) -> list[dict] | None:
+    """该仓的 GitHub Release 列表；**取不到返回 None**（判不了 ≠ 没有 Release）。
+
+    「发布面」与「tag 面」是**两个面**：只打 tag 不发 Release 的仓，
+    消费方按 tag 能拉到代码，却看不到任何发布说明（实测 toolname v0.1.0：
+    tag 在、Release 缺）。
+    """
+    raw = gh_api_paginated(f"repos/{org}/{repo}/releases")
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, list) else None
+
+
+def release_tags(releases: list[dict]) -> list[str]:
+    """Release 列表 → 已发布的 tag 名。
+
+    **draft 不算**：draft 是草稿，发布面还没开——把 draft 当成「已发 Release」，
+    就等于给「打了 tag 却没真发版」开了一扇绿灯。
+    """
+    out: list[str] = []
+    for r in releases:
+        if r.get("draft"):
+            continue
+        tag = r.get("tag_name")
+        if tag:
+            out.append(tag)
+    return out
+
+
+def tag_commit_date(org: str, repo: str, tag: str) -> datetime | None:
+    """某个 tag 指向的提交时间（UTC）；取不到返回 None。
+
+    用 tag 名当 ref 直接问 commits 端点——annotated tag 会被解析到它指向的提交，
+    不用自己再 deref 一层 tag 对象。
+    """
+    raw = gh_api(f"repos/{org}/{repo}/commits/{tag}")
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+        stamp = payload["commit"]["committer"]["date"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def version_key(v: str) -> tuple:
@@ -585,6 +658,16 @@ def selftest() -> int:
     check("v0.9.10 > v0.9.9", version_key("v0.9.10") > version_key("v0.9.9"), True)
     check("v0.10.0 > v0.9.9", version_key("v0.10.0") > version_key("v0.9.9"), True)
     check("预发布 < 正式", version_key("v1.0.0-rc.1") < version_key("v1.0.0"), True)
+
+    # release_tags：draft 不算已发布
+    check("Release tag 集合",
+          release_tags([{"tag_name": "v0.2.0", "draft": False},
+                       {"tag_name": "v0.1.0", "draft": False}]),
+          ["v0.2.0", "v0.1.0"])
+    check("draft 不算已发布",
+          release_tags([{"tag_name": "v0.3.0", "draft": True}]), [])
+    check("无 tag_name 的条目跳过",
+          release_tags([{"draft": False}]), [])
 
     # module_path_from_gomod
     gomod = "module github.com/oagentkit/guardx/audit\n\ngo 1.26.0\n"

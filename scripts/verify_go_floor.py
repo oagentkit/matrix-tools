@@ -47,6 +47,13 @@ Go 的 `go` 指令是**真正的地板**：它决定消费方最低能用哪个 
    判据用 `go list -m -json all` 读每个依赖的 `GoVersion`
    ——那是 **Go 工具链自己**算出来的值，不是任何生成器的推导。
 
+   **零依赖仓**：依赖链为空是**确知事实**（读到了，只是它没有依赖），不是「判不了」。
+   它照常参与「全兼容」判定——空链 ⇒ 没有任何依赖要求更高版本 ⇒ 本仓声明高于
+   目标地板就是无谓抬高 ⇒ 红。**「读不到」才判不了**（两者严格区分，见
+   `parse_go_list_output` 与 `require_block_unparsed`）。
+   实测（2026-11-22，toolname 入矩阵前）：纯 stdlib 的零依赖仓被判红「没给出任何
+   依赖的 go 指令（判不了）」⇒ 零依赖被误判成判不了。
+
    例外：**不可降三方硬要求**的仓走 `EXEMPTIONS` 显式豁免（见下）。
 
 ## 豁免清单（必须带依据）
@@ -217,6 +224,38 @@ def parse_requires(gomod_text: str) -> dict[str, str]:
     return out
 
 
+def require_block_unparsed(gomod_text: str) -> bool:
+    """go.mod 里是否有**没能解析成依赖**的 require 内容行。
+
+    「零依赖」是**确知事实**，「解析器没读懂」是**判不了**——折叠成同一个结论，
+    门禁就会把「读不出来」当成「没有」而静默放过（矩阵据此以为这个仓零依赖，
+    地板判定就建在一个错误事实上）。
+
+    只看 require 段：空 require 块（`require (` 紧跟 `)`）是合法的零依赖形态，
+    不算「没读懂」。
+    """
+    in_block = False
+    for raw in gomod_text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if re.match(r"^require\b", line):
+            rest = line[len("require"):].strip()
+            if rest.startswith("("):
+                in_block = True
+                continue
+            if rest and not _REQUIRE_LINE_RE.match(raw):
+                return True
+            continue
+        if in_block:
+            if line.startswith(")"):
+                in_block = False
+                continue
+            if not _REQUIRE_LINE_RE.match(raw):
+                return True
+    return False
+
+
 def ver_tuple(v: str) -> tuple[int, ...]:
     """'1.24.0' -> (1, 24, 0)；'1.24' -> (1, 24)。非数字段忽略。"""
     out = []
@@ -251,6 +290,53 @@ def is_tier0(tier) -> bool:
     return str(tier) == "0"
 
 
+def parse_go_list_output(text: str) -> tuple[dict[str, str], int, bool]:
+    """解析 `go list -m -json all` 的输出。
+
+    → ({依赖路径: go 指令}, **依赖个数**, 是否读到主模块)。
+
+    ## 为什么「依赖个数」要单独返回
+
+    「读到 0 个依赖」与「读到了依赖、但一个都没声明 go 指令」是**两件不同的事**：
+
+    - 前者是**确知事实**——这个仓真的零依赖（纯 stdlib 的基础包就是这种）；
+    - 后者是**判不了**——依赖读到了，但它们的 go 指令读不出来。
+
+    把两者折叠成同一个空 dict，就会把「零依赖」误判成「判不了」。
+    实测（2026-11-22，toolname 入矩阵前）：纯 stdlib 的零依赖仓被判红
+    「go list -m 没给出任何依赖的 go 指令（判不了）」——**零依赖不是判不了**，
+    它是读到了、只是它没有依赖。
+
+    同理「输出里没有主模块」= 解析不完整 ⇒ 判不了，不能当成「零依赖」。
+    """
+    out: dict[str, str] = {}
+    dep_count = 0
+    saw_main = False
+    dec = json.JSONDecoder()
+    buf, i = text, 0
+    while i < len(buf):
+        while i < len(buf) and buf[i] in " \n\t":
+            i += 1
+        if i >= len(buf):
+            break
+        try:
+            obj, i = dec.raw_decode(buf, i)
+        except ValueError:
+            break
+        if not isinstance(obj, dict):
+            break
+        if obj.get("Main"):
+            saw_main = True
+            continue
+        path, gover = obj.get("Path"), obj.get("GoVersion")
+        # 跳过主模块自身（Path == 仓名、Version 为 None）
+        if path and obj.get("Version"):
+            dep_count += 1
+            if gover:
+                out[path] = gover
+    return out, dep_count, saw_main
+
+
 def dep_go_versions(repo_dir: Path) -> tuple[dict[str, str] | None, str | None]:
     """→ ({依赖路径: go 指令}, 错误信息)。
 
@@ -273,24 +359,18 @@ def dep_go_versions(repo_dir: Path) -> tuple[dict[str, str] | None, str | None]:
         return None, f"{repo_dir.name}: go list -m 失败：{e}"
     if r.returncode != 0:
         return None, f"{repo_dir.name}: go list -m 退出码 {r.returncode}（判不了）"
-    out: dict[str, str] = {}
-    dec = json.JSONDecoder()
-    buf, i = r.stdout, 0
-    while i < len(buf):
-        while i < len(buf) and buf[i] in " \n\t":
-            i += 1
-        if i >= len(buf):
-            break
-        try:
-            obj, i = dec.raw_decode(buf, i)
-        except ValueError:
-            break
-        path, gover = obj.get("Path"), obj.get("GoVersion")
-        # 跳过主模块自身（Path == 仓名、Version 为 None）
-        if path and gover and obj.get("Version"):
-            out[path] = gover
+    out, dep_count, saw_main = parse_go_list_output(r.stdout)
+    if not saw_main:
+        # 输出里没有主模块 ⇒ 解析不完整 ⇒ 判不了（**不能**当成「零依赖」）
+        return None, f"{repo_dir.name}: go list -m 的输出里没有主模块（解析失败，判不了）"
+    if dep_count == 0:
+        # 依赖链为空：**确知事实**（读到了，只是它没有依赖），不是「判不了」。
+        # 零依赖仓（纯 stdlib 的基础包）走的就是这条路径；判据 4 对空链的
+        # 结论是「没有任何依赖要求更高版本」⇒ 与空集全兼容一致。
+        return {}, None
     if not out:
-        return None, f"{repo_dir.name}: go list -m 没给出任何依赖的 go 指令（判不了）"
+        return None, (f"{repo_dir.name}: 依赖链读到了 {dep_count} 个依赖，"
+                      f"但没有一个声明 go 指令（判不了）")
     return out, None
 
 
@@ -307,8 +387,8 @@ def check_relative_floor(repo: str, tier, go_version: str | None,
                          deps: dict[str, str] | None) -> list[str]:
     """判据 4：tier1+ 不得「依赖链全兼容却声明更高」。
 
-    - 依赖链上**每个**依赖的 go 指令都 ≤ 1.24.x，
-      而本仓自己声明 > 1.24.x → 无谓抬高 → 红。
+    - 依赖链上**每个**依赖的 go 指令都 ≤ 目标地板（当前 1.26.x），
+      而本仓自己声明 > 目标地板 → 无谓抬高 → 红。
     - 在 EXEMPTIONS 里的仓 → 豁免（但要确认豁免依据仍然成立）。
     - 依赖链取不到 → 判不了即红。
     """
@@ -347,13 +427,17 @@ def check_relative_floor(repo: str, tier, go_version: str | None,
         return problems
 
     if go_version.startswith(TARGET_GO_PREFIX):
-        return problems  # 本仓已经是 1.24.x，无可指摘
+        return problems  # 本仓已经在目标地板上，无可指摘
 
     highest = max_dep_go(deps)
     if highest is None:
+        # 走到这里说明 deps 是**空链**（空 dict）——「读到的依赖链为空」是确知事实，
+        # 不是「读不到」（读不到走上面的 deps is None 分支）。
+        # 空链 ⇒ 没有任何依赖要求更高版本 ⇒ 本仓声明更高就是无谓抬高。
         problems.append(
-            f"{repo}: go 指令是 {go_version}，但读不到任何依赖的 go 指令"
-            f"（判不了，不能当成合规）")
+            f"{repo}: go 指令是 {go_version}，但依赖链为空（确知事实：这个仓没有任何依赖）"
+            f"——没有任何依赖要求更高版本，这个地板是无谓抬高的，"
+            f"应降到 {TARGET_GO_PREFIX}x")
         return problems
 
     dep_path, dep_go = highest
@@ -380,13 +464,14 @@ def check_repo(repo: str, tier, go_version: str | None, toolchain: str | None,
         if not go_version.startswith(TIER0_GO_PREFIX):
             problems.append(
                 f"{repo}: tier0 基础包的 go 指令是 {go_version}，必须是 {TIER0_GO_PREFIX}x"
-                f"（tier0 是「需要依赖低版本 Go」的那一类，抬高地板会挡掉 Go 1.24 用户）")
+                f"（tier0 是「需要依赖低版本 Go」的那一类，"
+                f"抬高地板会挡掉 Go {TIER0_GO_PREFIX} 用户）")
         if toolchain is not None and not toolchain.startswith(TIER0_TOOLCHAIN_PREFIX):
             problems.append(
                 f"{repo}: tier0 的 toolchain 是 go{toolchain}，"
                 f"最高只能 go{TIER0_TOOLCHAIN_PREFIX}x"
                 f"（toolchain 不是门槛，但会让 go 命令自动下载更高版本，"
-                f"与「最低支持 1.24」相悖）")
+                f"与「最低支持 {TIER0_GO_PREFIX}」相悖）")
 
     # 判据 2：CI go-version 与 go.mod go 指令成对（所有 tier）
     if ci_go_version is None:
@@ -454,12 +539,17 @@ def remote_dep_go_versions(org: str, repo: str,
     CI 里没有各仓的本地副本。
 
     读不到某个依赖的 go 指令 → 该依赖不计入「全兼容」判定
-    （保守：只把**确认 ≤ 1.24** 的依赖算作兼容），
+    （保守：只把**确认 ≤ 目标地板**的依赖算作兼容），
     但「一条都读不到」要判红（判不了 ≠ 合规）。
     """
     requires = parse_requires(gomod_text)
     if not requires:
-        return None, f"{repo}: go.mod 里没有 require 依赖（判不了）"
+        # 零依赖：**确知事实**（go.mod 里确实没有 require）——不是「判不了」。
+        # 但要先排除「我们没读懂」：require 段里有解析不出来的内容 ⇒ 判不了。
+        # 把两者折叠成同一个结论 ⇒ 门禁会把「读不出来」当成「没有」而静默放过。
+        if require_block_unparsed(gomod_text):
+            return None, f"{repo}: go.mod 的 require 段里有解析不出来的依赖（判不了）"
+        return {}, None
     deps = {mod: gover for mod, gover in
             ((m, _GO_VER_CACHE.get((m, v))) for m, v in requires.items())
             if gover}
@@ -519,7 +609,8 @@ def remote_module_go_version(org: str, mod: str, ver: str) -> str | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Go 地板门禁：tier0 必须 1.24.x，tier1+ 不得「依赖链全兼容却声明更高」，"
+        description=f"Go 地板门禁：tier0 必须 {TIER0_GO_PREFIX}x，"
+                    "tier1+ 不得「依赖链全兼容却声明更高」，"
                     "CI go-version 与 go.mod 成对")
     ap.add_argument("--matrix", default=str(DEFAULT_MATRIX))
     ap.add_argument("--root", help="各仓本地目录的父目录")
@@ -587,8 +678,9 @@ def main() -> int:
         print(f"❌ Go 地板门禁失败：{len(problems)} 处\n")
         for p in problems:
             print(f"  - {p}")
-        print("\n修法：tier0 的 go.mod 写 `go 1.24.0`（toolchain 留空或 ≤1.24）；"
-              "tier1+ 若依赖链全兼容也应降到 1.24.0；"
+        print(f"\n修法：tier0 的 go.mod 写 `go {TIER0_GO_PREFIX}0`"
+              f"（toolchain 留空或 ≤{TIER0_GO_PREFIX}）；"
+              f"tier1+ 若依赖链全兼容也应降到 {TARGET_GO_PREFIX}0；"
               "并把该仓 ci.yml 的 go-version 改成与 go.mod 成对的值。")
         return 1
 
@@ -659,6 +751,24 @@ def selftest() -> int:
     # tier0 不走判据 4（由判据 1 绝对约束）
     check("tier0 不走判据4", check_relative_floor("x", 0, "1.28.0", all126), [])
 
+    # ---- 零依赖仓：空链是**确知事实**，不是「判不了」（实测 2026-11-22 toolname）----
+    # 空链 + 本仓已在目标地板 ⇒ 绿
+    check("零依赖 + 目标地板 ⇒ 绿", check_relative_floor("x", 2, "1.26.0", {}), [])
+    # 空链 + 本仓声明更高 ⇒ 红，但结论是「无谓抬高」而不是「判不了」
+    p = check_relative_floor("x", 2, "1.28.0", {})
+    check("零依赖 + 声明更高 ⇒ 红", len(p), 1)
+    check("零依赖的红是「无谓抬高」不是「判不了」",
+          "判不了" not in p[0] and "依赖链为空" in p[0], True)
+    # 依赖链**读不到**（None）⇒ 仍是判不了即红（与「空链」严格区分）
+    p = check_relative_floor("x", 2, "1.28.0", None)
+    check("依赖链读不到 ⇒ 红", len(p), 1)
+    check("读不到的红是「判不了」", "判不了" in p[0], True)
+    # tier0 零依赖 ⇒ 只受判据 1 绝对约束
+    check("tier0 零依赖", check_repo("x", 0, "1.26.0", None, "1.26", {}), [])
+    # 豁免清单里的仓若依赖链为空 ⇒ 豁免依据失效（blocker 不在链上）⇒ 红
+    p = check_relative_floor("mcpkit", 2, "1.27.0", {})
+    check("豁免仓依赖链为空 ⇒ 豁免失效被抓", len(p), 1)
+
     # ---- 豁免清单：依据仍成立 → 绿；依据失效 → 红 ----
     check("mcpkit 豁免依据成立",
           check_relative_floor("mcpkit", 2, "1.27.0",
@@ -718,6 +828,37 @@ def selftest() -> int:
            "golang.org/x/time": "v0.14.0"})
     check("最高依赖 go 版本",
           max_dep_go({"a": "1.24.0", "b": "1.25.5", "c": "1.18"}), ("b", "1.25.5"))
+
+    # ---- go list -m 输出的解析：三态（零依赖 / 有依赖 / 读不懂）----
+    solo = '{"Path":"github.com/oagentkit/toolname","Main":true,"GoVersion":"1.26.0"}'
+    deps, n, main = parse_go_list_output(solo)
+    check("go list 零依赖：依赖个数 0", n, 0)
+    check("go list 零依赖：读到主模块", main, True)
+    check("go list 零依赖：依赖表为空", deps, {})
+    two = solo + "\n" + '{"Path":"github.com/oekit/pkg","Version":"v0.57.0","GoVersion":"1.26.0"}'
+    deps, n, main = parse_go_list_output(two)
+    check("go list 一个依赖：依赖个数 1", n, 1)
+    check("go list 一个依赖：表内容", deps, {"github.com/oekit/pkg": "1.26.0"})
+    # 依赖存在但没声明 go 指令 ⇒ 依赖个数 1、表为空（判不了，**不是**零依赖）
+    three = solo + "\n" + '{"Path":"github.com/x/y","Version":"v1.0.0"}'
+    deps, n, main = parse_go_list_output(three)
+    check("go list 依赖无 go 指令：依赖个数 1", n, 1)
+    check("go list 依赖无 go 指令：表为空", deps, {})
+    # 输出里没有主模块 ⇒ 解析失败（判不了，不能当成零依赖）
+    deps, n, main = parse_go_list_output('{"Path":"github.com/x/y","Version":"v1.0.0"}')
+    check("go list 缺主模块 ⇒ 解析失败", main, False)
+
+    # ---- require 段读不懂 vs 零依赖 ----
+    check("零依赖 go.mod：无未解析 require",
+          require_block_unparsed("module x\n\ngo 1.26.0\n"), False)
+    check("空 require 块：合法零依赖",
+          require_block_unparsed("module x\n\ngo 1.26.0\n\nrequire (\n)\n"), False)
+    check("单行 require：能解析",
+          require_block_unparsed("module x\n\nrequire github.com/oekit/pkg v0.57.0\n"), False)
+    check("块内 require：能解析",
+          require_block_unparsed("module x\n\nrequire (\n\tgithub.com/oekit/pkg v0.57.0 // indirect\n)\n"), False)
+    check("块内 require 解析不出来 ⇒ 判不了",
+          require_block_unparsed("module x\n\nrequire (\n\tnotamodule v1.0.0\n)\n"), True)
 
     if fails:
         print("❌ verify_go_floor 自测失败：")
