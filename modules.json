@@ -196,7 +196,6 @@
       ],
       "heavyDeps": [],
       "dependsOn": [
-        "runtime",
         "textx"
       ],
       "ghDescription": "提示词上下文——system prompt 分段组装/运行中转向队列/文件读后写一致性状态",
@@ -436,7 +435,6 @@
       ],
       "dependsOn": [
         "textx",
-        "runtime",
         "guardx"
       ],
       "ghDescription": "外部工具接入——CLI 编码 agent 统一调用/公开资料检索/git 工作副本沙箱/确定性 SAST 扫描/Shell 命令静态裁决",

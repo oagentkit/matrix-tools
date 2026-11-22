@@ -1308,10 +1308,6 @@
       ],
       "matrixDeps": [
         {
-          "repo": "runtime",
-          "url": "https://github.com/oagentkit/runtime"
-        },
-        {
           "repo": "textx",
           "url": "https://github.com/oagentkit/textx"
         }
@@ -2500,12 +2496,7 @@
           "fromLegacy": "agentkit/iface"
         }
       ],
-      "matrixDeps": [
-        {
-          "repo": "runtime",
-          "url": "https://github.com/oagentkit/runtime"
-        }
-      ],
+      "matrixDeps": [],
       "breakingIndex": [
         {
           "version": "v0.9.0",
@@ -4831,10 +4822,6 @@
         {
           "repo": "guardx",
           "url": "https://github.com/oagentkit/guardx"
-        },
-        {
-          "repo": "runtime",
-          "url": "https://github.com/oagentkit/runtime"
         },
         {
           "repo": "textx",
