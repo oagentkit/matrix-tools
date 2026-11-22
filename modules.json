@@ -290,9 +290,6 @@
         "github.com/eino-contrib/jsonschema",
         "github.com/cloudwego/eino"
       ],
-      "dependsOn": [
-        "runtime"
-      ],
       "ghDescription": "MCP 工具池——客户端封装/工具目录/建连单飞/自愈与租约管理",
       "topics": [
         "go",
