@@ -42,6 +42,7 @@
 | `compact` | 会话压缩策略面：auto-compact 判定（阈值/熔断/token 三轨）+ 压缩/恢复 |
 | `conversation` | 多轮会话历史原语：滚动窗口切分、历史渲染 |
 | `reportutil` | 评审/评测报告后处理：severity 归并、sampling、stats、Fingerprint 精确指纹 |
+| `gotyped` | go/types 精确调用边抽取——嵌套模块隔离 go/packages 重依赖（x/tools 等），根模块 tier 0 地板零抬升；产出 caller→callee 结构化边，替换词法面同名假边 |
 
 ### toolname（tier0）
 

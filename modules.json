@@ -23,7 +23,8 @@
         "codeintel",
         "compact",
         "conversation",
-        "reportutil"
+        "reportutil",
+        "gotyped"
       ],
       "heavyDeps": [],
       "ghDescription": "文本与差异处理——增量切片/unified diff 解析/代码符号索引/会话滚动窗口与压缩/评审报告指纹",
@@ -34,7 +35,7 @@
         "codereview",
         "session"
       ],
-      "agentNotes": "- 保持**零仓内依赖的纯函数形态**：能用返回值表达的错误不要用回调里的副作用。\n- 涉及 token / 预算的判定（如 `compact` 的三轨 auto-compact）必须有边界测试，\n  阈值不得写死在实现里。",
+      "agentNotes": "- 保持**零仓内依赖的纯函数形态**：能用返回值表达的错误不要用回调里的副作用。\n- 涉及 token / 预算的判定（如 `compact` 的三轨 auto-compact）必须有边界测试，\n  阈值不得写死在实现里。\n- **本仓含嵌套子模块** `gotyped`（go/packages 重依赖隔离，根模块 tier 0 地板零抬升，import 路径不变但版本线独立）。主模块必须保持零外部依赖——import 根模块任一包不该把 x/tools 拖进下游模块图。",
       "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
       "pkgDesc": {
         "textutil": "按行边界把文本切成 ≤target(rune) 的增量片，凑片不跨行",
@@ -42,8 +43,16 @@
         "codeintel": "轻量代码符号索引",
         "compact": "会话压缩策略面：auto-compact 判定（阈值/熔断/token 三轨）+ 压缩/恢复",
         "conversation": "多轮会话历史原语：滚动窗口切分、历史渲染",
-        "reportutil": "评审/评测报告后处理：severity 归并、sampling、stats、Fingerprint 精确指纹"
-      }
+        "reportutil": "评审/评测报告后处理：severity 归并、sampling、stats、Fingerprint 精确指纹",
+        "gotyped": "go/types 精确调用边抽取——嵌套模块隔离 go/packages 重依赖（x/tools 等），根模块 tier 0 地板零抬升；产出 caller→callee 结构化边，替换词法面同名假边"
+      },
+      "nestedModules": [
+        {
+          "path": "gotyped",
+          "module": "github.com/oagentkit/textx/gotyped",
+          "desc": "go/types 精确调用边抽取——从主模块拆出：依赖 golang.org/x/tools/go/packages 重依赖，import 路径不变，版本线独立（嵌套模块打 gotyped/vX.Y.Z tag）"
+        }
+      ]
     },
     {
       "repo": "runtime",
