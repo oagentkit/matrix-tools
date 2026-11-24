@@ -66,7 +66,7 @@
 | `llm/port` | 窄接口层（不引 eino）：Complete(ctx,req) 形态的降级链/预算/成本记账；无 eino 的内核（预算/成本/价表/熔断）由根包下沉而来，两条路径共用同一份实现 |
 | `llm/wrap` | 调用包装与限流适配 |
 | `llm/llmtest` | 模型层契约测试套件 |
-| `obsx` | eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入） |
+| `obsx` | eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）＋ Langfuse Public API 只读客户端（自 obs/langfuse 迁入，读写同域） |
 | `llm/decision` | System One 协议判定面客户端（非自回归判定模型）：choice/score/noul 三原语 + 校准置信口径（本地算，两端同义） |
 
 ### mcpkit（tier2）
@@ -80,7 +80,6 @@
 
 | 子包 | 用途 |
 |---|---|
-| `langfuse` | Langfuse Public API 只读客户端（v3 self-hosted 契约面） |
 | `audit` | 敏感操作的结构化审计留痕（自 guardx/audit 迁入）：字段值统一经 logredact 打码 |
 
 ### queue（tier2）
@@ -100,6 +99,8 @@
 | `knowledge/rag` | 知识检索：Embedding 接口、向量后端可插拔、混合召回与重排 |
 | `wiki` | 持久 wiki 的写入面：页面 upsert/删除/乐观版本 + 增量摄取与结构检查；不做检索（读侧索引由宿主交给 Indexer 接缝） |
 | `wiki/fsstore` | wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换 |
+| `milvus` | 向量后端（Milvus）实现：rag/milvus 子包——**只有它链向量 sdk**，根包零向量依赖（本地索引/混合召回调用方不必拖进 milvus 传递链） |
+| `ontology` | 实体/关系本体层：Schema/Type/Field 与 Triple 契约 + Validate 判据面 + Store 接口（内存参考实现）——不做抽取、不建图库，契约与领域无关 |
 
 ### skillkit（tier2）
 
