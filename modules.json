@@ -225,28 +225,25 @@
     {
       "repo": "obs",
       "tier": 2,
-      "desc": "观测客户端 + 审计留痕",
+      "desc": "敏感操作的结构化审计留痕",
       "oekitAnalog": "metrics",
       "packages": [
-        "langfuse",
         "audit"
       ],
       "heavyDeps": [],
       "dependsOn": [
         "guardx"
       ],
-      "ghDescription": "观测与审计——Langfuse 追踪客户端/敏感操作结构化审计（不引 eino 框架）",
+      "ghDescription": "敏感操作审计——结构化审计留痕，字段值统一经 logredact 打码（不引 eino 框架）",
       "topics": [
         "go",
-        "observability",
-        "llm",
-        "tracing",
-        "langfuse"
+        "audit",
+        "security",
+        "redact"
       ],
-      "agentNotes": "### trace 复用约束（不可自建）\n\n**必须复用 `oekit/tracing` 的 Provider 和 `oekit/logx` 的 trace 提取器\n（`logx.ExtractTrace`/`SetTraceExtractor`），不自建一套 trace。**\n否则 agentkit 日志里的 trace_id 会与 OTel 的对不上，跨服务链路断裂。\n\n### 与 oekit 的边界\n\n本仓是**矩阵里唯一直接做 eino callbacks 适配**的仓 —— oekit 作为微服务工具链不会做 LLM 场景。\n`oekit/tracing`（3 个导出）提供 Provider，本仓提供「把 LLM 调用挂上去」的适配层。两者互补，不重叠。\n- **`audit` 自 `guardx/audit` 迁入**（v0.8.0）：它依赖 `oekit/logx`，而 guardx 是 tier 0 零依赖底层，依赖面按 module 结算。包名与职责不变，只是 import 路径变了。\n- **层位 t1 → t2**：带 `eino` 地板（obsx 是 eino callbacks 适配层）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。\n- **`obsx` 已迁至 `github.com/oagentkit/llm/obsx`**（v0.9.0）：它是 eino callbacks 适配层，在本仓时把 langfuse / audit 这两个轻包拖进 27 个第三方模块。迁走后本仓的 eino 依赖消失。",
+      "agentNotes": "### 定位（v0.10.0 起）：audit 单包仓\n\n本仓只剩 `audit` 一个包：**执行面的操作留痕**（谁做了什么、参数是什么、结果如何），\n字段值统一经 `guardx/logredact` 打码。\n\n- **Langfuse 只读客户端已迁往 `llm/obsx`**（读写同域，oagentkit/obs#129）：\n  观测/追踪侧的能力（eino callbacks 适配、OTel generation 发射出口）本就在 llm 仓的\n  `obsx`，读端并入后「Langfuse 上有什么、是谁写进去的」一处答全。本仓不再承担观测面。\n- **同层依赖禁令**：`obs` 与 `llm` 同为 tier 2 ⇒ `obs` 不得依赖 `llm` ⇒ 本仓**不能**\n  留一个转发到 `llm/obsx` 的兼容壳 ⇒ `langfuse` 直接删除，下游改 import 路径。\n- `audit` 自 `guardx/audit` 迁入（v0.8.0）：它依赖 `oekit/logx`，而 guardx 是 tier 0\n  零依赖底层，依赖面按 module 结算。包名与职责不变，只是 import 路径变了。\n- **层位仍为 tier 2**：层位标签的原始理由（带 `eino` 地板）随 langfuse 迁出已不成立，\n  但层位是**声明面**（仓内 AGENTS.md / README.md 与 modules.json 必须一致），\n  改层位是独立决策，不在本仓降级动作内顺带做。\n",
       "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-obs\")`。\n- **观测数据不得携带凭据原文**，落盘前过 `guardx/logredact`。\n- `audit` 包的 logger 为 nil 时回退 `logx.NewAuditLogger`（级别锁 `Info`、不受 `LOG_LEVEL` 降级、SetLevel 到 WARN/ERROR 被拒）—— 这是刻意设计，别改回普通 logger。",
       "pkgDesc": {
-        "langfuse": "Langfuse Public API 只读客户端（v3 self-hosted 契约面）",
         "audit": "敏感操作的结构化审计留痕（自 guardx/audit 迁入）：字段值统一经 logredact 打码"
       }
     },
@@ -315,12 +312,14 @@
     {
       "repo": "rag",
       "tier": 2,
-      "desc": "知识检索——向量化/混合召回/重排",
+      "desc": "知识检索与本体层——向量化/混合召回/重排 + 实体关系本体契约",
       "oekitAnalog": "data",
       "packages": [
         "knowledge/rag",
         "wiki",
-        "wiki/fsstore"
+        "wiki/fsstore",
+        "milvus",
+        "ontology"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
@@ -330,20 +329,24 @@
       "dependsOn": [
         "textx"
       ],
-      "ghDescription": "知识检索——向量化/混合召回/重排，向量后端可插拔",
+      "ghDescription": "知识检索与本体层——向量化/混合召回/重排（向量后端可插拔，独立子包隔离 sdk 地板）+ 实体关系本体契约与判据",
       "topics": [
         "go",
         "rag",
         "retrieval",
         "vector-search",
-        "milvus"
+        "milvus",
+        "ontology",
+        "knowledge-graph"
       ],
-      "agentNotes": "- **单路召回失败不得降级为 `(nil, nil)`。** 混合召回中任一路 panic 或失败\n  要作为该路失败参与裁决；全部路失败时**返回 panic 错误而非静默空结果**。\n- 向量后端可插拔，新增后端不得改 `Embedding`/`Retriever` 接口形状 —— 那会让所有后端同时 breaking。\n- **层位 t1 → t2**：带 `eino` + `milvus-sdk` 地板（向量化/混合召回本身绑 SDK）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
+      "agentNotes": "- **单路召回失败不得降级为 `(nil, nil)`。** 混合召回中任一路 panic 或失败\n  要作为该路失败参与裁决；全部路失败时**返回 panic 错误而非静默空结果**。\n- 向量后端可插拔，新增后端不得改 `Embedding`/`Retriever` 接口形状 —— 那会让所有后端同时 breaking。\n- **层位 t1 → t2**：带 `eino` + `milvus-sdk` 地板（向量化/混合召回本身绑 SDK）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。\n- **向量后端只住 `rag/milvus` 子包**（oagentkit/rag#156）：根包不得 import 向量 sdk——否则任何 import 根包的调用方都会链接整条传递链（cockroachdb/errors、sentry-go、gogo/protobuf）。`make dep-guard` 是这条不变量的机判（反向验证过：注入即红）。\n- **`rag/ontology` 是本体层的契约与判据面**（oagentkit/rag#145）：只定义 Schema/Triple/Validate/Store，**不做抽取**（提示词与领域强相关，留宿主）、**不建图数据库**（Store 接口 + 内存参考实现）；与 `wiki` 分工——wiki 页是「叙事」、ontology 是「结构」。",
       "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-rag\")`。\n  - 索引/检索路径不得把原始文档内容整段落日志。",
       "pkgDesc": {
         "knowledge/rag": "知识检索：Embedding 接口、向量后端可插拔、混合召回与重排",
         "wiki": "持久 wiki 的写入面：页面 upsert/删除/乐观版本 + 增量摄取与结构检查；不做检索（读侧索引由宿主交给 Indexer 接缝）",
-        "wiki/fsstore": "wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换"
+        "wiki/fsstore": "wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换",
+        "milvus": "向量后端（Milvus）实现：rag/milvus 子包——**只有它链向量 sdk**，根包零向量依赖（本地索引/混合召回调用方不必拖进 milvus 传递链）",
+        "ontology": "实体/关系本体层：Schema/Type/Field 与 Triple 契约 + Validate 判据面 + Store 接口（内存参考实现）——不做抽取、不建图库，契约与领域无关"
       }
     },
     {
@@ -377,16 +380,18 @@
         "llm",
         "openai",
         "cost-control",
-        "fallback"
+        "fallback",
+        "langfuse",
+        "observability"
       ],
-      "agentNotes": "- **降级链的每一跳都必须记录原因**（成本/限流/超时/内容策略），不得静默换模型。\n- **预算判定必须在调用前**，不能事后扣减 —— 事后扣减等于没有预算。\n- **panic 不能只转成 error。** `RunSafe*` 系列会把 panic 收进全局 `PanicHandler`\n  （库不接 `SetPanicHandler`，默认 `log.Printf`）且返回的 `panic: X` 无哨兵类型，\n  无法挂回领域上下文。用 `RunSafeErr` 前先确认丢掉的结构化上下文可接受。\n- **`obsx` 自 `obs/obsx` 迁入**（v0.12.0）：它绑 eino 框架（callbacks 适配层），而本仓早已 import 它做成本记账与阶段打标——同一关注点，两个包住一起更顺。",
+      "agentNotes": "- **降级链的每一跳都必须记录原因**（成本/限流/超时/内容策略），不得静默换模型。\n- **预算判定必须在调用前**，不能事后扣减 —— 事后扣减等于没有预算。\n- **panic 不能只转成 error。** `RunSafe*` 系列会把 panic 收进全局 `PanicHandler`\n  （库不接 `SetPanicHandler`，默认 `log.Printf`）且返回的 `panic: X` 无哨兵类型，\n  无法挂回领域上下文。用 `RunSafeErr` 前先确认丢掉的结构化上下文可接受。\n- **`obsx` 自 `obs/obsx` 迁入**（v0.12.0）：它绑 eino 框架（callbacks 适配层），而本仓早已 import 它做成本记账与阶段打标——同一关注点，两个包住一起更顺。\n- **Langfuse 只读客户端自 `obs/langfuse` 迁入**（oagentkit/obs#129）：读端与写端同域——写端（OTel generation span 发射出口）本就在本仓 `obsx`；读端并入后「Langfuse 上有什么、是谁写进去的」一处答全。原 `obs/langfuse` 路径已删除（breaking），符号名逐字未变，下游只改 import 行。",
       "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-llm\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- 模型请求/响应落日志前必须脱敏（凭据与用户数据都可能出现在 prompt 里）。",
       "pkgDesc": {
         "llm": "模型客户端：多模型降级链、任务级预算、成本记账、分阶段路由、主备切换",
         "llm/port": "窄接口层（不引 eino）：Complete(ctx,req) 形态的降级链/预算/成本记账；无 eino 的内核（预算/成本/价表/熔断）由根包下沉而来，两条路径共用同一份实现",
         "llm/wrap": "调用包装与限流适配",
         "llm/llmtest": "模型层契约测试套件",
-        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）",
+        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）＋ Langfuse Public API 只读客户端（自 obs/langfuse 迁入，读写同域）",
         "llm/decision": "System One 协议判定面客户端（非自回归判定模型）：choice/score/noul 三原语 + 校准置信口径（本地算，两端同义）"
       }
     },
@@ -599,6 +604,22 @@
       "status": "已完成：llm v0.22.0 删除兼容镜像（BREAKING，llm#181）——旧路径 import 一律改根包 github.com/oagentkit/llm（符号同名，调用点零改动）",
       "plan": "（已兑现）新代码一律直接 import github.com/oagentkit/llm",
       "timelineModule": "llm"
+    },
+    {
+      "kind": "moved",
+      "pkg": "obs/langfuse",
+      "repo": "obs",
+      "importPath": "github.com/oagentkit/obs/langfuse",
+      "canonicalPath": "github.com/oagentkit/llm/obsx",
+      "replacement": "github.com/oagentkit/llm/obsx",
+      "consumedBy": "llm/obsx —— Langfuse 写/发射端与读端同域；读端实现迁入本包",
+      "impl": "（已删除）obs/langfuse/{client.go,types.go} —— 只读客户端 + 契约类型；6 个导出符号在 llm/obsx 同名承接（逐字未变 ⇒ 调用点零改动，只动 import 行）",
+      "issueRepo": "oagentkit/obs",
+      "issueChain": {
+        "129": "langfuse 读端并入 llm/obsx（读写同域）；obs 降为 audit 单包仓 —— 已落地"
+      },
+      "status": "已完成：obs 删除 obs/langfuse（BREAKING）——旧路径 import 一律改 github.com/oagentkit/llm/obsx（承接方 llm#231 已合）",
+      "timelineModule": "obs"
     }
   ],
   "compatShells": [

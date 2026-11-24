@@ -104,6 +104,27 @@ TIER_TITLE = {
 TIER_SLUG = {0: "foundation", 1: "capability", 2: "integration", 3: "orchestration"}
 
 
+LEDGER_KINDS = ("retired", "compat", "moved")
+
+
+def check_ledger_kinds(data: dict) -> list[str]:
+    """账本条目的 kind 是否都在渲染器认得的集合里。
+
+    kind 决定**渲染分支**（已退役 / 过渡期兼容镜像 / 矩阵内迁移）。
+    拼错的 kind 不会让任何门禁变红——它只会被当成「非 compat 即退役」**静默**渲出
+    错误措辞（对外公开的假陈述）⇒ 所以在生成器里就判死：**宁可生成失败**。
+
+    与 gen_llms_txt.py 里「读不到门面包数 ⇒ 宁可生成失败」同一条纪律：
+    **判不了 ≠ 没问题**。
+    """
+    out = []
+    for entry in data.get("retiringPackages") or []:
+        k = entry.get("kind")
+        if k not in LEDGER_KINDS:
+            out.append(f"{entry.get('pkg', '?')}(kind={k!r})")
+    return out
+
+
 def compat_by_repo(data: dict) -> dict[str, list[dict]]:
     """账本里 kind == "compat" 的条目按仓归组。
 
@@ -138,6 +159,12 @@ def main() -> int:
         return 2
 
     d = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
+    bad_kinds = check_ledger_kinds(d)
+    if bad_kinds:
+        print(f"❌ retiringPackages 里有渲染器认不出的 kind：{bad_kinds}"
+              "——kind 是判据面（retired / compat / moved），认不出的 kind 会被静默当成"
+              "「已退役」渲染出错误措辞。宁可生成失败。")
+        return 1
     org = d["defaultOrg"]
     mods = sorted(d["modules"], key=lambda m: (m["tier"], m["repo"]))
     npkg = sum(len(m["packages"]) for m in mods)
