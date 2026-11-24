@@ -9,13 +9,13 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 4,
   "moduleCount": 14,
-  "packageCount": 67,
+  "packageCount": 68,
   "modules": [
     {
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.12.0",
+      "latest": "v0.13.0",
       "packages": [
         {
           "pkg": "textutil",
@@ -46,6 +46,12 @@
           "pkg": "reportutil",
           "importPath": "github.com/oagentkit/textx/reportutil",
           "fromLegacy": "agentkit/reportutil"
+        },
+        {
+          "pkg": "gotyped",
+          "importPath": "github.com/oagentkit/textx/gotyped",
+          "fromLegacy": "agentkit/gotyped",
+          "module": "github.com/oagentkit/textx/gotyped"
         }
       ],
       "matrixDeps": [],
@@ -59,6 +65,19 @@
         }
       ],
       "depFloor": [],
+      "nestedModules": [
+        {
+          "module": "github.com/oagentkit/textx/gotyped",
+          "url": "https://github.com/oagentkit/textx",
+          "latest": "gotyped/v0.13.0",
+          "packages": [
+            {
+              "pkg": "gotyped",
+              "importPath": "github.com/oagentkit/textx/gotyped"
+            }
+          ]
+        }
+      ],
       "floorBumps": [
         {
           "version": "v0.5.0",
@@ -222,6 +241,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.44.0",
               "to": "v0.48.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.13.0",
+          "date": "2026-11-23",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.48.0",
+              "to": "v0.60.0"
             }
           ]
         }
@@ -878,6 +908,22 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.52.0",
               "to": "v0.59.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.30.0",
+          "date": "2026-11-23",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": null,
+              "to": "v0.40.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.59.0",
+              "to": "v0.60.0"
             }
           ]
         }
