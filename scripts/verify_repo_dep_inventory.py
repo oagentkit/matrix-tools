@@ -116,10 +116,10 @@ CLAIM_RE = re.compile(r"本仓依赖的矩阵内仓\s*[：:]")
 BACKTICK_RE = re.compile(r"`([^`]+)`")
 
 # 裸仓名（小写字母开头，无 `/`）
-PLAIN_NAME_RE = re.compile(r"^[a-z][a-z0-9]*$")
+PLAIN_NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")  # 支持连字符仓名（goagent-kernel 等，2026-11-26）
 
 # 矩阵内模块的全文路径
-FULL_PATH_RE = re.compile(r"^github\.com/oagentkit/([a-z][a-z0-9]*)$")
+FULL_PATH_RE = re.compile(r"^github\.com/oagentkit/([a-z][a-z0-9-]*)$")
 
 # 显式空声明：「本仓依赖的矩阵内仓：无」
 EMPTY_CLAIM_RE = re.compile(r"^[（(]?\s*无\s*[)）]?$")

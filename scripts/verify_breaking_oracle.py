@@ -477,12 +477,14 @@ _CN_DECL_FIXTURE = """# demo CHANGELOG
 
 
 # 生成器（breaking_index.py）**至今仍收不到**的形态——反证就拿这些当样本：
-#   v0.11.0 粗体 **BREAKING**: / 项目符号里的 BREAKING CHANGE / 小写 breaking change
 #   v0.12.0 散文形态的 import 路径搬家 —— 这条生成器已在本轮补上（不再是盲区），
 #            但仍留在样本里：oracle 必须独立收得到它，不依赖生成器的修复。
 #   v0.5.0  行中的 BREAKING CHANGE: —— 生成器只认**行首**标记行，收不到；
 #           oracle 的宽口径收得到（2026-10-25 收窄「短语须后接冒号」后仍在）。
-_OLD_PARSER_BLINDS = ["v0.11.0", "v0.12.0", "v0.5.0"]
+#   v0.11.0 粗体 **BREAKING**: / 项目符号里的 BREAKING CHANGE / 小写 breaking
+#           change —— 生成器已于 2026-11-26 补上（第 6 条依据；kernel v0.73/v0.76
+#           实测漏检后收编），不再是盲区，与 v0.12.0 同一处置：留样本、移出清单。
+_OLD_PARSER_BLINDS = ["v0.12.0", "v0.5.0"]
 
 
 def selftest() -> int:
@@ -515,8 +517,10 @@ def selftest() -> int:
     except Exception:  # pragma: no cover
         gen = set()
     missed_by_gen = sorted(set(_OLD_PARSER_BLINDS) - gen, key=version_key)
-    check("生成器仍漏收粗体/项目符号/小写标记形态（反证成立）",
-          "v0.11.0" in missed_by_gen, True)
+    check("剩余盲区（行中标记）生成器仍漏收（反证成立）",
+          "v0.5.0" in missed_by_gen, True)
+    check("粗体/项目符号/小写已被生成器收编（2026-11-26 第 6 条依据）",
+          "v0.11.0" in gen, True)
     check("oracle 对生成器收不到的形态也收得到",
           {"v0.11.0", "v0.12.0", "v0.5.0"} <= set(got), True)
 

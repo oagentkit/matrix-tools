@@ -100,8 +100,10 @@ TIER_TITLE = {
     1: "能力层 · 依赖 tier0，仍不引重量级第三方 SDK",
     2: "集成层 · 依赖 tier0/tier1 + 重第三方地板",
     3: "编排层 · 依赖 llm 等 tier2 门面",
+    4: "编排判据层 · 依赖 guardx/toolgate 等 tier0~2，判据单源（ADR-0010）",
+    5: "装配层 · 依赖 goagent-kernel + agent，只接线不另写判据",
 }
-TIER_SLUG = {0: "foundation", 1: "capability", 2: "integration", 3: "orchestration"}
+TIER_SLUG = {0: "foundation", 1: "capability", 2: "integration", 3: "orchestration", 4: "criteria", 5: "assembly"}
 
 
 LEDGER_KINDS = ("retired", "compat", "moved")

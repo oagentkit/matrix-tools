@@ -61,6 +61,10 @@ import json
 import re
 import subprocess
 import sys
+import re
+
+_STRICT_SEMVER = re.compile(r"^v\d+\.\d+\.\d+$")
+
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -216,6 +220,11 @@ def bumps_between(old: dict[str, str], new: dict[str, str]) -> list[dict]:
         prev = old.get(dep)
         if prev is None:
             out.append({"dep": dep, "from": None, "to": ver})
+            continue
+        # 对账 oracle（verify_floor_bumps）只认严格 vX.Y.Z 的既有依赖抬升：
+        # 伪版本（v0.0.0-…）/build metadata（+incompatible）在 oracle 处判不了，
+        # 生成器若照收就会「登记了、对不了账」——与 oracle 同一口径收窄。
+        if not _STRICT_SEMVER.match(prev) or not _STRICT_SEMVER.match(ver):
             continue
         pk, nk = ver_key(prev), ver_key(ver)
         if pk is None or nk is None:

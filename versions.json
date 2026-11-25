@@ -7,15 +7,15 @@
   "org": "oagentkit",
   "orgUrl": "https://github.com/oagentkit",
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
-  "tierCount": 4,
-  "moduleCount": 14,
-  "packageCount": 69,
+  "tierCount": 6,
+  "moduleCount": 16,
+  "packageCount": 136,
   "modules": [
     {
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.13.0",
+      "latest": "v0.14.0",
       "packages": [
         {
           "pkg": "textutil",
@@ -52,6 +52,21 @@
           "importPath": "github.com/oagentkit/textx/gotyped",
           "fromLegacy": "agentkit/gotyped",
           "module": "github.com/oagentkit/textx/gotyped"
+        },
+        {
+          "pkg": "budget",
+          "importPath": "github.com/oagentkit/textx/budget",
+          "fromLegacy": "agentkit/budget"
+        },
+        {
+          "pkg": "spill",
+          "importPath": "github.com/oagentkit/textx/spill",
+          "fromLegacy": "agentkit/spill"
+        },
+        {
+          "pkg": "offload",
+          "importPath": "github.com/oagentkit/textx/offload",
+          "fromLegacy": "agentkit/offload"
         }
       ],
       "matrixDeps": [],
@@ -252,6 +267,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.48.0",
               "to": "v0.60.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.0",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.60.0",
+              "to": "v0.61.4"
             }
           ]
         }
@@ -1334,7 +1360,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.10.0",
+      "latest": "v0.11.0",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -1350,9 +1376,28 @@
           "pkg": "filestate",
           "importPath": "github.com/oagentkit/promptx/filestate",
           "fromLegacy": "agentkit/filestate"
+        },
+        {
+          "pkg": "pending",
+          "importPath": "github.com/oagentkit/promptx/pending",
+          "fromLegacy": "agentkit/pending"
+        },
+        {
+          "pkg": "sessionref",
+          "importPath": "github.com/oagentkit/promptx/sessionref",
+          "fromLegacy": "agentkit/sessionref"
+        },
+        {
+          "pkg": "memorypipe",
+          "importPath": "github.com/oagentkit/promptx/memorypipe",
+          "fromLegacy": "agentkit/memorypipe"
         }
       ],
       "matrixDeps": [
+        {
+          "repo": "guardx",
+          "url": "https://github.com/oagentkit/guardx"
+        },
         {
           "repo": "textx",
           "url": "https://github.com/oagentkit/textx"
@@ -1726,6 +1771,27 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.46.0",
               "to": "v0.60.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.11.0",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": null,
+              "to": "v0.30.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.12.0",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.60.0",
+              "to": "v0.61.4"
             }
           ]
         }
@@ -2949,7 +3015,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.12.0",
+      "latest": "v0.13.0",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -3464,6 +3530,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.48.0",
               "to": "v0.60.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.13.0",
+          "date": "2026-11-24",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.12.0",
+              "to": "v0.13.0"
             }
           ]
         }
@@ -5628,7 +5705,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.15.0",
+      "latest": "v0.16.0",
       "packages": [
         {
           "pkg": "agentrun",
@@ -5659,6 +5736,11 @@
           "pkg": "clarify",
           "importPath": "github.com/oagentkit/agent/clarify",
           "fromLegacy": "agentkit/clarify"
+        },
+        {
+          "pkg": "roundguard",
+          "importPath": "github.com/oagentkit/agent/roundguard",
+          "fromLegacy": "agentkit/roundguard"
         }
       ],
       "matrixDeps": [
@@ -6319,6 +6401,1926 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.47.1",
               "to": "v0.48.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.16.0",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/cespare/xxhash/v2",
+              "from": null,
+              "to": "v2.3.0"
+            },
+            {
+              "dep": "github.com/go-logr/logr",
+              "from": null,
+              "to": "v1.4.4"
+            },
+            {
+              "dep": "github.com/go-logr/stdr",
+              "from": null,
+              "to": "v1.2.2"
+            },
+            {
+              "dep": "github.com/kr/text",
+              "from": null,
+              "to": "v0.2.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.21.12",
+              "to": "v0.27.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.11.0",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.35.1",
+              "to": "v0.40.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.10.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.48.0",
+              "to": "v0.61.4"
+            },
+            {
+              "dep": "go.opentelemetry.io/auto/sdk",
+              "from": null,
+              "to": "v1.2.1"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/log",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/metric",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "go.opentelemetry.io/otel/trace",
+              "from": null,
+              "to": "v1.47.0"
+            },
+            {
+              "dep": "golang.org/x/sys",
+              "from": "v0.29.0",
+              "to": "v0.48.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "goagent-kernel",
+      "url": "https://github.com/oagentkit/goagent-kernel",
+      "tier": 4,
+      "latest": "v0.79.0",
+      "packages": [
+        {
+          "pkg": "archcheck",
+          "importPath": "github.com/oagentkit/goagent-kernel/archcheck",
+          "fromLegacy": "agentkit/archcheck"
+        },
+        {
+          "pkg": "backend",
+          "importPath": "github.com/oagentkit/goagent-kernel/backend",
+          "fromLegacy": "agentkit/backend"
+        },
+        {
+          "pkg": "checkpoint",
+          "importPath": "github.com/oagentkit/goagent-kernel/checkpoint",
+          "fromLegacy": "agentkit/checkpoint"
+        },
+        {
+          "pkg": "commitgate",
+          "importPath": "github.com/oagentkit/goagent-kernel/commitgate",
+          "fromLegacy": "agentkit/commitgate"
+        },
+        {
+          "pkg": "contract",
+          "importPath": "github.com/oagentkit/goagent-kernel/contract",
+          "fromLegacy": "agentkit/contract"
+        },
+        {
+          "pkg": "controlplane",
+          "importPath": "github.com/oagentkit/goagent-kernel/controlplane",
+          "fromLegacy": "agentkit/controlplane"
+        },
+        {
+          "pkg": "coord",
+          "importPath": "github.com/oagentkit/goagent-kernel/coord",
+          "fromLegacy": "agentkit/coord"
+        },
+        {
+          "pkg": "cost",
+          "importPath": "github.com/oagentkit/goagent-kernel/cost",
+          "fromLegacy": "agentkit/cost"
+        },
+        {
+          "pkg": "deadline",
+          "importPath": "github.com/oagentkit/goagent-kernel/deadline",
+          "fromLegacy": "agentkit/deadline"
+        },
+        {
+          "pkg": "delegate",
+          "importPath": "github.com/oagentkit/goagent-kernel/delegate",
+          "fromLegacy": "agentkit/delegate"
+        },
+        {
+          "pkg": "delta",
+          "importPath": "github.com/oagentkit/goagent-kernel/delta",
+          "fromLegacy": "agentkit/delta"
+        },
+        {
+          "pkg": "dispatch",
+          "importPath": "github.com/oagentkit/goagent-kernel/dispatch",
+          "fromLegacy": "agentkit/dispatch"
+        },
+        {
+          "pkg": "drain",
+          "importPath": "github.com/oagentkit/goagent-kernel/drain",
+          "fromLegacy": "agentkit/drain"
+        },
+        {
+          "pkg": "egress",
+          "importPath": "github.com/oagentkit/goagent-kernel/egress",
+          "fromLegacy": "agentkit/egress"
+        },
+        {
+          "pkg": "eval",
+          "importPath": "github.com/oagentkit/goagent-kernel/eval",
+          "fromLegacy": "agentkit/eval"
+        },
+        {
+          "pkg": "eventbus",
+          "importPath": "github.com/oagentkit/goagent-kernel/eventbus",
+          "fromLegacy": "agentkit/eventbus"
+        },
+        {
+          "pkg": "finalize",
+          "importPath": "github.com/oagentkit/goagent-kernel/finalize",
+          "fromLegacy": "agentkit/finalize"
+        },
+        {
+          "pkg": "gatecheck",
+          "importPath": "github.com/oagentkit/goagent-kernel/gatecheck",
+          "fromLegacy": "agentkit/gatecheck"
+        },
+        {
+          "pkg": "guardset",
+          "importPath": "github.com/oagentkit/goagent-kernel/guardset",
+          "fromLegacy": "agentkit/guardset"
+        },
+        {
+          "pkg": "handoff",
+          "importPath": "github.com/oagentkit/goagent-kernel/handoff",
+          "fromLegacy": "agentkit/handoff"
+        },
+        {
+          "pkg": "hookengine",
+          "importPath": "github.com/oagentkit/goagent-kernel/hookengine",
+          "fromLegacy": "agentkit/hookengine"
+        },
+        {
+          "pkg": "invocation",
+          "importPath": "github.com/oagentkit/goagent-kernel/invocation",
+          "fromLegacy": "agentkit/invocation"
+        },
+        {
+          "pkg": "invocation/invocationtest",
+          "importPath": "github.com/oagentkit/goagent-kernel/invocationtest",
+          "fromLegacy": "agentkit/invocation/invocationtest"
+        },
+        {
+          "pkg": "metrics",
+          "importPath": "github.com/oagentkit/goagent-kernel/metrics",
+          "fromLegacy": "agentkit/metrics"
+        },
+        {
+          "pkg": "ownership",
+          "importPath": "github.com/oagentkit/goagent-kernel/ownership",
+          "fromLegacy": "agentkit/ownership"
+        },
+        {
+          "pkg": "preset",
+          "importPath": "github.com/oagentkit/goagent-kernel/preset",
+          "fromLegacy": "agentkit/preset"
+        },
+        {
+          "pkg": "protocol",
+          "importPath": "github.com/oagentkit/goagent-kernel/protocol",
+          "fromLegacy": "agentkit/protocol"
+        },
+        {
+          "pkg": "ptc",
+          "importPath": "github.com/oagentkit/goagent-kernel/ptc",
+          "fromLegacy": "agentkit/ptc"
+        },
+        {
+          "pkg": "raceprobe",
+          "importPath": "github.com/oagentkit/goagent-kernel/raceprobe",
+          "fromLegacy": "agentkit/raceprobe"
+        },
+        {
+          "pkg": "reconcile",
+          "importPath": "github.com/oagentkit/goagent-kernel/reconcile",
+          "fromLegacy": "agentkit/reconcile"
+        },
+        {
+          "pkg": "retryplan",
+          "importPath": "github.com/oagentkit/goagent-kernel/retryplan",
+          "fromLegacy": "agentkit/retryplan"
+        },
+        {
+          "pkg": "scheduling",
+          "importPath": "github.com/oagentkit/goagent-kernel/scheduling",
+          "fromLegacy": "agentkit/scheduling"
+        },
+        {
+          "pkg": "sideeffect",
+          "importPath": "github.com/oagentkit/goagent-kernel/sideeffect",
+          "fromLegacy": "agentkit/sideeffect"
+        },
+        {
+          "pkg": "sidetest",
+          "importPath": "github.com/oagentkit/goagent-kernel/sidetest",
+          "fromLegacy": "agentkit/sidetest"
+        },
+        {
+          "pkg": "skilldisclose",
+          "importPath": "github.com/oagentkit/goagent-kernel/skilldisclose",
+          "fromLegacy": "agentkit/skilldisclose"
+        },
+        {
+          "pkg": "statemachine",
+          "importPath": "github.com/oagentkit/goagent-kernel/statemachine",
+          "fromLegacy": "agentkit/statemachine"
+        },
+        {
+          "pkg": "steer",
+          "importPath": "github.com/oagentkit/goagent-kernel/steer",
+          "fromLegacy": "agentkit/steer"
+        },
+        {
+          "pkg": "taskboard",
+          "importPath": "github.com/oagentkit/goagent-kernel/taskboard",
+          "fromLegacy": "agentkit/taskboard"
+        },
+        {
+          "pkg": "taskboard/boardtest",
+          "importPath": "github.com/oagentkit/goagent-kernel/boardtest",
+          "fromLegacy": "agentkit/taskboard/boardtest"
+        },
+        {
+          "pkg": "tenant",
+          "importPath": "github.com/oagentkit/goagent-kernel/tenant",
+          "fromLegacy": "agentkit/tenant"
+        },
+        {
+          "pkg": "tooldisclose",
+          "importPath": "github.com/oagentkit/goagent-kernel/tooldisclose",
+          "fromLegacy": "agentkit/tooldisclose"
+        },
+        {
+          "pkg": "trajectory",
+          "importPath": "github.com/oagentkit/goagent-kernel/trajectory",
+          "fromLegacy": "agentkit/trajectory"
+        },
+        {
+          "pkg": "watchdog",
+          "importPath": "github.com/oagentkit/goagent-kernel/watchdog",
+          "fromLegacy": "agentkit/watchdog"
+        },
+        {
+          "pkg": "worker",
+          "importPath": "github.com/oagentkit/goagent-kernel/worker",
+          "fromLegacy": "agentkit/worker"
+        },
+        {
+          "pkg": "worktree",
+          "importPath": "github.com/oagentkit/goagent-kernel/worktree",
+          "fromLegacy": "agentkit/worktree"
+        },
+        {
+          "pkg": "worker/faultmatrix",
+          "importPath": "github.com/oagentkit/goagent-kernel/faultmatrix",
+          "fromLegacy": "agentkit/worker/faultmatrix"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "guardx",
+          "url": "https://github.com/oagentkit/guardx"
+        },
+        {
+          "repo": "runtime",
+          "url": "https://github.com/oagentkit/runtime"
+        },
+        {
+          "repo": "toolgate",
+          "url": "https://github.com/oagentkit/toolgate"
+        },
+        {
+          "repo": "toolname",
+          "url": "https://github.com/oagentkit/toolname"
+        }
+      ],
+      "breakingIndex": [
+        {
+          "version": "v0.77.0",
+          "date": "2026-11-26",
+          "title": "重构(boundary)!：org 归属迁移 + 对话域七包上抛（v0.77.0）",
+          "summary": "包在模块之间搬家： → promptx/textx",
+          "detail": "* refactor(boundary)!: org 归属迁移 + 对话域七包上抛（v0.77.0 破窗）\n两层边界调整，一个 breaking wave，消费方只改一轮：\n① module path：github.com/yi-nology/goagent-kernel → github.com/oagentkit/goagent-kernel\n（仓随 goagent-runtime 一起迁入 oagentkit org，2026-11-26 迁移；旧 URL 经\nGitHub 重定向可继续访问，旧 tag 永久可解析）。全仓 import/文档/site 引用\n同步改写；docsync 安装行正则同步。\n② 对话域七包上抛（导出面逐字未变，ADR-0010）：\n- roundguard → github.com/oagentkit/agent/roundguard（单 agent 循环判据，\n  设计 spec 与变异矩阵随包迁入 agent 仓）\n- budget/spill/offload → github.com/oagentkit/textx/*（对话域上下文工程）\n- pending/sessionref/memorypipe → github.com/oagentkit/promptx/*（对话状态与注入）\n③ 声明面同步：architecture-policy 54→47 module id（词表 4 张 roundguard 表 +\nrelations 配对随之摘除）、api-lifecycle 55→48、EXTERNAL-DEPS 摘 spill 三登记、\nREADME 包表/边界表/机制段（图 5 改指上游）、USAGE §3.5/§3.8/§3.18 指针化、\nerror-semantics 四节摘除、工程底座三数重算（65304/344/406）。\n承接仓 PR：oagentkit/textx#116、oagentkit/promptx#126、oagentkit/agent#170。\n迁移宣告与消费方迁移清单：#504。\n* docs: README ADR 速览表补 ADR-0010\n* docs: ADR 索引表补 ADR-0010\n* chore(gates): seamcheck 基线随七包上抛刷新——budget.Archive/Summarizer、offload.Store 接缝随包迁走，调用点 464→470（ratchet 只升不降）\n* docs: api-compat.md 生命周期登记数 55→48（随七包上抛重算）"
+        },
+        {
+          "version": "v0.76.0",
+          "date": "2026-11-25",
+          "title": "修复(taskboard)：Complete 的凭据面补上「租约未过期」——与 Renew 同一口径",
+          "summary": "修复(taskboard)：Complete 的凭据面补上「租约未过期」——与 Renew 同一口径",
+          "detail": "宿主接线时暴露的契约缺口：`Renew` 的契约明写「租约已过期 ⇒ ErrLeaseLost，\n**资格在到期时刻终止**」，而 `Complete` 的契约面与参考实现都只判\n「令牌匹配 + 处于 claimed 态」，**不判租约是否已过期**——两处口径不一致，\n于是存在一个真实窗口：**租约已过期、但还没有别的持有者接管**时，旧持有者\n仍能把任务标记完成。\n后果：终态内容取决于**谁先提交**（竞态），而不是取决于谁有资格提交——而两者\n在同一任务上往往给出不同结论。runtime 的 cluster 模板里这会放大成：旧\nWorker 在租约失效后仍发布结果事件，等待方可能拿到过期执行者的结论。\n**BREAKING（破坏性 minor；taskboard 是 Stable 包，走 api-compat.md 五步流程）**\n- 动机：见上。旧新对照与迁移路径三件齐：\n- 旧：`Complete(ctx, id, token)` 只认「状态 == claimed && 令牌匹配」——\n  过期持有者（尚未被接管）仍能提交终态。\n- 新：凭据面 = **令牌 + 租约未过期**（与 `Renew` 同一口径，判据走\n  `taskboard.LeaseHeld`，不各写一份）：过期 ⇒ `ErrLeaseLost` 且**不做任何\n  修改**（拒绝后任务仍是认领态，可被接管）。\n- 迁移路径：实现 `taskboard.Board` 的宿主在 `Complete` 的判定里补一条\n  「租约未过期」（存储侧同一次原子操作里判完，别拆成「读→判→写」三步）；\n  `Release` **不判有效期**（归还是自愿放弃、不写终态）⇒ 不需要改。接\n  `taskboard/boardtest` 共享套件的宿主升级内核后跑一遍即知是否合规——\n  新增子判据「租约过期后完成被拒」会把未跟上的实现判红。\n本批（契约 / 套件 / 参考实现同批落库）：\n- 契约面（`taskboard`）：`Board` 契约写明 `Complete` 的凭据面；\n  `Complete` 方法注释与 `ErrLeaseLost` 文档同步（过期也是「租约已失」的\n  一种形态）；包文档新增「资格在到期时刻终止」一节。\n- 共享契约套件（`taskboard/boardtest`）：新增子判据「租约过期后完成被拒」\n  （拒绝 + **不改状态** + 接管者能接手，三件齐），并配变异实现\n  （`expiryBlindCompleteBoard`：只认状态与令牌、不判有效期）做反向验证\n  ——摘掉判据必红。\n- 参考实现：`coord.BoardAdapter.Complete` 与 `controlplane.MemStore.Complete`\n  按新契约实现（都走 `taskboard.LeaseHeld`）；两处 `Release` 保持只认令牌。\n- 文档：`docs/error-semantics.md`（ErrLeaseLost 行）、`docs/USAGE.md`\n  （宿主接线坑位）、README 包表与「下游升级须知」。\n零既有导出符号消失、零既有签名变更、依赖地板零变化。\nCo-authored-by: zhangyi01 <zhangyi01@kylinos.cn>\n\n- 文档(release)：v0.76.0 回执——README 版本身份（新增 v0.76.0 行：Complete 凭据面补「租约未过期」）"
+        },
+        {
+          "version": "v0.73.0",
+          "date": "2026-11-23",
+          "title": "重构(boundary)：三包上抛上游——netguard/ticket → guardx，cmdpolicy → tools",
+          "summary": "重构(boundary)：三包上抛上游——netguard/ticket → guardx，cmdpolicy → tools",
+          "detail": "按**概念域**分派（不按实现依赖），本仓这三个包的位置不对：\n- `netguard`（出站 URL 守卫 SSRF）属**执行安全域**，与 `guardx/egress` 同族同层。\n  它的 IP 策略依据本来就在 `guardx/egress` ⇒ 机制住在编排内核、判据依据住在上游，\n  是分层倒挂（分层倒挂比放错仓更贵）。\n- `ticket`（一次性短时授权票据）属**执行安全域**（准入凭据），与\n  `guardx/permgate` / `rbac` / `fence` 同族。\n- `cmdpolicy`（命令级放行裁决）与它的**事实面**（`tools/bashguard` 真 shell AST）\n  本是同一件事的两半：原先分家在不同仓，依赖只能向上够；同仓之后依赖天然成立。\n为什么不落 `toolgate`：toolgate 与 tools **同为 tier 2**，迁过去会构成同层依赖\n（矩阵纪律：依赖严格自底向上）；而命令级裁决的邻居正是同仓的 bashguard。\n**BREAKING（破坏性 minor）**：本仓这三个包的导出面整体消失，下游若 import 过\n这三个包路径，编译期即红。旧新对照与迁移路径三件齐：\n- `netguard` → `github.com/oagentkit/guardx/netguard`（API 逐字未变）\n- `ticket` → `github.com/oagentkit/guardx/ticket`（API 逐字未变）\n- `cmdpolicy` → `github.com/oagentkit/tools/cmdpolicy`（API 逐字未变）\n判据与导出面**逐字未变**（三包在本仓内零 kernel 内部依赖，迁入即等价）；\n**必须 `go mod tidy`**：`oagentkit/tools` 从本仓依赖图移除。\n只用其余内核包的宿主：既有包导出面逐字未变 ⇒ 行为零变化。\n本仓侧：删三个包；policy 摘三处 module 登记 + `scan_roots` 三项；\napi-lifecycle 摘三条（Stable 19→18 / Experimental 35→33）；README 包表与\n「下游升级须知」同步；docs/{USAGE,api-compat,error-semantics,AI-GUIDE,OAGENTKIT-OVERLAP}.md\n口径同步（含 error-semantics 两处幽灵条目与门面包幽灵分组清理）；\n文档站四页与生成页同步；`go.mod` 撤 `oagentkit/tools` 依赖。\n接缝清单随迁包同步：ticket 的两处导出时钟接缝随之迁走 ⇒ 下限 13 → 12；\n降的是**清单**不是判据——少一处接缝立刻红，这个机制本身不变（本次正是它报出来的）。\n上游已发版：guardx v0.29.0（迁入 netguard + ticket）、tools v0.16.0（迁入 cmdpolicy）。\n\n- 杂务(release)：登记 v0.73.0 的混装提交 ece11ad（releasecheck 闭合清单）+ 底座口径同步\n\n打 tag 前跑一遍 releasecheck 的判据 3「区间内无混装提交」：区间\nv0.72.2..v0.73.0 里，`refactor(boundary)`（ece11ad）同时改了\ngo.mod/go.sum 与 45 个非依赖文件——**判红**。\n处置照本仓既有先例（v0.66.0 的 00b4d1d、v0.67.0 的 02a5e39、v0.69.0 的\nde275a2、v0.70.0 的 6ad6650）：**已合并发布的提交不可重写**（改写公开历史\n会让下游按 commit 引用的校验失效），故登记进 `legacyMixed` 并写明为什么修不了。\n为什么当初没拆成两个提交（拆了才对）：ece11ad 的依赖部分与行为部分\n**互为因果**——`oagentkit/tools` 不从依赖图移除，删掉 cmdpolicy 之后的\n依赖面就不自洽（不 `go mod tidy` 删不干净）；而行为部分（删三个包 + 改指\n上游路径）已在本版 CHANGELOG 与 README「下游升级须知」写明，**没有藏进\n依赖段**——这正是判据 3 要防的那件事。\n本提交是登记动作，不改任何判据：`legacyMixed` 是数据表（闭合清单），\n新混装仍然一律报红（`mixViolations` 只认这张表里的 sha）。\n**底座口径同步（附带）**：登记条目让 `cmd/releasecheck/main.go` 多 5 行 ⇒\n生产代码 65286 → **65291**。README「工程底座」表与 AI-GUIDE §2.2 示例输出\n两处一并跟上（docsync 判相等、不留容差——差 1 行就是红；这条判据当场把\nCI 的 unit 作业染红过一轮）。\n\n\n- 文档(receipt)：v0.73.0 版本身份翻面 + PR 号回填 + 底座口径同步（tag 指向本提交）\n\n回执 = 对账 + 走查盲区两步，缺一不可。本轮两项都做了：\n**① 对账**：v0.73.0 = 三个包上抛上游（PR #486，CI 6/6 SUCCESS）。\n- 上游：guardx **v0.29.0**（迁入 netguard + ticket）、tools **v0.16.0**（迁入 cmdpolicy）\n- 本仓：包数 49（README 包表口径）/ policy module id 51 / api-lifecycle 51（Stable 18 / Experimental 33）\n- 导出面审计三问（区间 v0.72.2..HEAD）：问一消失的导出符号 172 个**全部来自这三个被删包**、\n  其它包零损失；问二既有接口加方法 **0**；问三既有导出函数签名变更 **0**\n- 依赖地板：`oagentkit/tools` 出图、`rogpeppe/go-internal` 降 indirect、`mvdan.cc/sh/v3` 退出\n  ⇒ 下游**必须 `go mod tidy`**\n**② 走查盲区**（门禁判不到、只能人走的面）：\n- README「下游升级须知」版本表——**门禁不判这张表**（v0.66.x 两行插错位置曾躺八小时），\n  本轮确认 v0.73.0 行在表首、身份正确\n- Go 注释里的**位置断言**——门禁只判 README 包表与 USAGE 口径，不判注释。\n  走查发现 18 处仍在说「同仓/本仓的 netguard」，已随 PR #486 的同批提交\n  （`docs(boundary)`，9551dd8）改指上游\n- 台账：本轮不属分布式演进台账的范围（无单号、无 §建议），故不写入——避免\n  触发判据 3「无主单号」（正文引用 #486 却没在 §9 登记即红）\n- `.guardx-work/`：工作副本，未被跟踪且已 gitignore ⇒ 不入库\nREADME 版本行同步：身份「（待发版）」→「（已发版，tag `v0.73.0`）」、\n回填 PR #486、补上游版本锚点（guardx ≥ v0.29.0 / tools ≥ v0.16.0 起提供这三个包）、\n补记同批的 18 处注释清理。\n**底座口径同步（本提交附带）**：上批注释清理把 `guardset/guardset.go` 的包头\n多折了一行 ⇒ 生产代码 65285 → **65286** 行。README「工程底座」表与\nAI-GUIDE §2.2 的示例输出两处一并跟上（docsync 判相等、不留容差——\n差 1 行就是红）。\n\n- 文档(boundary)：迁出后仓内残留断言改指上游——「同仓/本仓的 netguard」表述失效（18 处注释，零行为变化）\n\n三包上抛后，本仓若干处注释仍在把 `netguard` / `ticket` / `pii` 说成\n「同仓」「本仓已有先例」——那是迁移前为真的事实，现在成了假话。注释里的\n位置断言错了，读者会照着它去找一个已经不在本仓的包。\n逐条清点（18 处，**纯注释、零行为变化**）：\n- `guardset/assembly.go`：包头「形态对齐**同仓**的 netguard」→「对齐**上游\n  guardx/netguard**」；「「换整份」这件事**本仓已有先例**」→「上游 guardx/netguard\n  已有先例」；对齐表首列 `netguard` → `guardx/netguard`；代次投影、Subscription\n  类型别名、代次投影三处指路补「上游」\n- `guardset/assembly.go` + `assembly_subscribe.go`：订阅表机制的位置\n  `internal/subhub` → `oekit/pkg/subhub`（v0.66.0 已上移），同现时并列的两个\n  包改指 `guardx/netguard` / `oekit/pkg/pii`\n- `guardset/guardset.go`：包头「本仓的守卫（…）」补注 `netguard`/`pii`/`toolfail`\n  已上移上游\n- `egress/egress.go`：包头「**本仓的** netguard 判定挂在 http.Client / Transport 上」\n  → 「**上游 guardx/netguard** 的判定」——这句是 egress 补的那个洞的起点，\n  指错位置会让人以为 egress 仍与 netguard 同仓\n- `eventbus/durable.go`（两处）、`reconcile/reconcile.go`、`guardset/assembly_gen_test.go`（两处）、\n  `ptc/sandbox_test.go`：同款机制/同风格类比补「上游」定位词\n**只改位置断言，不改机制描述**——「同款」「同风格」类比本身仍然成立\n（上游同名包的判据与导出面逐字未变），补的是「它现在住在哪」。\n本次是回执走查的产物（走查盲区：门禁只判 README 包表与 USAGE 口径，\n**不判 Go 注释里的位置断言** ⇒ 迁移后这类话会静默过期）。"
+        },
+        {
+          "version": "v0.34.0",
+          "date": "2026-11-12",
+          "title": "新增(sideeffect)!：持有者身份/对账占用/Unsafe 裁决分离/标记失败判据（#82 #83 #88 #89 #96）",
+          "summary": "新增(sideeffect)!：持有者身份/对账占用/Unsafe 裁决分离/标记失败判据（#82 #83 #88 #89 #96）",
+          "detail": "三项联查（#83）：Lease 新增 Holder（存储侧铸造，MintHolder 参考原语）——\n栅栏令牌经下游流转可被冒充，持有者身份不经下游流转；新增 ErrNotHolder /\nErrResourceMismatch 哨兵；Complete/Renew/MarkUncertain/Abandon/Release 五口\n三项联查进契约硬要求第 3 条；sidetest 新增持有者身份一族三条（铸造 / 冒充\n被拒 / 跨资源被拒）。\n对账占用（#88）：Store 新增 BeginReconcile——同一时刻至多一个对账者\n（ErrReconcileTaken），占用过期可重入（对账者死亡不永久占住），认领期间\nKey 仍是未知态；新增 Reconcile 类型。sidetest 新增对账占用一族两条。\nUnsafe 裁决分离（#89）：Resolution 新增 ForceRetryable + ErrUnsafeNotRetryable——\nRetrySafetyUnsafe 的动作裁决「未生效」不解除阻塞，放行必须显式签字\n（此前与 Unknown 同路，「不可重试」只是注释）；裁决「已生效」返回值钉为\nOutcomeReplayed（三份实现此前各说各话）。sidetest 新增重试安全三档两条。\n标记失败恢复判据（#82）：Store.MarkUncertain 契约新增第 5 条硬要求——标记\n写失败时执行意图必须原样留在存储里；sidetest 新增标记失败一族：套件内置\n故障注入装饰器（先走宿主实现再替换返回值，模拟最坏形态），负对照钉\n「先撤意图、标记没落地」的坏实现必红。\nsidetest 22→29 条场景，每族配负对照；三处 Store 实现（参考内存版 /\nfakeStore / checkpoint e2e durable）同批升级。BREAKING：宿主需实现\nBeginReconcile 并铸造 Holder。"
+        },
+        {
+          "version": "v0.32.0",
+          "date": "2026-11-11",
+          "title": "新增(ptc)!：安全默认装配——无判定环即拒，Unsafe 必须显式 + 门禁（#73）",
+          "summary": "新增(ptc)!：安全默认装配——无判定环即拒，Unsafe 必须显式 + 门禁（#73）",
+          "detail": "- f514be6"
+        },
+        {
+          "version": "v0.32.0",
+          "date": "2026-11-11",
+          "title": "新增(sideeffect)!：Store 接口强制「未知结果」语义 + Fence 传入 Apply + 对账路径（#72）",
+          "summary": "新增(sideeffect)!：Store 接口强制「未知结果」语义 + Fence 传入 Apply + 对账路径（#72）",
+          "detail": "- 180e4fb\n\n- CI：启用分支保护（必须 PR + 必过检查，管理员可 bypass）（#77）\n\n- 文档：文档体系重构——README 收敛 + ADR 归档 + USAGE 事实修正 + docsync 机器校验（#76）"
+        },
+        {
+          "version": "v0.31.0",
+          "date": "2026-11-11",
+          "title": "修复(security)!：go 指令 1.27.3 → 1.27.4——安全地板随 Go 2026-11-10 安全发布抬升",
+          "summary": "修复(security)!：go 指令 1.27.3 → 1.27.4——安全地板随 Go 2026-11-10 安全发布抬升",
+          "detail": "Go 1.27.4 / 1.26.11 安全发布（修复标准库 CVE-2026-97033…97054）后，govulncheck 当天即报本仓命中其中 1 条标准库漏洞。按 go.mod 里立的家规抬 go 指令（不抬 toolchain）：依赖模块的 toolchain 指令会被忽略，只有 go 指令把下游的主模块工具链顶上去（GOTOOLCHAIN=auto 自动取新版）。对下游是隐式 breaking：go mod tidy 后自动对齐 1.27.4。已记入 README「下游升级须知」v0.31.0 行④。验证：go build 绿、govulncheck 仅剩「引用了但未调用」提示级、make check 全链绿。"
+        },
+        {
+          "version": "v0.28.0",
+          "date": "2026-11-11",
+          "title": "重构(cmdpolicy)!：分词面收编上游 oekit/pkg/shellx，删掉手写分词器",
+          "summary": "重构(cmdpolicy)!：分词面收编上游 oekit/pkg/shellx，删掉手写分词器",
+          "detail": "本仓 cmdpolicy 曾自研一份 shell 分词（85 行分词 + 17 行 mergeSeparators）。\n当初保留自研的理由写进了 CHANGELOG v0.25.1：「shellx 只有 Quote / QuoteArgv，\n没有分词器」——**那个前提已随上游失效**：oekit/pkg v0.37→v0.40 之间上游新增了\nshellx.Split（Quote/QuoteArgv 的逆运算）。于是那份手写实现从「上游没有等价物」\n变成「上游有等价物且更准」，继续留着就是两份会漂移的真相。\n收编顺带修掉手写版三处 POSIX 错误（bash 实测逐字核对上游口径）：\n  1. 双引号内的反斜杠被一律丢弃（\"a\\b\" → ab）。bash 实测是 a\\b ——\n     本仓那份把文件名里的反斜杠吃掉，判据看到的于是另一个文件名。\n  2. 分隔符按 token 相邻合并（a & & b → a && b）。上游按字符相邻合并\n     （a & & b → a & & b）——前者把两条独立的后台命令伪装成一条 && 链。\n  3. CR 未归空白（CRLF 命令行的行尾 CR 粘进最后一个 token）。\n另修一处安全方向的漏判：SplitCommands 的段文本原用空格拼接，段再分词得回\n的 token 与原段不同（git 'a b' status → 段 \"git a b status\" → 4 个 token，\n原 3 个）⇒ 含空格的备选前缀（如 {{\"git\"}, {\"a b\"}}）永不命中。\n改用上游 shellx.QuoteArgv 拼段（上游保证 Split(QuoteArgv(args...)) 逐项还原\nargs），段因此**可往返**。\n错误契约：本包哨兵包装上游哨兵（errors.Wrap），两层判法都成立 ——\nerrors.Is(err, cmdpolicy.ErrUnclosedQuote) 与 errors.Is(err,\nshellx.ErrUnclosedQuote) 同时为真；错误文案保留「cmdpolicy: 」前缀。\n反向验证（注入旧实现 → 必须红）：\n  · 段拼接退回空格拼接 → TestSplitCommandsSegmentsRoundTrip 判红；\n  · 分词换回旧手写口径（丢弃双引号内全部反斜杠）→ 5 条用例同时判红\n    （POSIX 反斜杠 / 分隔符合并 / CR / 错误可辨识 / 与上游等价）。\nrefactor(ptc): 子进程 stderr 进诊断报告前过上游 guardx/logredact 脱敏\n子进程常把连接串、API key、token 打进 stderr（MCP server 启动时回显配置是\n最高频形态），而这段文本原先原样进 ExecutionAborted.Stderr → 错误消息 →\n诊断报告，等于凭据泄漏面。脱敏用上游 guardx/logredact（凭据形态打码：URL\n内嵌凭据 / Bearer 头 / JWT / 厂商 token 前缀 / 长 hex / 键值对）——\n本仓 pii 管的是个人信息（手机号、身份证），两者判的不是同一件事，互补不重叠。\n脱敏发生在**写入字段时**而非渲染时：字段是公开的，宿主可直接读 e.Stderr，\n只在渲染面脱敏等于给宿主留了原文出口。崩溃原因（fatal error / panic 栈）\n原样保留。\n反向验证：把 redactChildStderr 退回原文赋值 → TestChildStderrRedactsCredentials\n判红；另补「死因不被误伤」「无凭据时逐字不变」两条用例钉住边界。\nBREAKING（下游须知已写进 README v0.28.0 行）：\n  · cmdpolicy 分词结果在三处形态上变（只影响含反斜杠 / 空格分隔的 & / CRLF\n    行尾的命令行）——是修复不是回归，但按旧行为做过前缀匹配的宿主需核对；\n  · SplitCommands 段文本形态变（含空格的段现在带引号）——段仍是合法 shell\n    命令行，但不要再按字面比对段文本；\n  · ptc 的 ExecutionAborted.Stderr 现在是脱敏后的文本。\n依赖地板不变：shellx 在 oekit/pkg、logredact 在 oagentkit/guardx，两者都已在\n本仓已声明的依赖面内，无新增依赖。\n门禁：fmt / build / vet / architecture-check / docsync / test / lint(0 issues) /\ncover-gate(88.1%，逐包 70% 全过) / race(改动包) / crossbuild(四平台) 全绿。\n\n- 文档(site)：站点升级为 VuePress 文档站——介绍/设计初衷/怎么用/能力详解\n\n上一版站点是「面向访客的精简介绍页」（build.py 拼 HTML）。本次改成\nVuePress 文档站，把「怎么用、有什么能力、设计初衷」写成完整章节：\n- guide/introduction.md  介绍：机制面 vs 资产分界、你会拿到什么、依赖链位置\n- guide/philosophy.md    设计初衷：编排是代码/LLM 只做单环节、内核不认领域、\n  判定语义跨宿主一致、失败形态必须是变红、fail-closed、每个机制的事故出处\n- guide/getting-started.md 怎么用：安装、三个约束、六步接入路线（逐步代码）、\n  最小闭环、升级须知\n- guide/capabilities.md 能力详解：九组能力（报告协议/工具判定环/续跑契约/\n  上下文三件套/程序化编排/实时流式/安全面/副作用/协作治理）+ 三个选型判断\n- reference/gates.md     门禁体系：make check 全链、两类判定、数字纪律\n- reference/packages.md  包清单与机器事实（生成）\n- reference/pitfalls.md  坑速查（生成）\n数字不手抄的纪律延续并扩大：gen.mjs 每次构建前从 README（包表/工程底座）、\ngo.mod（依赖版本）、architecture-policy.yaml（规则清单）、Makefile（覆盖率\n门槛）、docs/USAGE.md（坑速查表）抽取事实页——解析不到即构建失败，\n不静默填默认值。坑表尤其如此：整表从 USAGE §6 抽取，不手抄第二份\n（手抄表就是会漂的第二份真相）。生成页不入库，每次构建重新生成。\n构建细节两条（都踩过）：\n- 默认主题的 .scss 需要显式装 sass（vite 不再自带）；\n- markdown 被编译成 Vue 模板，裸 <tool> 形态（如 host.<tool>()）会被当自定义\n  元素解析、炸构建——gen.mjs 对生成内容做反引号感知的尖括号转义。\n部署：pages.yml 换 Node 构建（setup-node@v7 / Node 24 LTS / npm 缓存），\n触发面 = gen.mjs 的全部事实输入（+ Makefile / architecture-policy.yaml /\ndocs/USAGE.md）。build_type: workflow 与 URL 不变，gh-pages 分支仍为归档。\n验证：本地 npm run docs:build 出 9 页（含2 个生成页），dist 资源路径\n/agent-harness/ 前缀正确，生成页含 41 包/8 依赖/8 规则/坑表；make docsync\n与仓库事实一致（25852 行 / 182 测试文件，取并行会话已落库的口径）。\n\n- 文档(site)：站点迁回 main 的 site/，发布改走 GitHub Actions\n\n站点源码（build.py / template.html / style.css）原先整个住在 gh-pages\n独立分支，main 里只有一个链接——生成器与它生成的事实分居两处，恰好违反\n本仓「单一真相」纪律。现迁回 main 的 site/，发布改走 .github/workflows/\npages.yml（build_type: workflow）：push 到 main 且 site/、README.md、\ngo.mod/go.sum 变更时自动重跑生成并部署。gh-pages 分支冻结为历史归档，\n不再接收构建产物。URL 不变。\n数字继续全部生成、不手抄，本次还收缴了两组漏网的手抄数字：\n- 规则清单（条数 + 各条 desc）改从 architecture-policy.yaml 的 rules 段\n  生成——此前 8 条规则名手抄在模板里，policy 改了页面会悄悄说谎；\n- 覆盖率门槛（60/逐包 70）改从 Makefile 的 COV_MIN / PKG_COV_MIN 生成。\n两处读不到即报错退出，不静默填默认值（与包清单/依赖版本同一口径）。\nREADME 顺带修掉两处真实缺陷：\n- 「全部文档一览」表 6 行缺 \"> \" 前缀，块引用断裂、GitHub 上表格渲染破碎；\n- 表头「三份历史快照」与表内实际标注数对不上（现 4 份），改为不数数的\n  写法——派生计数不抄进散文的同一条纪律。\n工作树里另有并行会话的在制品（cmdpolicy/split.go、ptc/aborted.go 等及其\nREADME 数字同步），本提交逐路径 add、**不夹带**：README 只取本次改动的\nhunks，数字同步（25852/182 等）留给原会话随其代码一起提交。故本提交的\nREADME 数字（25847 行 / 180 测试文件）与本提交的代码态一致（docsync 判\n相等口径），不是漏改。\n验证（在暂存态导出的干净树上，GOWORK=off）：docsync / modreplace /\nmodwork / versioncheck / fmt / vet / lint(0 issues) / test 全绿；\ncover-gate 88.2%（门槛 60%，逐包 70% 44 包全过）；race 绿；crossbuild\n四平台矩阵全过；architecture-check 绿（8 条规则 + 5 个门面包 + 43 包\n依赖方向）。vuln 因 vuln.go.dev 当前网络不通（两次 EOF）未能在本地跑成，\n本提交零 Go 改动、判定面不受影响，CI 的 make check 会执行它。\n\n- 文档：订正「宿主接入」版本号并补 v0.27.1 下游须知行\n\n「宿主接入」段的 require 示例与「当前已发布 tag」两处都还写着 v0.6.4，\n而远端已发到 v0.27.1——那是下游**第一眼**看到的版本号，停在 v0.6.4 会让人\n以为当前版本就是那个。订正为 v0.27.1。\n另补 v0.27.1 行（此前该版发版时未录）：`ptc` 拒绝分类载体化（issue #53-#59），\n分类随抛出对象一起走，收口处据此把「守卫判定拒绝」与「守卫自己崩了」分成两类。\n修复轮，**无破坏性变更、无依赖地板变化**。\n\n- 文档：校准包表行数与工程底座测试文件数（rebase 后对账）\n\nrebase 到 origin/main 后，远端新增的 issue 修复改动了 9 个包的代码，\n本仓包表的「生产行数」列与「工程底座」的测试文件数随之失配。按实测重算：\n- 包表：protocol / egress / pending / drain / ptc / guardset 等 6 个包行数变动，\n  另有 archcheck / trajectory / ticket 三行是空格对齐形态（前一轮脚本的正则\n  未覆盖，本轮一并校正为实测值 5073 / 1043 / 203）。\n- 工程底座：测试文件数 179 → 180（新增 protocol/report_parse_test.go）。\n两处都由 `make docsync` 判相等，门禁绿。\n附：site 的包表合计同步刷新为 24,361 行（生成器从 README 读，无需手改）。\n\n- 文档：README 拆分 + GitHub Pages 站点 + 第一方依赖全量抬升\n\noekit/concurrency v0.28.4→v0.31.0、oekit/pkg v0.37.4→v0.40.0、\noekit/logx v0.8.10→v0.8.12、oagentkit/agent v0.14.3→v0.14.5、\nguardx v0.23.2→v0.23.4、runtime v0.12.2→v0.12.4、\ntoolgate v0.15.2→v0.15.3、mcpkit v0.12.1→v0.12.4。\noekit/pkg v0.38 起 jsonrepair.Repair 的输出契约明写「: 后缺值补 null」\n（pkg#268），故 {\"agent_name\":\"X\",\"confidence\":} 这类非法 JSON 从「拒收」\n变成「被修复通道救回」。\n判定为「规则该改」而非「代码错了」：救回点落在 markRepaired 的既有设计内\n——修复产物整体降置信 low，下游 verify/needs_review 承接（正是那条实弹\n审计 Critical 的处置）。旧测试固定的是某个上游版本下的边界，不是这个包的\n承诺。故把不变量改写为真正要保证的性质：\n- TestParseInvalidJSONRepairedLow：缺值形态必被救回，且置信必为 low；\n- TestParseUnrepairableRejected（成对反向判据）：缺冒号、无 JSON 结构仍\n  须拒收。只留前者的话，「修复通道把一切都放行」的错实现照样全绿。\n另把「输入形态 → 走哪条通道」的 4 条用例从 report_test.go 抽到独立的\nreport_parse_test.go——通道选择与内容合规是两条判据，混在一个文件里会让\n失败互相淹没；顺带避开 report_test.go 撞 max_file_lines: 400。\n「工程底座」的九轮历史校准日志（约 80 行）下沉到\ndocs/ENGINEERING-HISTORY.md：那是**只会增长**的叙述，留在 README 里会让\n正文重心从「这个仓是什么」滑向「这张表怎么漂的」。搬走后 README 留下\n当前值（机器判）与口径（怎么重算），过程与账在历史文档里。\n破坏性变更表留在 README——下游要看的是它，不是它的校准史。\n- 规则计数订正：正文写「7 条正则 + 2 条 go/ast」，实测是 8 + 5（后者含\n  子进程出口与沙箱档位登记）。同一份 README 里两处数字打架，这次对齐。\n- 包表「生产行数」列按实测重算 23 个包。docsync 对该列只判 25% 相对容差，\n  跨量级的误述要靠人看——本轮实测发现 ptc（2419→2749）、archcheck\n  （4484→5073）、pii（768→712）等已越界。\n- 「下游升级须知」补 v0.27.0 行：本轮唯一的**真正传导到下游的 BREAKING**\n  是 async.PanicHandler 新签名（本仓未定义该 handler，故编译未破，\n  但宿主若自行实现了必须改）；protocol 的解析口径变化也写明了改判方式。\n- 新增「项目主页」小节，说明站点从 README 生成而非手抄。\nhttps://yi-nology.github.io/agent-harness/\n住在 gh-pages 独立分支（发布源 = 分支根目录），main 不带站点文件。\n站点上的每个数字都从 README 与 go.mod 读（生成器在 gh-pages 分支：\nbuild.py + template.html + style.css），读不到即报错退出。\n理由与本仓纪律同源：手抄一遍就等于多一份会静默失真的真相。\ndocsync / architecture-check / fmt-check / vet / lint(0 issues) /\ntest / cover-gate(88.1%，逐包 70% 全过) 全绿。"
+        },
+        {
+          "version": "v0.17.0",
+          "date": "2026-11-06",
+          "title": "重构(pii)!：删除 Redact / RedactValue 面无关门面与死代码",
+          "summary": "重构(pii)!：删除 Redact / RedactValue 面无关门面与死代码",
+          "detail": "删三样：\n① Redact / RedactValue：面无关门面拿不到 blocked 信号——宿主把策略配成 block 时它只会\n   静默打码，而「打码」与「阻断」是两件事。Deprecated 标记不是防线，它只是提醒。\n   唯一入口改为 Apply / ApplyValue，必须显式指定面。\n② applyAny / applyAnyValue：无调用点的死代码。\n③ dispose.go 里与 policy.go 逐字重复的 20 行文件头（改为一句指路）。\n护栏不跟着函数名走：pii/facade_test.go 的三条（策略必须生效 / 面关闭必须透传 /\n结构下探不得丢失）原样迁到 pii/apply_test.go 的 Apply/ApplyValue 上，\npii_test.go 改写为面感知 API。\n下游要做什么：Redact(v) → Apply(face, v)、RedactValue(v) → ApplyValue(face, v)，\nface 按你的实际用途显式给。若你的代码依赖「策略配 block 时只打码」的旧行为，\n这次会变成按策略阻断——那是修复，不是回归。"
+        },
+        {
+          "version": "v0.17.0",
+          "date": "2026-11-06",
+          "title": "重构(netguard)!：删除 CheckURL / CheckChain 双 bool 包装",
+          "summary": "重构(netguard)!：删除 CheckURL / CheckChain 双 bool 包装",
+          "detail": "放行面唯一形态改为 CheckURLWith(url, Allow{...}) / CheckChainWith(chain, Allow{...})。\n删它们的理由不是省行数：双 bool 包装里写反两个位置**不会编译报错**，只会静默改变放行面——\n而放行面是本包存在的全部理由（SSRF 边界）。Allow 具名类型出现后，包装的唯一价值是\n「不破宿主 API」，代价却是一条读不出意图的入口常年可用；删掉后「哪个 bool 是哪个」\n这个问题在类型层面消失。\n连带：36 处测试调用点改写为 With + Allow；「两种形态逐位穷举等价」的用例随包装一起删\n（包装不存在，等价性无从谈起）。顺带把生产注释里的宿主用例枚举改成\n「面向不可信输入的出口 / 面向可信目标的访问」——本仓不放领域词。\n下游要做什么：CheckURL(u) → CheckURLWith(u, Allow{...})；CheckChain(c) →\nCheckChainWith(c, Allow{...})。两个 bool 的位置不再需要记（写反不报错、只是静默改变放行面）。"
+        },
+        {
+          "version": "v0.17.0",
+          "date": "2026-11-06",
+          "title": "重构(drain)!：收敛循环合并为一份 + 排水预算改为命名类型 DrainBudget",
+          "summary": "重构(drain)!：收敛循环合并为一份 + 排水预算改为命名类型 DrainBudget",
+          "detail": "两件事同属一个包且互相咬合（收敛循环的参数就是 DrainBudget），故一次落地。\n一、Drain / DrainSession 的收敛循环合并成 converge.go 一份。两者差别只有「问哪个计数、\n怎么批量取消」，循环本身逐字相同；而这段代码跑在停机路径上，先修一份另一份不跟的症状是\n「全局排水修好了，会话级还在旧行为」——两条路径都只在「进程正在死」的那一刻执行，\n最难复现也最难判断是哪一份没跟上。\n二、Budget 返回命名类型 DrainBudget，Drain / DrainSession / DetachCtx 只收它。\n配置里一个 time.Duration 同时被当成「要不要做轮排水」（负 = 关闭）与「停机收尾给多久」\n（必须恒正）。旧签名下把 Budget(x) 喂给 context.WithTimeout 是完全合法的 Go 代码，\n运行期得到一个立即过期的 ctx——收尾协程秒退、一句错都不报，症状是「优雅停机静默变硬切」。\n命名类型把这条误用变成编译错误。\n反向验证（两个方向都跑过）：go vet -overlay 注入误用探针 ⇒\n`cannot use Budget(...) (value of type DrainBudget) as time.Duration value`，退出码 1；\n改成显式 time.Duration(Budget(x)) ⇒ 退出码 0——证明红的位置就是护栏本身，\n不是相邻的偶然原因。TestBudgetIsNotATimeDuration 另钉住「别把它改回 time.Duration 别名」：\n改回去时所有调用点照样编译、用例全绿，护栏会静默消失。\n刻意不做兼容包装：包装会让「直接传原始配置值」继续编译，而那正是要消灭的入口。\n下游要做什么：\n① Drain / DrainSession / DetachCtx 的实参包一层 drain.Budget(cfg.X)——语义不变\n   （正值与负值都原样返回，只有 0 补缺省）；\n② 喂 context.WithTimeout 的那一个数改走 drain.ShutdownBudget(cfg.X)（d <= 0 归缺省、保恒正）；\n③ 千万别把 Budget 的负值归一：<0 是「关闭轮排水」的语义，归一会把「少做」静默翻成\n   「多做 60 秒」，配置里写下的意图被吞掉。"
+        },
+        {
+          "version": "v0.14.0",
+          "date": "2026-10-28",
+          "title": "",
+          "summary": "包在模块之间搬家：audit → guardx/obs, bashguard → guardx/tools",
+          "detail": "- 杂务(deps)：oekit / oagentkit 依赖地板抬到各自最新发布 tag\n\n抬了哪几块（本仓自身代码零改动，只看 diff 看不出来）：\n- oekit/pkg       v0.28.0 → v0.30.0\n- oekit/logx      v0.7.1  → v0.8.0\n- oekit/concurrency v0.22.0 → v0.23.0\n- oekit/core      v0.12.0 → v0.12.1\n- oagentkit/guardx v0.15.0 → v0.17.0\n- oagentkit/llm   v0.17.1 → v0.18.1\n- oagentkit/textx v0.6.2  → v0.7.1\n- oagentkit/mcpkit v0.8.6 → v0.9.0\n下游要做什么：\n1. **`go mod tidy`**——地板抬高对下游是隐式 breaking，不跑就报\n   `updates to go.mod needed`，且报错只说这个、不提真正原因。\n2. **若你直接 import 过 `github.com/oagentkit/guardx/audit` 或\n   `github.com/oagentkit/guardx/bashguard`**：这两个包自 guardx v0.17.0 起\n   **不再属于 guardx 模块**，改 import 路径——\n   audit → `github.com/oagentkit/obs/audit`；\n   bashguard → `github.com/oagentkit/tools/bashguard`。\n   本仓自身**零命中**这两个路径（用的是新路径 `obs/audit`），故本仓无需改；\n   但你的宿主代码若直接依赖过，需跟着换一行 import。\n其余是等价改写与纯新增，无公开 API 变更：oekit/pkg v0.30.0 补\n`convert.AnyToStrOr` / `OptStr` / `OptBool` / `OptInt32` / `OptInt64` /\n`AnyToInt32` 六个 nil 安全入口并修 `cache.HashKey` 的参数边界歧义（不同参数组\n曾算出同一个 key）；oekit/logx v0.8.0 补 `Nop()` 静默 logger 与 `LevelOff`\n档；oekit/concurrency v0.23.0 修 `budget.Ledger` 的 int64 溢出绕过与\n`singleflight.DoChan` 的清理漂移，并补 `Ledger.Used` 观测口；\noagentkit/mcpkit v0.9.0 补 `Pool.Tool(server, name)` 与 `ToolsResult.ByServer`\n（纯新增，`Tools` 的扁平列表保留）。\n\n\n- 文档：下游升级须知补 v0.14.0 行 + AGENTS.md 的上游 pkg 版本号对齐到 v0.30.0\n- 文档(agent-harness)：发版纪律补「一个提交只装一类内容」\n\n本轮发版（v0.13.0）撞上的缺口：**类型标签决定提交被渲染到发布说明的哪一段**。\n把行为变更（尤其安全修复）装进 `chore(deps)`，它就落到「依赖地板」段里，\n下游扫 breaking 变更时根本看不到。\n实例：本仓有一个提交标题是 `chore(deps): oekit 家族升级到本轮最新发布版本`，\n正文末句写着「顺带修掉 sessionID=\"..\" 越界洞」——它同时装了 go.mod/go.sum 的\n地板抬升和 `spill` 的路径逃逸修复。正文里虽然写了，生成器仍按类型归进\n「依赖地板」段，那个安全修复就淹没在版本号列表中。\n修法：发版前把未发布的提交**拆开**（`fix(spill)!` 单独成提交），拆完再生成\nCHANGELOG，那个修复就会自己落到「修复」段。\n判据：发版前扫一遍本轮提交的 `git show --stat`——**有没有哪个提交同时改了\n依赖文件与非依赖文件**，有就是类型标签装错了内容。\n本提交在 v0.13.0 发布**之后**落：已发布 tag 不可重写历史（改写会让按 tag/commit\n引用的校验失效），故作为后续提交补纪律。"
+        },
+        {
+          "version": "v0.13.0",
+          "date": "2026-10-26",
+          "title": "修复(spill)!：会话标识与定位符的路径逃逸 —— 收口到 oekit/pkg/pathx.IsSafeFileName",
+          "summary": "修复(spill)!：会话标识与定位符的路径逃逸 —— 收口到 oekit/pkg/pathx.IsSafeFileName",
+          "detail": "**下游要做什么**：如果你的宿主把用户可控的会话标识或 spill 定位符传给本包，\n注意**判定口径收紧了**——此前能被放行的路径形态现在一律拒绝（返回\nErrBadName / \"会话标识非法\"）。\n旧实现用 filepath.Base 判等，而 filepath.Base(\"..\") == \"..\"、filepath.Base(\".\") == \".\"\n——两个点段都会被放行；sessionID=\"..\" 于是能让落点指到 spill 根目录的**父目录**\n（三重守卫的前两道根本不参与会话目录判定，第三道的前缀校验又按同一个 base 算，\n两道一起失效）⇒ 实测可读出根目录外的文件。\n改判据：sanitizeName 与 sessionDir 一并委托 oekit/pkg/pathx.IsSafeFileName\n（判定器，不改写；比手搓版更严——除分隔符与 \".\"/\"..\" 点段外，还拒 Windows 盘符\n相对路径如 \"C:foo.bundle\"，fail-closed，同一载荷在 Linux/Windows 上同结论）。\n**行为变化**（下游可见）：\n- sessionID 为 \".\" / \"..\" / 含 \"/\" / \"\\\" / 含盘符相对路径 ⇒ 此前静默通过（可越界），\n  现在直接报错拒绝。\n- 定位符含上述形态 ⇒ 此前多数被拒（分隔符），现在口径统一且更严（多拒盘符相对路径）。\n**无 API 签名变更**；下游无需改调用点，只是非法标识从「静默通过」变成「显式拒绝」——\n如果你的宿主此前靠越界读根外文件（不该发生的用法），现在会拿到错误。"
+        }
+      ],
+      "depFloor": [
+        "github.com/dop251/goja",
+        "github.com/oekit/logx",
+        "github.com/santhosh-tekuri/jsonschema/v6",
+        "golang.org/x/tools",
+        "gopkg.in/yaml.v3",
+        "github.com/bahlo/generic-list-go",
+        "github.com/buger/jsonparser",
+        "github.com/bytedance/gopkg",
+        "github.com/bytedance/sonic",
+        "github.com/bytedance/sonic/loader",
+        "github.com/cloudwego/base64x",
+        "github.com/cloudwego/eino",
+        "github.com/davecgh/go-spew",
+        "github.com/dlclark/regexp2/v2",
+        "github.com/dustin/go-humanize",
+        "github.com/eino-contrib/jsonschema",
+        "github.com/go-sourcemap/sourcemap",
+        "github.com/google/jsonschema-go",
+        "github.com/google/pprof",
+        "github.com/google/uuid",
+        "github.com/goph/emperror",
+        "github.com/json-iterator/go",
+        "github.com/klauspost/cpuid/v2",
+        "github.com/mailru/easyjson",
+        "github.com/mark3labs/mcp-go",
+        "github.com/mattn/go-colorable",
+        "github.com/mattn/go-isatty",
+        "github.com/modern-go/concurrent",
+        "github.com/modern-go/reflect2",
+        "github.com/nikolalohinski/gonja",
+        "github.com/pelletier/go-toml/v2",
+        "github.com/pkg/errors",
+        "github.com/rogpeppe/go-internal",
+        "github.com/sirupsen/logrus",
+        "github.com/slongfield/pyfmt",
+        "github.com/spf13/cast",
+        "github.com/twitchyliquid64/golang-asm",
+        "github.com/wk8/go-ordered-map/v2",
+        "github.com/yargevad/filepathx",
+        "github.com/yosida95/uritemplate/v3",
+        "golang.org/x/arch",
+        "golang.org/x/crypto",
+        "golang.org/x/exp",
+        "golang.org/x/mod",
+        "golang.org/x/sync",
+        "golang.org/x/sys",
+        "golang.org/x/text"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.3.0",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/cloudwego/eino-ext/components/model/openai",
+              "from": null,
+              "to": "v0.1.13"
+            },
+            {
+              "dep": "github.com/cloudwego/eino-ext/libs/acl/openai",
+              "from": null,
+              "to": "v0.1.17"
+            },
+            {
+              "dep": "github.com/evanphx/json-patch",
+              "from": null,
+              "to": "v0.5.2"
+            },
+            {
+              "dep": "github.com/meguminnnnnnnnn/go-openai",
+              "from": null,
+              "to": "v0.1.6"
+            },
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.2.1",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.1.1",
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": null,
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.1.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": null,
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.3.1",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": null,
+              "to": "v0.4.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.2.1",
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.15.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oekit/core",
+              "from": null,
+              "to": "v0.9.2"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.14.0",
+              "to": "v0.15.1"
+            },
+            {
+              "dep": "golang.org/x/time",
+              "from": null,
+              "to": "v0.14.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.3.1",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.4.0",
+              "to": "v0.4.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.3.2",
+          "date": "2026-10-19",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.8.0",
+              "to": "v0.10.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.4.1",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.9.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.6.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.5.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.6.0",
+              "to": "v0.7.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.4.0",
+              "to": "v0.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.9.0",
+              "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.5.0",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.5.0",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.7.0",
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.5.0",
+              "to": "v0.6.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.15.1",
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.0",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.0",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.12.0",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.0",
+              "to": "v0.8.1"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.0",
+              "to": "v0.9.1"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.0",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.0",
+              "to": "v0.6.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.16.0",
+              "to": "v0.17.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.3",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.13.0",
+              "to": "v0.14.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.1",
+              "to": "v0.8.2"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.1",
+              "to": "v0.9.2"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.17.1",
+              "to": "v0.18.0"
+            },
+            {
+              "dep": "github.com/oekit/core",
+              "from": "v0.9.2",
+              "to": "v0.10.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.6.5",
+          "date": "2026-10-20",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.2",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.2",
+              "to": "v0.9.3"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.17.0",
+              "to": "v0.18.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.0",
+              "to": "v0.10.1"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.8.2",
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.14.1",
+              "to": "v0.14.2"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.1",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.9.0",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oekit/core",
+              "from": "v0.10.0",
+              "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.2",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.13.0",
+              "to": "v0.13.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.18.0",
+              "to": "v0.20.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.3",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.14.2",
+              "to": "v0.15.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.18.0",
+              "to": "v0.19.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.4",
+          "date": "2026-10-21",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.1",
+              "to": "v0.10.2"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.3",
+              "to": "v0.8.4"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.3",
+              "to": "v0.9.4"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.1",
+              "to": "v0.7.2"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.1",
+              "to": "v0.6.2"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.0",
+              "to": "v0.12.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.9.0",
+          "date": "2026-10-22",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.2",
+              "to": "v0.10.4"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.15.0",
+              "to": "v0.15.2"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.4",
+              "to": "v0.8.5"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.4",
+              "to": "v0.9.5"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.1",
+              "to": "v0.12.4"
+            }
+          ]
+        },
+        {
+          "version": "v0.12.0",
+          "date": "2026-10-23",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.4",
+              "to": "v0.10.6"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.13.1",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.15.2",
+              "to": "v0.16.0"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.5",
+              "to": "v0.9.6"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.19.0",
+              "to": "v0.20.1"
+            },
+            {
+              "dep": "github.com/oekit/core",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.20.0",
+              "to": "v0.22.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.13.0",
+          "date": "2026-10-26",
+          "bumps": [
+            {
+              "dep": "github.com/davecgh/go-spew",
+              "from": null,
+              "to": "v1.1.2-0.20180830191138-d8f796af33cc"
+            },
+            {
+              "dep": "github.com/klauspost/cpuid/v2",
+              "from": "v2.2.9",
+              "to": "v2.4.0"
+            },
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.10.6",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.14.0",
+              "to": "v0.15.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.16.0",
+              "to": "v0.17.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.5",
+              "to": "v0.8.6"
+            },
+            {
+              "dep": "github.com/oagentkit/obs",
+              "from": "v0.9.6",
+              "to": "v0.9.7"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.4",
+              "to": "v0.12.5"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.20.1",
+              "to": "v0.22.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.22.0",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "golang.org/x/crypto",
+              "from": null,
+              "to": "v0.58.0"
+            },
+            {
+              "dep": "golang.org/x/time",
+              "from": "v0.14.0",
+              "to": "v0.16.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.14.0",
+          "date": "2026-10-28",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.15.0",
+              "to": "v0.17.0"
+            },
+            {
+              "dep": "github.com/oagentkit/llm",
+              "from": "v0.17.1",
+              "to": "v0.18.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.8.6",
+              "to": "v0.9.0"
+            },
+            {
+              "dep": "github.com/oagentkit/textx",
+              "from": "v0.6.2",
+              "to": "v0.7.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.22.0",
+              "to": "v0.23.0"
+            },
+            {
+              "dep": "github.com/oekit/core",
+              "from": "v0.12.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.7.1",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.28.0",
+              "to": "v0.30.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.17.0",
+          "date": "2026-11-06",
+          "bumps": [
+            {
+              "dep": "github.com/buger/jsonparser",
+              "from": "v1.1.2",
+              "to": "v1.6.1"
+            },
+            {
+              "dep": "github.com/bytedance/sonic",
+              "from": "v1.15.4",
+              "to": "v1.15.5"
+            },
+            {
+              "dep": "github.com/bytedance/sonic/loader",
+              "from": "v0.5.2",
+              "to": "v0.5.3"
+            },
+            {
+              "dep": "github.com/cloudwego/base64x",
+              "from": "v0.1.6",
+              "to": "v0.1.7"
+            },
+            {
+              "dep": "github.com/cloudwego/eino",
+              "from": "v0.9.21",
+              "to": "v0.9.22"
+            },
+            {
+              "dep": "github.com/dlclark/regexp2/v2",
+              "from": "v2.9.1",
+              "to": "v2.12.0"
+            },
+            {
+              "dep": "github.com/dustin/go-humanize",
+              "from": "v1.0.1",
+              "to": "v1.1.0"
+            },
+            {
+              "dep": "github.com/google/jsonschema-go",
+              "from": "v0.4.2",
+              "to": "v0.4.3"
+            },
+            {
+              "dep": "github.com/klauspost/cpuid/v2",
+              "from": "v2.4.0",
+              "to": "v2.4.2"
+            },
+            {
+              "dep": "github.com/mailru/easyjson",
+              "from": "v0.7.7",
+              "to": "v0.9.2"
+            },
+            {
+              "dep": "github.com/mark3labs/mcp-go",
+              "from": "v1.1.1",
+              "to": "v1.5.0"
+            },
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.11.0",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.17.0",
+              "to": "v0.19.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.9.0",
+              "to": "v0.11.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.7.2",
+              "to": "v0.8.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.12.5",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.23.0",
+              "to": "v0.25.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.0",
+              "to": "v0.8.3"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.30.0",
+              "to": "v0.35.0"
+            },
+            {
+              "dep": "github.com/pelletier/go-toml/v2",
+              "from": "v2.0.9",
+              "to": "v2.4.3"
+            },
+            {
+              "dep": "github.com/santhosh-tekuri/jsonschema/v6",
+              "from": "v6.0.2",
+              "to": "v6.0.3"
+            },
+            {
+              "dep": "github.com/spf13/cast",
+              "from": "v1.7.1",
+              "to": "v1.10.0"
+            },
+            {
+              "dep": "golang.org/x/arch",
+              "from": "v0.14.0",
+              "to": "v0.32.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.18.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.13.0",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.8.0",
+              "to": "v0.10.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.25.1",
+              "to": "v0.27.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.3",
+              "to": "v0.8.4"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.35.0",
+              "to": "v0.36.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.19.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.10.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.27.0",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.36.0",
+              "to": "v0.37.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.20.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.19.0",
+              "to": "v0.21.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.22.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.14.0",
+              "to": "v0.14.1"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.21.0",
+              "to": "v0.23.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.11.0",
+              "to": "v0.12.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.13.0",
+              "to": "v0.15.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.4",
+              "to": "v0.8.6"
+            }
+          ]
+        },
+        {
+          "version": "v0.23.0",
+          "date": "2026-11-07",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.28.0",
+              "to": "v0.28.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.28.0",
+          "date": "2026-11-11",
+          "bumps": [
+            {
+              "dep": "github.com/cloudwego/eino",
+              "from": "v0.9.22",
+              "to": "v0.9.23"
+            },
+            {
+              "dep": "github.com/dlclark/regexp2/v2",
+              "from": "v2.12.0",
+              "to": "v2.13.0"
+            },
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.14.1",
+              "to": "v0.14.8"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.23.0",
+              "to": "v0.24.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.12.0",
+              "to": "v0.12.8"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.12.0",
+              "to": "v0.12.6"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.15.0",
+              "to": "v0.17.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.28.1",
+              "to": "v0.32.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.8.6",
+              "to": "v0.9.2"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.37.1",
+              "to": "v0.42.0"
+            },
+            {
+              "dep": "golang.org/x/arch",
+              "from": "v0.32.0",
+              "to": "v0.33.0"
+            },
+            {
+              "dep": "golang.org/x/sys",
+              "from": "v0.49.0",
+              "to": "v0.50.0"
+            },
+            {
+              "dep": "golang.org/x/text",
+              "from": "v0.43.0",
+              "to": "v0.44.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.29.0",
+          "date": "2026-11-11",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": null,
+              "to": "v0.14.3"
+            },
+            {
+              "dep": "mvdan.cc/sh/v3",
+              "from": null,
+              "to": "v3.14.1"
+            }
+          ]
+        },
+        {
+          "version": "v0.34.0",
+          "date": "2026-11-12",
+          "bumps": [
+            {
+              "dep": "github.com/jackc/pgpassfile",
+              "from": null,
+              "to": "v1.0.0"
+            },
+            {
+              "dep": "github.com/jackc/pgservicefile",
+              "from": null,
+              "to": "v0.0.0-20240606120523-5a60cdf6a761"
+            },
+            {
+              "dep": "github.com/jackc/pgx/v5",
+              "from": null,
+              "to": "v5.13.0"
+            },
+            {
+              "dep": "github.com/jackc/puddle/v2",
+              "from": null,
+              "to": "v2.2.3"
+            },
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": "v0.14.8",
+              "to": "v0.14.10"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.24.1",
+              "to": "v0.24.4"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.12.8",
+              "to": "v0.13.2"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.12.6",
+              "to": "v0.12.9"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.17.0",
+              "to": "v0.17.2"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.14.3",
+              "to": "v0.14.5"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.32.0",
+              "to": "v0.33.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.9.2",
+              "to": "v0.10.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.42.0",
+              "to": "v0.44.0"
+            },
+            {
+              "dep": "golang.org/x/sync",
+              "from": null,
+              "to": "v0.25.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.34.1",
+          "date": "2026-11-13",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.24.4",
+              "to": "v0.24.5"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.17.2",
+              "to": "v0.17.3"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.33.0",
+              "to": "v0.34.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.44.0",
+              "to": "v0.46.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.35.0",
+          "date": "2026-11-13",
+          "bumps": [
+            {
+              "dep": "github.com/mattn/go-colorable",
+              "from": null,
+              "to": "v0.1.11"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.46.0",
+              "to": "v0.48.0"
+            },
+            {
+              "dep": "golang.org/x/mod",
+              "from": null,
+              "to": "v0.42.0"
+            },
+            {
+              "dep": "golang.org/x/tools",
+              "from": null,
+              "to": "v0.52.1-0.20261106145633-d407941a339a"
+            }
+          ]
+        },
+        {
+          "version": "v0.35.1",
+          "date": "2026-11-14",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.24.5",
+              "to": "v0.25.1"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.13.2",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.12.9",
+              "to": "v0.13.0"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.14.5",
+              "to": "v0.14.6"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.34.1",
+              "to": "v0.36.1"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.10.0",
+              "to": "v0.11.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.41.0",
+          "date": "2026-11-17",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.25.1",
+              "to": "v0.28.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.17.3",
+              "to": "v0.17.4"
+            },
+            {
+              "dep": "github.com/oagentkit/tools",
+              "from": "v0.14.6",
+              "to": "v0.15.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.36.1",
+              "to": "v0.38.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.48.0",
+              "to": "v0.52.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.50.0",
+          "date": "2026-11-20",
+          "bumps": [
+            {
+              "dep": "github.com/mattn/go-isatty",
+              "from": null,
+              "to": "v0.0.24"
+            },
+            {
+              "dep": "github.com/ncruces/go-strftime",
+              "from": null,
+              "to": "v1.1.0"
+            },
+            {
+              "dep": "github.com/remyoudompheng/bigfft",
+              "from": null,
+              "to": "v0.0.0-20230129092748-24d4a6f8daec"
+            },
+            {
+              "dep": "modernc.org/libc",
+              "from": null,
+              "to": "v1.79.0"
+            },
+            {
+              "dep": "modernc.org/mathutil",
+              "from": null,
+              "to": "v1.7.1"
+            },
+            {
+              "dep": "modernc.org/memory",
+              "from": null,
+              "to": "v1.12.1"
+            },
+            {
+              "dep": "modernc.org/sqlite",
+              "from": null,
+              "to": "v1.61.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.66.0",
+          "date": "2026-11-22",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.52.0",
+              "to": "v0.57.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.69.0",
+          "date": "2026-11-22",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.57.0",
+              "to": "v0.58.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.70.0",
+          "date": "2026-11-22",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/toolname",
+              "from": null,
+              "to": "v0.1.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.71.0",
+          "date": "2026-11-22",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.58.0",
+              "to": "v0.59.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.73.0",
+          "date": "2026-11-23",
+          "bumps": [
+            {
+              "dep": "github.com/rogpeppe/go-internal",
+              "from": null,
+              "to": "v1.15.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.79.0",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.28.0",
+              "to": "v0.30.0"
+            },
+            {
+              "dep": "github.com/oagentkit/mcpkit",
+              "from": "v0.14.0",
+              "to": "v0.15.0"
+            },
+            {
+              "dep": "github.com/oagentkit/runtime",
+              "from": "v0.13.0",
+              "to": "v0.14.0"
+            },
+            {
+              "dep": "github.com/oagentkit/toolgate",
+              "from": "v0.17.4",
+              "to": "v0.17.5"
+            },
+            {
+              "dep": "github.com/oagentkit/toolname",
+              "from": "v0.1.0",
+              "to": "v0.2.1"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.38.1",
+              "to": "v0.40.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.11.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.59.0",
+              "to": "v0.61.5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "goagent-runtime",
+      "url": "https://github.com/oagentkit/goagent-runtime",
+      "tier": 5,
+      "latest": "v0.7.1",
+      "packages": [
+        {
+          "pkg": "chat",
+          "importPath": "github.com/oagentkit/goagent-runtime/chat",
+          "fromLegacy": "agentkit/chat"
+        },
+        {
+          "pkg": "pipeline",
+          "importPath": "github.com/oagentkit/goagent-runtime/pipeline",
+          "fromLegacy": "agentkit/pipeline"
+        },
+        {
+          "pkg": "agentloop",
+          "importPath": "github.com/oagentkit/goagent-runtime/agentloop",
+          "fromLegacy": "agentkit/agentloop"
+        },
+        {
+          "pkg": "adjudicate",
+          "importPath": "github.com/oagentkit/goagent-runtime/adjudicate",
+          "fromLegacy": "agentkit/adjudicate"
+        },
+        {
+          "pkg": "storage",
+          "importPath": "github.com/oagentkit/goagent-runtime/storage",
+          "fromLegacy": "agentkit/storage"
+        },
+        {
+          "pkg": "storage/sqlitestore",
+          "importPath": "github.com/oagentkit/goagent-runtime/sqlitestore",
+          "fromLegacy": "agentkit/storage/sqlitestore"
+        },
+        {
+          "pkg": "sqliteadapter",
+          "importPath": "github.com/oagentkit/goagent-runtime/sqliteadapter",
+          "fromLegacy": "agentkit/sqliteadapter"
+        },
+        {
+          "pkg": "pgstore",
+          "importPath": "github.com/oagentkit/goagent-runtime/pgstore",
+          "fromLegacy": "agentkit/pgstore"
+        },
+        {
+          "pkg": "runtime",
+          "importPath": "github.com/oagentkit/goagent-runtime/runtime",
+          "fromLegacy": "agentkit/runtime"
+        },
+        {
+          "pkg": "cluster",
+          "importPath": "github.com/oagentkit/goagent-runtime/cluster",
+          "fromLegacy": "agentkit/cluster"
+        },
+        {
+          "pkg": "observe",
+          "importPath": "github.com/oagentkit/goagent-runtime/observe",
+          "fromLegacy": "agentkit/observe"
+        },
+        {
+          "pkg": "containerbackend",
+          "importPath": "github.com/oagentkit/goagent-runtime/containerbackend",
+          "fromLegacy": "agentkit/containerbackend"
+        },
+        {
+          "pkg": "bridge/llmchat",
+          "importPath": "github.com/oagentkit/goagent-runtime/llmchat",
+          "fromLegacy": "agentkit/bridge/llmchat"
+        },
+        {
+          "pkg": "bridge/einotool",
+          "importPath": "github.com/oagentkit/goagent-runtime/einotool",
+          "fromLegacy": "agentkit/bridge/einotool"
+        }
+      ],
+      "matrixDeps": [
+        {
+          "repo": "agent",
+          "url": "https://github.com/oagentkit/agent"
+        },
+        {
+          "repo": "goagent-kernel",
+          "url": "https://github.com/oagentkit/goagent-kernel"
+        },
+        {
+          "repo": "guardx",
+          "url": "https://github.com/oagentkit/guardx"
+        }
+      ],
+      "breakingIndex": [],
+      "depFloor": [
+        "github.com/jackc/pgx/v5",
+        "modernc.org/sqlite",
+        "github.com/dustin/go-humanize",
+        "github.com/google/uuid",
+        "github.com/jackc/pgpassfile",
+        "github.com/jackc/pgservicefile",
+        "github.com/jackc/puddle/v2",
+        "github.com/mattn/go-isatty",
+        "github.com/ncruces/go-strftime",
+        "github.com/oekit/logx",
+        "github.com/remyoudompheng/bigfft",
+        "golang.org/x/sync",
+        "golang.org/x/sys",
+        "golang.org/x/text",
+        "modernc.org/libc",
+        "modernc.org/mathutil",
+        "modernc.org/memory"
+      ],
+      "floorBumps": [
+        {
+          "version": "v0.2.0",
+          "date": "2026-11-22",
+          "bumps": [
+            {
+              "dep": "github.com/jackc/pgpassfile",
+              "from": null,
+              "to": "v1.0.0"
+            },
+            {
+              "dep": "github.com/jackc/pgservicefile",
+              "from": null,
+              "to": "v0.0.0-20240606120523-5a60cdf6a761"
+            },
+            {
+              "dep": "github.com/jackc/pgx/v5",
+              "from": null,
+              "to": "v5.13.0"
+            },
+            {
+              "dep": "github.com/jackc/puddle/v2",
+              "from": null,
+              "to": "v2.2.3"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.52.0",
+              "to": "v0.57.0"
+            },
+            {
+              "dep": "github.com/yi-nology/goagent-kernel",
+              "from": "v0.63.0",
+              "to": "v0.66.1"
+            },
+            {
+              "dep": "golang.org/x/sync",
+              "from": null,
+              "to": "v0.25.0"
+            },
+            {
+              "dep": "golang.org/x/text",
+              "from": null,
+              "to": "v0.44.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.3.0",
+          "date": "2026-11-22",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": null,
+              "to": "v0.28.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.0",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/agent",
+              "from": null,
+              "to": "v0.16.0"
+            },
+            {
+              "dep": "github.com/oagentkit/goagent-kernel",
+              "from": null,
+              "to": "v0.77.0"
+            },
+            {
+              "dep": "github.com/oekit/concurrency",
+              "from": "v0.38.1",
+              "to": "v0.40.0"
+            },
+            {
+              "dep": "github.com/oekit/logx",
+              "from": "v0.11.0",
+              "to": "v0.12.1"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.57.0",
+              "to": "v0.61.4"
+            }
+          ]
+        },
+        {
+          "version": "v0.7.1",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/oagentkit/goagent-kernel",
+              "from": "v0.77.0",
+              "to": "v0.78.0"
+            },
+            {
+              "dep": "github.com/oagentkit/guardx",
+              "from": "v0.28.0",
+              "to": "v0.30.0"
+            },
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.61.4",
+              "to": "v0.61.5"
             }
           ]
         }

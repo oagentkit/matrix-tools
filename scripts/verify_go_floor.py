@@ -194,6 +194,20 @@ EXEMPTIONS: dict[str, dict] = {
         "since": "2026-10-20",
         "note": "真 shell AST 解析（只读性判定）。降级需上游放宽 go 指令或换版本。",
     },
+    # ── 安全地板型豁免（kind=stdlib-security）：与「三方硬要求」不同类——
+    # 依据是标准库 CVE（不在依赖链上），失效复核不走依赖链查找，
+    # 真相源是该仓 go.mod 头部的安全地板注释（govulncheck 实录）。
+    "goagent-kernel": {
+        "kind": "stdlib-security",
+        "blocker": "标准库 CVE（crypto/x509 GO-2026-6809 等 6 项）",
+        "blocker_version": "GO-2026-6809/6617/6613/6611/6603/6607",
+        "required_go": "1.27.4",
+        "imports": "标准库 net/http、crypto/x509、crypto/tls（govulncheck 实测命中面）",
+        "since": "2026-11-26",
+        "note": "安全地板：2026-11-06 govulncheck 实测 6 个 stdlib 漏洞需 go≥1.27.4；"
+                "go 指令是唯一能把下游主模块工具链顶上去的形式（依赖模块的 toolchain 指令被忽略）。"
+                "随 Go 安全发布当天抬升（go.mod 头部注释为真相源）。降级 = 下游带已修漏洞。",
+    },
 }
 
 # CI go-version 与 go.mod go 指令的比较口径：
@@ -281,9 +295,17 @@ def parse_ci_go_version(workflow_text: str) -> str | None:
 
     只认 `with:` 段下的 go-version——共享 workflow 本体的默认值不算，
     那是「没传时的兜底」，不是该仓的承诺。
+
+    `go-version-file: go.mod`（setup-go 从 go.mod 读）返回特殊标记 `"go.mod"`：
+    与 go.mod **同源**，天然成对（比 go-version 字面量更强的同步保证）。
     """
     m = _CI_GO_VERSION_RE.search(workflow_text)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    m2 = re.search(r"go-version-file:\s*['\"]?([^'\"\s]+)", workflow_text)
+    if m2 and m2.group(1).rstrip("/").endswith("go.mod"):
+        return "go.mod"
+    return None
 
 
 def is_tier0(tier) -> bool:
@@ -402,6 +424,10 @@ def check_relative_floor(repo: str, tier, go_version: str | None,
     # 已登记豁免的仓：检查豁免依据是否仍然成立
     if repo in EXEMPTIONS:
         ex = EXEMPTIONS[repo]
+        if ex.get("kind") == "stdlib-security":
+            # 安全地板豁免：依据是标准库 CVE（不在依赖链上），不参与依赖链
+            # 复核；依据的真相源是该仓 go.mod 头部的安全地板注释（人可复核）。
+            return problems
         blocker = ex["blocker"]
         required = ex["required_go"]
         actual = deps.get(blocker) if deps else None
@@ -474,7 +500,9 @@ def check_repo(repo: str, tier, go_version: str | None, toolchain: str | None,
                 f"与「最低支持 {TIER0_GO_PREFIX}」相悖）")
 
     # 判据 2：CI go-version 与 go.mod go 指令成对（所有 tier）
-    if ci_go_version is None:
+    if ci_go_version == "go.mod":
+        pass  # go-version-file: go.mod —— 与 go.mod 同源，天然成对
+    elif ci_go_version is None:
         problems.append(
             f"{repo}: ci.yml 里读不到 go-version（判不了，"
             f"不能当成「成对」）")
@@ -687,7 +715,7 @@ def main() -> int:
     t0 = [r for r, t in sorted(tiers.items()) if is_tier0(t)]
     ex = [r for r in sorted(EXEMPTIONS) if r in tiers]
     print(f"✅ Go 地板合规（检查 {checked} 个仓；tier0 = {', '.join(t0)} 均声明 "
-          f"{TIER0_GO_PREFIX}x；豁免 {len(ex)} 个（三方硬要求）：{', '.join(ex) or '无'}；"
+          f"{TIER0_GO_PREFIX}x；豁免 {len(ex)} 个（三方硬要求/安全地板）：{', '.join(ex) or '无'}；"
           f"CI go-version 与 go.mod 全部成对）")
     return 0
 
