@@ -15,7 +15,7 @@
       "repo": "textx",
       "url": "https://github.com/oagentkit/textx",
       "tier": 0,
-      "latest": "v0.13.0",
+      "latest": "v0.14.0",
       "packages": [
         {
           "pkg": "textutil",
@@ -1334,7 +1334,7 @@
       "repo": "promptx",
       "url": "https://github.com/oagentkit/promptx",
       "tier": 1,
-      "latest": "v0.10.0",
+      "latest": "v0.11.0",
       "packages": [
         {
           "pkg": "sysprompt",
@@ -2949,7 +2949,7 @@
       "repo": "rag",
       "url": "https://github.com/oagentkit/rag",
       "tier": 2,
-      "latest": "v0.12.0",
+      "latest": "v0.13.0",
       "packages": [
         {
           "pkg": "knowledge/rag",
@@ -5628,7 +5628,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.15.0",
+      "latest": "v0.16.0",
       "packages": [
         {
           "pkg": "agentrun",
