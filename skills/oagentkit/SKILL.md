@@ -1,17 +1,17 @@
 ---
 name: oagentkit
 description: >-
-  在 Go 业务代码中使用/重构时选用 oagentkit 框架包的选型与用法入口（14 模块 + agentkit 废弃门面）。
+  在 Go 业务代码中使用/重构时选用 oagentkit 框架包的选型与用法入口（16 模块 + agentkit 废弃门面）。
   触发场景：建 agent（ReAct/反思/路由/多专家）、模型调用（降级链/预算/阶段路由）、工具体系
   （MCP/调度/审计门/调用契约）、安全围栏（提示词注入/出口 SSRF/脱敏/许可沙箱）、RAG、DB 队列、
   prompt 组装、SKILL 技能装配、观测审计、文本处理，或不确定该用哪个模块/子包时。
-  含场景选型表、tier/heavyDeps 红线、69 子包速查。发版/tag/CHANGELOG 用 oagentkit-release；
+  含场景选型表、tier/heavyDeps 红线、136 子包速查。发版/tag/CHANGELOG 用 oagentkit-release；
   issue 扫描复用 oekit-sweep（--org oagentkit）。
 ---
 
 # oagentkit 包选型与用法入口
 
-> oagentkit = Open Agent Kit：14 模块（tier0-3 自底向上）+ 已废弃 agentkit 门面。
+> oagentkit = Open Agent Kit：16 模块（tier0-3 自底向上）+ 已废弃 agentkit 门面。
 > 本 skill 由 `matrix-tools/scripts/gen_skill.py` 渲染——场景表为手写数据、模块/子包索引为
 > modules.json 渲染产物；修订改 gen_skill.py 数据区（或 modules.json），勿手改本文件。
 

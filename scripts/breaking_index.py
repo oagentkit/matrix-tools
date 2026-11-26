@@ -171,6 +171,12 @@ def _subsections(lines: list[str]) -> list[tuple[str, list[str]]]:
     return subs
 
 
+# 第 6 条依据（2026-11-26，kernel v0.73/v0.76 实测漏检后补）：正文里**粗体**标记
+# 的破坏性行（`**BREAKING**：…` / `- **BREAKING（…）**`）——独立 oracle
+# （verify_breaking_oracle）的宽口径形态之一；矩阵抽取器照收，两边同判。
+BOLD_BREAKING = re.compile(r"^\s*(?:[-*]\s*)?\*\*\s*breaking\b", re.IGNORECASE)
+
+
 def _is_breaking(title: str, body: list[str]) -> tuple[bool, str]:
     """→ (是否破坏性, trailer 摘要)"""
     if BANG_IN_TITLE.search(title) or BREAKING_IN_TITLE.search(title):
@@ -182,6 +188,10 @@ def _is_breaking(title: str, body: list[str]) -> tuple[bool, str]:
             # （runtime 的 BREAKING：… 后跟着两行缩进给出迁移写法）
             summary = [m.group("text").rstrip()]
             return True, "\n".join(summary).strip()
+    # 第 6 条依据：粗体标记行（不计入摘要，摘要退回标题/搬家形态）
+    for line in body:
+        if BOLD_BREAKING.match(line):
+            return True, ""
     # 第 4 条依据：包在模块之间搬家（散文形态，无显式 trailer）
     if _moved_packages(body):
         return True, ""

@@ -148,20 +148,30 @@ def root_tags_api(org: str, repo: str) -> dict[str, str]:
     顺带取 sha 是为了给**持久缓存**当失效判据（见 TagSnapshotCache）：
     tag 名可能被改指到别的 commit，光看名字认不出「同一个 tag 的内容变了」。
     """
-    raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100")
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
+    # **分页拉全**：tags API 单页上限 100；超过 100 个 tag 的仓（kernel 103 个，
+    # 2026-11-26 实测）会静默截掉最老的一批 → 对账把「CHANGELOG 有段、tag 缺」
+    # 误报成欠账。按页循环到空页为止。
     out: dict[str, str] = {}
-    for t in data:
-        name = t.get("name", "")
-        if not ROOT_TAG.match(name):
-            continue
-        sha = ((t.get("commit") or {}).get("sha")) or ""
-        out[name] = sha
+    page = 1
+    while True:
+        raw = repo_meta.gh_api(f"repos/{org}/{repo}/tags?per_page=100&page={page}")
+        if not raw:
+            break
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            break
+        if not isinstance(data, list) or not data:
+            break
+        for t in data:
+            name = t.get("name", "")
+            if not ROOT_TAG.match(name):
+                continue
+            sha = ((t.get("commit") or {}).get("sha")) or ""
+            out[name] = sha
+        if len(data) < 100:
+            break
+        page += 1
     return {k: out[k] for k in sorted(out, key=version_key, reverse=True)}
 
 

@@ -194,7 +194,8 @@ issue 扫描复用 oekit-sweep（--org oagentkit）。"""
 
 def _tier_label(t: int) -> str:
     return {0: "tier0 基础层（零重量级三方）", 1: "tier1 能力层",
-            2: "tier2 集成层（重第三方隔离在此）", 3: "tier3 编排层"}[t]
+            2: "tier2 集成层（重第三方隔离在此）", 3: "tier3 编排层",
+            4: "tier4 编排判据层", 5: "tier5 装配层"}[t]
 
 
 def _module_table() -> str:

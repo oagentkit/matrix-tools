@@ -81,6 +81,8 @@ TIER_ROLE = {
     1: "能力层，依赖 tier0",
     2: "集成层，依赖 tier0/tier1 + 重第三方地板",
     3: "编排层，依赖 llm 等 tier2 门面",
+    4: "编排判据层，依赖 guardx/toolgate 等 tier0~2，判据单源（ADR-0010）",
+    5: "装配层，依赖 goagent-kernel + agent，只接线不另写判据",
 }
 
 COMMON_RULES = """### 分层与依赖

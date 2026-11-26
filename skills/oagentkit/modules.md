@@ -21,3 +21,5 @@
 | tier2 | [`toolgate`](https://github.com/oagentkit/toolgate) | 工具优先级/并发调度/操作审计门/不可绕过的调用链 | eino、yaml.v3 | `toolgate/AGENTS.md` |
 | tier2 | [`tools`](https://github.com/oagentkit/tools) | CLI 编码 agent 统一调用/公开检索/git 沙箱/SAST 扫描/Shell 静态裁决 | eino、v3 | `tools/AGENTS.md` |
 | tier3 | [`agent`](https://github.com/oagentkit/agent) | ReAct 运行样板/反思循环/意图路由/多专家黑板/派发守卫/澄清 | eino、openai、yaml.v3 | `agent/AGENTS.md` |
+| tier4 | [`goagent-kernel`](https://github.com/oagentkit/goagent-kernel) | 多智能体编排判据层——状态机/副作用闸/续跑/介入/事件面的确定性机制 | goja、v6、tools、yaml.v3 | `goagent-kernel/AGENTS.md` |
+| tier5 | [`goagent-runtime`](https://github.com/oagentkit/goagent-runtime) | Agent 运行时装配层——把 goagent-kernel 判据装配成业务可直接用的 runtime | v5、sqlite | `goagent-runtime/AGENTS.md` |
