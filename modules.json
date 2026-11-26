@@ -642,7 +642,8 @@
     "toolgate",
     "toolname"
    ],
-   "oekitAnalog": "workflow"
+   "oekitAnalog": "workflow",
+   "org": "yi-nology"
   },
   {
    "repo": "goagent-runtime",
@@ -699,7 +700,8 @@
     "goagent-kernel",
     "guardx"
    ],
-   "oekitAnalog": "bootstrap"
+   "oekitAnalog": "bootstrap",
+   "org": "yi-nology"
   }
  ],
  "infraRepos": [

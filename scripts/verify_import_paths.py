@@ -171,13 +171,16 @@ def main() -> int:
     checked = 0
     for m in matrix["modules"]:
         repo = m["repo"]
-        facts = local_repo_facts(args.root, repo) if args.root else remote_repo_facts(org, repo)
+        # per-repo org：modules.json 的 org 字段覆盖命令行 --org（仓不在矩阵
+        # org 时用，如 goagent-kernel 回迁 yi-nology 后——2026-11-26）。
+        repo_org = m.get("org") or org
+        facts = local_repo_facts(args.root, repo) if args.root else remote_repo_facts(repo_org, repo)
         if facts is None:
             problems.append(f"{repo}: 取不到仓的真实状态（判不了，不能当成「一致」）")
             continue
         checked += 1
         recorded = by_repo.get(repo, {}).get("packages", [])
-        problems.extend(check_repo(org, repo, recorded, facts, m.get("nestedModules", [])))
+        problems.extend(check_repo(repo_org, repo, recorded, facts, m.get("nestedModules", [])))
 
     if checked == 0:
         print("❌ 一个仓都没检查到（拒绝判定）")
