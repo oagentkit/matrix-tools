@@ -203,15 +203,23 @@ def parse_claims(docs: dict[str, str], known: set[str]) -> list[Claim]:
     return claims
 
 
+# 矩阵内模块路径：github.com/{org}/{repo}——org 可以是矩阵 org 也可以是
+# per-repo org（goagent-kernel/runtime 回迁 yi-nology 后，2026-11-26）。
+# 按**仓名**归属判定：repo 段在矩阵仓名集合里才算矩阵内依赖，org 段不设限
+# （防止 org 换位后把矩阵内依赖误判成第三方——「多列」假红）。
+MATRIX_PATH_RE = re.compile(r"^github\.com/[a-z0-9-]+/([a-z][a-z0-9-]*)$")
+
+
 def direct_matrix_deps(gomod_text: str, known: set[str]) -> set[str]:
     """`go.mod` 原文 → 直接依赖的矩阵内仓名集合。"""
     facts = parse_go_mod(gomod_text)
     out: set[str] = set()
     for item in facts["requires_direct"]:
         path = item.split()[0]
-        if not path.startswith(MATRIX_PREFIX):
+        m = MATRIX_PATH_RE.match(path)
+        if not m:
             continue
-        name = path[len(MATRIX_PREFIX):]
+        name = m.group(1)
         if name in known:
             out.add(name)
     return out

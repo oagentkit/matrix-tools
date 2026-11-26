@@ -199,7 +199,8 @@ def floor_of(reqs: list[tuple[str, bool]]) -> list[str]:
     return floor
 
 
-def third_party_of(reqs: list[tuple[str, bool]]) -> list[str]:
+def third_party_of(reqs: list[tuple[str, bool]],
+                   matrix_repos: set[str] | None = None) -> list[str]:
     """各仓 go.mod 的**第三方直接依赖**（「外部依赖地板」口径）。
 
     与 `floor_of` 的区别（两个口径各有消费者，别互相套用）：
@@ -225,6 +226,13 @@ def third_party_of(reqs: list[tuple[str, bool]]) -> list[str]:
     for dep, indirect in reqs:
         if dep.startswith(FIRST_PARTY_PREFIX) or dep.startswith(BASE_PREFIX):
             continue
+        # 矩阵内模块按**仓名**归属（org 可换位：goagent-kernel/runtime 回迁
+        # yi-nology 后 github.com/yi-nology/<repo> 仍是矩阵内——否则会被误判
+        # 第三方要求登记 heavyDeps）。
+        if matrix_repos:
+            m = re.match(r"^github\.com/[a-z0-9-]+/([a-z][a-z0-9-]*)$", dep)
+            if m and m.group(1) in matrix_repos:
+                continue
         if not indirect:
             out.append(dep)
     return out
@@ -383,7 +391,8 @@ def main() -> int:
         # （只对矩阵模块做对账；门面在 infraRepos 里，本来就没有 heavyDeps 字段）
         is_module, recorded = recorded_heavy(data, repo)
         if is_module:
-            problems.extend(reconcile_heavy_deps(repo, third_party_of(reqs), recorded))
+            matrix_repos = {m.get("repo") for m in data.get("modules", []) if m.get("repo")}
+            problems.extend(reconcile_heavy_deps(repo, third_party_of(reqs, matrix_repos), recorded))
 
     if checked == 0:
         print("❌ 一个仓都没检查到（拒绝判定：避免「全绿但什么都没查」）")
