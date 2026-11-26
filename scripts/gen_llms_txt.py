@@ -88,11 +88,14 @@ def packages_without_facade(mods: list[dict]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for mod in mods:
         repo = mod["repo"]
+        # 单仓可迁出默认 org（goagent-kernel/runtime 在 yi-nology）：
+        # 有 org 的仓直接拼真路径，没有的留 {org} 占位由渲染处展开。
+        morg = mod.get("org") or "{org}"
         for pkg in mod.get("packages", []):
             leaf = pkg.split("/")[-1]
             if leaf in facade_names:
                 continue
-            out.append((pkg, new_import_path("{org}", repo, pkg)))
+            out.append((pkg, new_import_path(morg, repo, pkg)))
     return out
 
 TIER_TITLE = {
@@ -168,6 +171,8 @@ def main() -> int:
               "「已退役」渲染出错误措辞。宁可生成失败。")
         return 1
     org = d["defaultOrg"]
+    # 依赖链接也要按被依赖仓自己的 org 拼（goagent-kernel/runtime 在 yi-nology）
+    dep_org = {m["repo"]: (m.get("org") or org) for m in d["modules"]}
     mods = sorted(d["modules"], key=lambda m: (m["tier"], m["repo"]))
     npkg = sum(len(m["packages"]) for m in mods)
     # 门面包数：**独立于矩阵包数**，取自门面冻结基线。
@@ -286,8 +291,9 @@ def main() -> int:
         L.append(f"### {TIER_TITLE[tier]}")
         L.append("")
         for m in [x for x in mods if x["tier"] == tier]:
+            morg = m.get("org") or org
             pkgs = "、".join(f"`{p.rsplit('/', 1)[-1]}`" for p in m["packages"])
-            L.append(f"- [{m['repo']}](https://github.com/{org}/{m['repo']}): "
+            L.append(f"- [{m['repo']}](https://github.com/{morg}/{m['repo']}): "
                      f"{m['ghDescription']}")
             L.append(f"  - 包：{pkgs}")
             for cp in compat.get(m["repo"], []):
@@ -297,9 +303,11 @@ def main() -> int:
                     f"规范路径仍是 `{cp['canonicalPath']}`，新代码用它"
                 )
             if m.get("dependsOn"):
-                deps = "、".join(f"[{x}](https://github.com/{org}/{x})" for x in sorted(m["dependsOn"]))
+                deps = "、".join(
+                    f"[{x}](https://github.com/{dep_org.get(x, org)}/{x})"
+                    for x in sorted(m["dependsOn"]))
                 L.append(f"  - 依赖：{deps}")
-            L.append(f"  - 安装：`go get github.com/{org}/{m['repo']}@latest`")
+            L.append(f"  - 安装：`go get github.com/{morg}/{m['repo']}@latest`")
         L.append("")
 
     # 门面退役登记（单一数据源：modules.json infraRepos.agentkit.retired）。
@@ -383,7 +391,7 @@ def main() -> int:
              f"`fromLegacy` 字段。")
 
     L.append(f"- 完整包路径映射见 [matrix-tools/modules.json](https://github.com/{org}/matrix-tools)。")
-    L.append("- 改 CI 规则只去 [{org}/.github](https://github.com/{org}/.github) 仓"
+    L.append(f"- 改 CI 规则只去 [{org}/.github](https://github.com/{org}/.github) 仓"
              "（`go-ci.yml@main`）；各仓 `ci.yml` 只是薄调用层，不要在各仓复制规则。")
     L.append("- 不确定 API 时以源码为准：各仓均带测试，`go doc github.com/oagentkit/<mod>[/<pkg>]` 可查。")
     L.append("")
