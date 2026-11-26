@@ -6489,7 +6489,7 @@
     },
     {
       "repo": "goagent-kernel",
-      "url": "https://github.com/oagentkit/goagent-kernel",
+      "url": "https://github.com/yi-nology/goagent-kernel",
       "tier": 4,
       "latest": "v0.80.0",
       "packages": [
@@ -8112,7 +8112,7 @@
     },
     {
       "repo": "goagent-runtime",
-      "url": "https://github.com/oagentkit/goagent-runtime",
+      "url": "https://github.com/yi-nology/goagent-runtime",
       "tier": 5,
       "latest": "v0.8.0",
       "packages": [
@@ -8194,7 +8194,7 @@
         },
         {
           "repo": "goagent-kernel",
-          "url": "https://github.com/oagentkit/goagent-kernel"
+          "url": "https://github.com/yi-nology/goagent-kernel"
         },
         {
           "repo": "guardx",

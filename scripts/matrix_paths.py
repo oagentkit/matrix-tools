@@ -142,11 +142,14 @@ def build_mapping(modules: list[dict], org: str) -> dict[str, str]:
     excl = legacy_exclusions()
     for mod in modules:
         repo = mod["repo"]
+        # 单仓可迁出默认 org（goagent-kernel/runtime 已迁回 yi-nology）：
+        # 新侧路径必须用该仓自己的 org，否则改写规则会指向旧 org 的模块路径。
+        morg = mod.get("org") or org
         for pkg in mod["packages"]:
             # 该包若不是旧单仓拆出来的 ⇒ 旧单仓路径从未存在过 ⇒ 不合成这条规则
             if new_import_path("{org}", repo, pkg) in excl:
                 continue
-            mapping[legacy_import_path(pkg)] = new_import_path(org, repo, pkg)
+            mapping[legacy_import_path(pkg)] = new_import_path(morg, repo, pkg)
     mapping.update(build_historical_mapping(org))
     return mapping
 
@@ -165,9 +168,10 @@ def misleading(modules: list[dict], org: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for mod in modules:
         repo = mod["repo"]
+        morg = mod.get("org") or org
         for pkg in mod["packages"]:
             if leaf(pkg) != pkg or repo == leaf(pkg):
-                out.append((short_legacy(pkg), new_import_path(org, repo, pkg)))
+                out.append((short_legacy(pkg), new_import_path(morg, repo, pkg)))
     return out
 
 

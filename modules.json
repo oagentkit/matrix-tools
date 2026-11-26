@@ -588,7 +588,7 @@
     "sideeffect",
     "checkpoint"
    ],
-   "agentNotes": "### 分层口径（v0.70 确立，ADR-0010）\n\n- **纯基础设施→oekit；工具/沙箱/执行安全→oagentkit（guardx/tools）；编排判据→本仓；装配/参考实现→goagent-runtime。** 按概念域分派，不按实现依赖分派。\n- 判定口诀：「这个包需要知道自己在给谁干活吗？」需要 → 编排域留本仓；对话域判据已上抛（roundguard→agent、budget/spill/offload→textx、pending/sessionref/memorypipe→promptx，v0.77.0）。\n- 本仓不 import 领域词表；门禁由自带 archcheck + architecture-policy.yaml 强制（策略先行：新依赖方向先改 policy 再写代码）。\n- 发版是**纯 git tag + 自有 releasecheck 门禁**，不走 matrix release.py；CHANGELOG 由 gen_changelogs.py 生成。\n- 2026-11-26 归属迁移：yi-nology → oagentkit org，module path 为 github.com/oagentkit/goagent-kernel（旧路径经 GitHub 重定向）。",
+   "agentNotes": "### 分层口径（v0.70 确立，ADR-0010）\n\n- **纯基础设施→oekit；工具/沙箱/执行安全→oagentkit（guardx/tools）；编排判据→本仓；装配/参考实现→goagent-runtime。** 按概念域分派，不按实现依赖分派。\n- 判定口诀：「这个包需要知道自己在给谁干活吗？」需要 → 编排域留本仓；对话域判据已上抛（roundguard→agent、budget/spill/offload→textx、pending/sessionref/memorypipe→promptx，v0.77.0）。\n- 本仓不 import 领域词表；门禁由自带 archcheck + architecture-policy.yaml 强制（策略先行：新依赖方向先改 policy 再写代码）。\n- 发版是**纯 git tag + 自有 releasecheck 门禁**，不走 matrix release.py；CHANGELOG 由 gen_changelogs.py 生成。\n- 2026-11-26 归属回迁：oagentkit → yi-nology org，module path 为 github.com/yi-nology/goagent-kernel（v0.80.0 起；v0.77.0-v0.79.0 的 oagentkit tag 只能经 oagentkit 路径消费）。",
    "loggingRule": "- 日志走 `oekit/logx`；编排事件优先走 `eventbus`（结构化、可投影），日志只留人读的判据结论。",
    "pkgDesc": {
     "contract": "编排引擎↔宿主状态的唯一边界（纯接口面，零实现）",
@@ -677,7 +677,7 @@
     "postgres",
     "sqlite"
    ],
-   "agentNotes": "### 判据单源纪律（ADR-0001/0002）\n\n- 判据全部来自 goagent-kernel 契约（sideeffect/taskboard/checkpoint/roundguard/eventbus），本仓**只做接线不另写第二套**：三套副作用闸实现（storage 内存/sqliteadapter/pgstore）都跑 kernel `sidetest` 共享套件。\n- **驱动边分包**：`storage` 纯判据零驱动（scripts/check-dep-edges.sh 门禁）；驱动只落在 sqliteadapter/pgstore。\n- **LLM SDK 边嵌套模块**：`bridge`（独立 go.mod）承载 llm/eino 适配器（llmchat/einotool），主 module 零 LLM SDK import（ADR-0003）；不用 bridge 的宿主依赖图里没有 eino。\n- 命名消歧：`oagentkit/runtime`（tier 0）是家族生命周期原语仓（hookx/hotplug/notifyx/pacer/progress）；本仓是装配层，`goagent-` 前缀即家族装配层约定。\n- 发版纯 git tag；2026-11-26 归属迁移：yi-nology → oagentkit org。",
+   "agentNotes": "### 判据单源纪律（ADR-0001/0002）\n\n- 判据全部来自 goagent-kernel 契约（sideeffect/taskboard/checkpoint/roundguard/eventbus），本仓**只做接线不另写第二套**：三套副作用闸实现（storage 内存/sqliteadapter/pgstore）都跑 kernel `sidetest` 共享套件。\n- **驱动边分包**：`storage` 纯判据零驱动（scripts/check-dep-edges.sh 门禁）；驱动只落在 sqliteadapter/pgstore。\n- **LLM SDK 边嵌套模块**：`bridge`（独立 go.mod）承载 llm/eino 适配器（llmchat/einotool），主 module 零 LLM SDK import（ADR-0003）；不用 bridge 的宿主依赖图里没有 eino。\n- 命名消歧：`oagentkit/runtime`（tier 0）是家族生命周期原语仓（hookx/hotplug/notifyx/pacer/progress）；本仓是装配层，`goagent-` 前缀即家族装配层约定。\n- 发版纯 git tag；2026-11-26 归属回迁：oagentkit → yi-nology org（v0.8.0 起；v0.7.0-v0.7.1 的 oagentkit tag 只能经 oagentkit 路径消费）。",
    "loggingRule": "- 日志走 `oekit/logx`；loop/cluster 的关键事件（审批挂起/接管/对账）经 `eventbus` 发结构化事件。",
    "pkgDesc": {
     "chat": "供应商中立模型窄接口（单方法非流式契约保底 + Delta 流式承载 + DeltaAggregator 归并器）",

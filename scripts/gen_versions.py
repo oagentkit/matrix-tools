@@ -216,6 +216,7 @@ def main() -> int:
     }
 
     missing_changelog: list[str] = []
+    dep_org = {x["repo"]: (x.get("org") or org) for x in data["modules"]}
     for m in data["modules"]:
         repo = m["repo"]
         nested = m.get("nestedModules", [])
@@ -238,14 +239,24 @@ def main() -> int:
                 entry["module"] = nested_owner[p]
             packages.append(entry)
 
+        # 单仓可迁出默认 org：url/依赖链接按各仓自己的 org 拼（goagent-kernel/runtime
+        # 在 yi-nology），否则机器可读矩阵会把下游指向旧 org 的模块路径。
+        morg = m.get("org") or org
+
+        def _dep_url(d: str) -> str | None:
+            if not org:
+                return None
+            dorg = dep_org.get(d, org)
+            return f"https://github.com/{dorg}/{d}"
+
         mod = {
             "repo": repo,
-            "url": f"https://github.com/{org}/{repo}" if org else None,
+            "url": f"https://github.com/{morg}/{repo}" if org else None,
             "tier": m["tier"],
-            "latest": repo_meta.latest_tag(org, repo) if (args.org and org) else None,
+            "latest": repo_meta.latest_tag(morg, repo) if (args.org and org) else None,
             "packages": packages,
             "matrixDeps": [
-                {"repo": d, "url": f"https://github.com/{org}/{d}" if org else None}
+                {"repo": d, "url": _dep_url(d)}
                 for d in sorted(m.get("dependsOn", []))
             ],
             "breakingIndex": build_breaking_index(args.root, args.org if args.org else org, repo),
@@ -256,8 +267,8 @@ def main() -> int:
             mod["nestedModules"] = [
                 {
                     "module": n["module"],
-                    "url": f"https://github.com/{org}/{repo}" if org else None,
-                    "latest": (repo_meta.nested_tag(org, repo, n["path"] + "/")
+                    "url": f"https://github.com/{morg}/{repo}" if org else None,
+                    "latest": (repo_meta.nested_tag(morg, repo, n["path"] + "/")
                                if (args.org and org) else None),
                     "packages": [{"pkg": n["path"], "importPath": n["module"]}],
                 }
