@@ -226,7 +226,7 @@ def main() -> int:
         for p in m["packages"]:
             entry = {
                 "pkg": p,
-                "importPath": new_import_path(org, repo, p) if org else None,
+                "importPath": new_import_path(m.get("org") or org, repo, p) if org else None,
                 # 旧路径里的包路径，供工具做机器可读的旧→新替换，不必解析脚本源码
                 # ⚠️ 常态是旧单仓路径（agentkit/<pkg>）；但**不是每个包都来自旧单仓**
                 #    （toolname 自 oekit/pkg 归位而来 ⇒ 旧单仓路径从未存在过，

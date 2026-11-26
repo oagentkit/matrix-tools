@@ -6491,236 +6491,236 @@
       "repo": "goagent-kernel",
       "url": "https://github.com/oagentkit/goagent-kernel",
       "tier": 4,
-      "latest": "v0.79.0",
+      "latest": "v0.80.0",
       "packages": [
         {
           "pkg": "archcheck",
-          "importPath": "github.com/oagentkit/goagent-kernel/archcheck",
+          "importPath": "github.com/yi-nology/goagent-kernel/archcheck",
           "fromLegacy": "agentkit/archcheck"
         },
         {
           "pkg": "backend",
-          "importPath": "github.com/oagentkit/goagent-kernel/backend",
+          "importPath": "github.com/yi-nology/goagent-kernel/backend",
           "fromLegacy": "agentkit/backend"
         },
         {
           "pkg": "checkpoint",
-          "importPath": "github.com/oagentkit/goagent-kernel/checkpoint",
+          "importPath": "github.com/yi-nology/goagent-kernel/checkpoint",
           "fromLegacy": "agentkit/checkpoint"
         },
         {
           "pkg": "commitgate",
-          "importPath": "github.com/oagentkit/goagent-kernel/commitgate",
+          "importPath": "github.com/yi-nology/goagent-kernel/commitgate",
           "fromLegacy": "agentkit/commitgate"
         },
         {
           "pkg": "contract",
-          "importPath": "github.com/oagentkit/goagent-kernel/contract",
+          "importPath": "github.com/yi-nology/goagent-kernel/contract",
           "fromLegacy": "agentkit/contract"
         },
         {
           "pkg": "controlplane",
-          "importPath": "github.com/oagentkit/goagent-kernel/controlplane",
+          "importPath": "github.com/yi-nology/goagent-kernel/controlplane",
           "fromLegacy": "agentkit/controlplane"
         },
         {
           "pkg": "coord",
-          "importPath": "github.com/oagentkit/goagent-kernel/coord",
+          "importPath": "github.com/yi-nology/goagent-kernel/coord",
           "fromLegacy": "agentkit/coord"
         },
         {
           "pkg": "cost",
-          "importPath": "github.com/oagentkit/goagent-kernel/cost",
+          "importPath": "github.com/yi-nology/goagent-kernel/cost",
           "fromLegacy": "agentkit/cost"
         },
         {
           "pkg": "deadline",
-          "importPath": "github.com/oagentkit/goagent-kernel/deadline",
+          "importPath": "github.com/yi-nology/goagent-kernel/deadline",
           "fromLegacy": "agentkit/deadline"
         },
         {
           "pkg": "delegate",
-          "importPath": "github.com/oagentkit/goagent-kernel/delegate",
+          "importPath": "github.com/yi-nology/goagent-kernel/delegate",
           "fromLegacy": "agentkit/delegate"
         },
         {
           "pkg": "delta",
-          "importPath": "github.com/oagentkit/goagent-kernel/delta",
+          "importPath": "github.com/yi-nology/goagent-kernel/delta",
           "fromLegacy": "agentkit/delta"
         },
         {
           "pkg": "dispatch",
-          "importPath": "github.com/oagentkit/goagent-kernel/dispatch",
+          "importPath": "github.com/yi-nology/goagent-kernel/dispatch",
           "fromLegacy": "agentkit/dispatch"
         },
         {
           "pkg": "drain",
-          "importPath": "github.com/oagentkit/goagent-kernel/drain",
+          "importPath": "github.com/yi-nology/goagent-kernel/drain",
           "fromLegacy": "agentkit/drain"
         },
         {
           "pkg": "egress",
-          "importPath": "github.com/oagentkit/goagent-kernel/egress",
+          "importPath": "github.com/yi-nology/goagent-kernel/egress",
           "fromLegacy": "agentkit/egress"
         },
         {
           "pkg": "eval",
-          "importPath": "github.com/oagentkit/goagent-kernel/eval",
+          "importPath": "github.com/yi-nology/goagent-kernel/eval",
           "fromLegacy": "agentkit/eval"
         },
         {
           "pkg": "eventbus",
-          "importPath": "github.com/oagentkit/goagent-kernel/eventbus",
+          "importPath": "github.com/yi-nology/goagent-kernel/eventbus",
           "fromLegacy": "agentkit/eventbus"
         },
         {
           "pkg": "finalize",
-          "importPath": "github.com/oagentkit/goagent-kernel/finalize",
+          "importPath": "github.com/yi-nology/goagent-kernel/finalize",
           "fromLegacy": "agentkit/finalize"
         },
         {
           "pkg": "gatecheck",
-          "importPath": "github.com/oagentkit/goagent-kernel/gatecheck",
+          "importPath": "github.com/yi-nology/goagent-kernel/gatecheck",
           "fromLegacy": "agentkit/gatecheck"
         },
         {
           "pkg": "guardset",
-          "importPath": "github.com/oagentkit/goagent-kernel/guardset",
+          "importPath": "github.com/yi-nology/goagent-kernel/guardset",
           "fromLegacy": "agentkit/guardset"
         },
         {
           "pkg": "handoff",
-          "importPath": "github.com/oagentkit/goagent-kernel/handoff",
+          "importPath": "github.com/yi-nology/goagent-kernel/handoff",
           "fromLegacy": "agentkit/handoff"
         },
         {
           "pkg": "hookengine",
-          "importPath": "github.com/oagentkit/goagent-kernel/hookengine",
+          "importPath": "github.com/yi-nology/goagent-kernel/hookengine",
           "fromLegacy": "agentkit/hookengine"
         },
         {
           "pkg": "invocation",
-          "importPath": "github.com/oagentkit/goagent-kernel/invocation",
+          "importPath": "github.com/yi-nology/goagent-kernel/invocation",
           "fromLegacy": "agentkit/invocation"
         },
         {
           "pkg": "invocation/invocationtest",
-          "importPath": "github.com/oagentkit/goagent-kernel/invocationtest",
+          "importPath": "github.com/yi-nology/goagent-kernel/invocationtest",
           "fromLegacy": "agentkit/invocation/invocationtest"
         },
         {
           "pkg": "metrics",
-          "importPath": "github.com/oagentkit/goagent-kernel/metrics",
+          "importPath": "github.com/yi-nology/goagent-kernel/metrics",
           "fromLegacy": "agentkit/metrics"
         },
         {
           "pkg": "ownership",
-          "importPath": "github.com/oagentkit/goagent-kernel/ownership",
+          "importPath": "github.com/yi-nology/goagent-kernel/ownership",
           "fromLegacy": "agentkit/ownership"
         },
         {
           "pkg": "preset",
-          "importPath": "github.com/oagentkit/goagent-kernel/preset",
+          "importPath": "github.com/yi-nology/goagent-kernel/preset",
           "fromLegacy": "agentkit/preset"
         },
         {
           "pkg": "protocol",
-          "importPath": "github.com/oagentkit/goagent-kernel/protocol",
+          "importPath": "github.com/yi-nology/goagent-kernel/protocol",
           "fromLegacy": "agentkit/protocol"
         },
         {
           "pkg": "ptc",
-          "importPath": "github.com/oagentkit/goagent-kernel/ptc",
+          "importPath": "github.com/yi-nology/goagent-kernel/ptc",
           "fromLegacy": "agentkit/ptc"
         },
         {
           "pkg": "raceprobe",
-          "importPath": "github.com/oagentkit/goagent-kernel/raceprobe",
+          "importPath": "github.com/yi-nology/goagent-kernel/raceprobe",
           "fromLegacy": "agentkit/raceprobe"
         },
         {
           "pkg": "reconcile",
-          "importPath": "github.com/oagentkit/goagent-kernel/reconcile",
+          "importPath": "github.com/yi-nology/goagent-kernel/reconcile",
           "fromLegacy": "agentkit/reconcile"
         },
         {
           "pkg": "retryplan",
-          "importPath": "github.com/oagentkit/goagent-kernel/retryplan",
+          "importPath": "github.com/yi-nology/goagent-kernel/retryplan",
           "fromLegacy": "agentkit/retryplan"
         },
         {
           "pkg": "scheduling",
-          "importPath": "github.com/oagentkit/goagent-kernel/scheduling",
+          "importPath": "github.com/yi-nology/goagent-kernel/scheduling",
           "fromLegacy": "agentkit/scheduling"
         },
         {
           "pkg": "sideeffect",
-          "importPath": "github.com/oagentkit/goagent-kernel/sideeffect",
+          "importPath": "github.com/yi-nology/goagent-kernel/sideeffect",
           "fromLegacy": "agentkit/sideeffect"
         },
         {
           "pkg": "sidetest",
-          "importPath": "github.com/oagentkit/goagent-kernel/sidetest",
+          "importPath": "github.com/yi-nology/goagent-kernel/sidetest",
           "fromLegacy": "agentkit/sidetest"
         },
         {
           "pkg": "skilldisclose",
-          "importPath": "github.com/oagentkit/goagent-kernel/skilldisclose",
+          "importPath": "github.com/yi-nology/goagent-kernel/skilldisclose",
           "fromLegacy": "agentkit/skilldisclose"
         },
         {
           "pkg": "statemachine",
-          "importPath": "github.com/oagentkit/goagent-kernel/statemachine",
+          "importPath": "github.com/yi-nology/goagent-kernel/statemachine",
           "fromLegacy": "agentkit/statemachine"
         },
         {
           "pkg": "steer",
-          "importPath": "github.com/oagentkit/goagent-kernel/steer",
+          "importPath": "github.com/yi-nology/goagent-kernel/steer",
           "fromLegacy": "agentkit/steer"
         },
         {
           "pkg": "taskboard",
-          "importPath": "github.com/oagentkit/goagent-kernel/taskboard",
+          "importPath": "github.com/yi-nology/goagent-kernel/taskboard",
           "fromLegacy": "agentkit/taskboard"
         },
         {
           "pkg": "taskboard/boardtest",
-          "importPath": "github.com/oagentkit/goagent-kernel/boardtest",
+          "importPath": "github.com/yi-nology/goagent-kernel/boardtest",
           "fromLegacy": "agentkit/taskboard/boardtest"
         },
         {
           "pkg": "tenant",
-          "importPath": "github.com/oagentkit/goagent-kernel/tenant",
+          "importPath": "github.com/yi-nology/goagent-kernel/tenant",
           "fromLegacy": "agentkit/tenant"
         },
         {
           "pkg": "tooldisclose",
-          "importPath": "github.com/oagentkit/goagent-kernel/tooldisclose",
+          "importPath": "github.com/yi-nology/goagent-kernel/tooldisclose",
           "fromLegacy": "agentkit/tooldisclose"
         },
         {
           "pkg": "trajectory",
-          "importPath": "github.com/oagentkit/goagent-kernel/trajectory",
+          "importPath": "github.com/yi-nology/goagent-kernel/trajectory",
           "fromLegacy": "agentkit/trajectory"
         },
         {
           "pkg": "watchdog",
-          "importPath": "github.com/oagentkit/goagent-kernel/watchdog",
+          "importPath": "github.com/yi-nology/goagent-kernel/watchdog",
           "fromLegacy": "agentkit/watchdog"
         },
         {
           "pkg": "worker",
-          "importPath": "github.com/oagentkit/goagent-kernel/worker",
+          "importPath": "github.com/yi-nology/goagent-kernel/worker",
           "fromLegacy": "agentkit/worker"
         },
         {
           "pkg": "worktree",
-          "importPath": "github.com/oagentkit/goagent-kernel/worktree",
+          "importPath": "github.com/yi-nology/goagent-kernel/worktree",
           "fromLegacy": "agentkit/worktree"
         },
         {
           "pkg": "worker/faultmatrix",
-          "importPath": "github.com/oagentkit/goagent-kernel/faultmatrix",
+          "importPath": "github.com/yi-nology/goagent-kernel/faultmatrix",
           "fromLegacy": "agentkit/worker/faultmatrix"
         }
       ],
@@ -6743,6 +6743,13 @@
         }
       ],
       "breakingIndex": [
+        {
+          "version": "v0.80.0",
+          "date": "2026-11-26",
+          "title": "重构(boundary)!：org 归属回迁——module path 变回 yi-nology（v0.80.0 破窗）",
+          "summary": "重构(boundary)!：org 归属回迁——module path 变回 yi-nology（v0.80.0 破窗）",
+          "detail": "仓库已迁回 yi-nology（kernel#520 公告）。module path：\ngithub.com/oagentkit/goagent-kernel → github.com/yi-nology/goagent-kernel。\n- 全仓自身路径重写（代码/配置/文档/生成器，236 处）；依赖的 oagentkit/* 不动\n  （依赖方向与自身位置无关）；\n- cmd/docsync 安装行正则同步回 yi-nology；\n- ADR-0010 追加勘误段（org 归属部分撤销；七包上抛/分层口径仍有效；\n  v0.77-79 的 oagentkit tag 只能经 oagentkit 路径消费）；\n- gofmt 全量重排（import 路径变长）。\nmake check 全绿（fmt/vet/lint/test/archcheck/docsync/apilifecheck/ledgercheck/\nhygiene/releasecheck 跳过非 tag）。v0.80.0 起回 yi-nology 路径。\n\n- 文档(boundary)：worker/taskboard 对称分界声明（#507 #509 裁决结案）\n\n* docs(boundary): worker/taskboard 包头对称分界声明——双源裁决结案（#507 #509）\n- worker：与 oagentkit/queue/worker.Pool 的分界（编排任务驱动 vs DB 即队列\n  数据面驱动；交集仅薄骨架，底座 loop/async 已单源；依赖方向互禁不抽共享）；\n- taskboard：与 queue.LeaseStore 的租约分界（fence 规则同源同义，差异在\n  作用域与铸造位置；登记 TaskQueue 任务面无 fence 的第三形态；distlock\n  候选实测无 fencing 能力，关闭）。\n裁决依据：双源取证报告（2026-11-26）。Fixes #507 Fixes #509\n* docs: 工程底座行数重算（分界声明 +33 行）65,344→65,377\n* docs(boundary): #508 hookengine 分界声明 + #510 两包留任注记 + #495 台账清偿\n- hookengine 包头：与 runtime/hookx 的对称分界（判定面 vs 传输协议；\n  fail-closed 缺省相反是刻意的不得对齐；互不 import；重审触发条件）；\n- architecture-policy notes：tooldisclose 留 kernel（invoke 缝已缝好/Stable/\n  零消费，mcpkit 拒下沉裁定有效）；skilldisclose 留 kernel 不与 skillkit\n  合并（挑选判定 vs 投递面不同层，接线单向）——结清 ADR-0010 挂账项；\n- DISTRIBUTED-EVOLUTION 台账 #495 行「仍开着」→「已合入 (#518)」（ledgercheck）。\n取证：双源裁决报告（2026-11-26）。Fixes #508 Fixes #510\n* docs: 台账 #495 散文行同步清偿 + 工程底座行数重算（hookengine 注释 +19）65,377→65,396\n* docs(ledger): #495 状态列 #N 形态 + 散文引用 PR #518 前缀——ledgercheck 双判据口径对齐（146 单号对账通过）\n* fix(apilifecheck): hookengine 包注释空行切断 doc 块——decl 与 package 间空行使 File.Doc 丢标记行\n* docs: 工程底座行数重算（删 doc 块空行 -1）65,396→65,395\n\n- 文档：补「本仓依赖的矩阵内仓」声明——矩阵 README↔go.mod 对账门禁（4 个直接矩阵内依赖）\n- 文档：矩阵层位声明行——tier 4（编排判据层）\n\n矩阵 verify_repo_tiers 门禁要求每仓 AGENTS.md 有「矩阵分层：**tier N（层名）**」\n规范行、README.md 有「—— oagentkit 模块矩阵 **tier N**（层名…）」定位行，\n否则认不出声明（黄 → --fail-on-yellow 红）。modules.json tiers 映射同步补 4/5。"
+        },
         {
           "version": "v0.77.0",
           "date": "2026-11-26",
@@ -8107,76 +8114,76 @@
       "repo": "goagent-runtime",
       "url": "https://github.com/oagentkit/goagent-runtime",
       "tier": 5,
-      "latest": "v0.7.1",
+      "latest": "v0.8.0",
       "packages": [
         {
           "pkg": "chat",
-          "importPath": "github.com/oagentkit/goagent-runtime/chat",
+          "importPath": "github.com/yi-nology/goagent-runtime/chat",
           "fromLegacy": "agentkit/chat"
         },
         {
           "pkg": "pipeline",
-          "importPath": "github.com/oagentkit/goagent-runtime/pipeline",
+          "importPath": "github.com/yi-nology/goagent-runtime/pipeline",
           "fromLegacy": "agentkit/pipeline"
         },
         {
           "pkg": "agentloop",
-          "importPath": "github.com/oagentkit/goagent-runtime/agentloop",
+          "importPath": "github.com/yi-nology/goagent-runtime/agentloop",
           "fromLegacy": "agentkit/agentloop"
         },
         {
           "pkg": "adjudicate",
-          "importPath": "github.com/oagentkit/goagent-runtime/adjudicate",
+          "importPath": "github.com/yi-nology/goagent-runtime/adjudicate",
           "fromLegacy": "agentkit/adjudicate"
         },
         {
           "pkg": "storage",
-          "importPath": "github.com/oagentkit/goagent-runtime/storage",
+          "importPath": "github.com/yi-nology/goagent-runtime/storage",
           "fromLegacy": "agentkit/storage"
         },
         {
           "pkg": "storage/sqlitestore",
-          "importPath": "github.com/oagentkit/goagent-runtime/sqlitestore",
+          "importPath": "github.com/yi-nology/goagent-runtime/sqlitestore",
           "fromLegacy": "agentkit/storage/sqlitestore"
         },
         {
           "pkg": "sqliteadapter",
-          "importPath": "github.com/oagentkit/goagent-runtime/sqliteadapter",
+          "importPath": "github.com/yi-nology/goagent-runtime/sqliteadapter",
           "fromLegacy": "agentkit/sqliteadapter"
         },
         {
           "pkg": "pgstore",
-          "importPath": "github.com/oagentkit/goagent-runtime/pgstore",
+          "importPath": "github.com/yi-nology/goagent-runtime/pgstore",
           "fromLegacy": "agentkit/pgstore"
         },
         {
           "pkg": "runtime",
-          "importPath": "github.com/oagentkit/goagent-runtime/runtime",
+          "importPath": "github.com/yi-nology/goagent-runtime/runtime",
           "fromLegacy": "agentkit/runtime"
         },
         {
           "pkg": "cluster",
-          "importPath": "github.com/oagentkit/goagent-runtime/cluster",
+          "importPath": "github.com/yi-nology/goagent-runtime/cluster",
           "fromLegacy": "agentkit/cluster"
         },
         {
           "pkg": "observe",
-          "importPath": "github.com/oagentkit/goagent-runtime/observe",
+          "importPath": "github.com/yi-nology/goagent-runtime/observe",
           "fromLegacy": "agentkit/observe"
         },
         {
           "pkg": "containerbackend",
-          "importPath": "github.com/oagentkit/goagent-runtime/containerbackend",
+          "importPath": "github.com/yi-nology/goagent-runtime/containerbackend",
           "fromLegacy": "agentkit/containerbackend"
         },
         {
           "pkg": "bridge/llmchat",
-          "importPath": "github.com/oagentkit/goagent-runtime/llmchat",
+          "importPath": "github.com/yi-nology/goagent-runtime/llmchat",
           "fromLegacy": "agentkit/bridge/llmchat"
         },
         {
           "pkg": "bridge/einotool",
-          "importPath": "github.com/oagentkit/goagent-runtime/einotool",
+          "importPath": "github.com/yi-nology/goagent-runtime/einotool",
           "fromLegacy": "agentkit/bridge/einotool"
         }
       ],
@@ -8194,9 +8201,18 @@
           "url": "https://github.com/oagentkit/guardx"
         }
       ],
-      "breakingIndex": [],
+      "breakingIndex": [
+        {
+          "version": "v0.8.0",
+          "date": "2026-11-26",
+          "title": "重构(boundary)!：org 归属回迁——module path 变回 yi-nology（v0.8.0）",
+          "summary": "重构(boundary)!：org 归属回迁——module path 变回 yi-nology（v0.8.0）",
+          "detail": "* refactor(boundary)!: org 归属回迁——module path 变回 yi-nology（v0.8.0 破窗）\n仓库已迁回 yi-nology（runtime#34 公告）。module path：\ngithub.com/oagentkit/goagent-runtime → github.com/yi-nology/goagent-runtime；\nbridge 嵌套模块同步（.../bridge）。\n- 全仓自身路径重写（代码/配置/文档/生成页，含对 kernel 的引用回改）；\n- 生成页重生成（16 产物同步）；\n- build/vet 全绿（scratch replace 指向本地已回改 kernel 验证；\n  runtime tag 等 kernel v0.80.0 先行后发）。\nv0.8.0 起回 yi-nology 路径；v0.7.0-0.7.1 的 oagentkit tag 只能经 oagentkit\n路径消费（go.mod 声明即事实）。\n* build: kernel 地板追到 v0.80.0（回迁后 yi-nology path 首版）\n* build: kernelFloor → v0.80.0 + 生成页重生成\n\n- 构建：依赖地板追到最新——goagent-kernel v0.79.0（v0.78.0 之后 kernel 发了地板收口版）\n\n- 文档：补「本仓依赖的矩阵内仓」声明——矩阵 README↔go.mod 对账门禁（agent/goagent-kernel/guardx）\n- 文档：矩阵层位声明行——tier 5（装配层）\n\n矩阵 verify_repo_tiers 门禁要求 AGENTS.md「矩阵分层：**tier N（层名）**」\n规范行 + README.md「—— oagentkit 模块矩阵 **tier N**（层名…）」定位行。\nmodules.json tiers 映射同步补 4/5。"
+        }
+      ],
       "depFloor": [
         "github.com/jackc/pgx/v5",
+        "github.com/yi-nology/goagent-kernel",
         "modernc.org/sqlite",
         "github.com/dustin/go-humanize",
         "github.com/google/uuid",
@@ -8321,6 +8337,17 @@
               "dep": "github.com/oekit/pkg",
               "from": "v0.61.4",
               "to": "v0.61.5"
+            }
+          ]
+        },
+        {
+          "version": "v0.8.0",
+          "date": "2026-11-26",
+          "bumps": [
+            {
+              "dep": "github.com/yi-nology/goagent-kernel",
+              "from": null,
+              "to": "v0.80.0"
             }
           ]
         }
