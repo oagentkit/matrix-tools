@@ -356,6 +356,14 @@ def expected_body_lines(c: dict, subject_text: str) -> list[str]:
         s = ln.strip()
         if not s:
             continue
+        # 源行含 U+FFFD = commit message 里的坏字节（该字的信息在写进 message 时
+        # 就已丢失）。呈现层按 releasecheck 纪律 2 **必须**修复（CHANGELOG 不得含
+        # U+FFFD；先例 331ec2c、kernel 台账第 45 轮），修复后该行与源字面必然不同
+        # ——呈现层恢复了源里没有的字，字面比对永远红 ⇒ 损坏源行不作字面要求。
+        # 呈现层整行删没删由 releasecheck 与人工把关；本门禁只管「源里完好的
+        # 内容不许丢」（完好行的判据一个字都没松）。
+        if "\ufffd" in s:
+            continue
         if _is_echo(s, subject_text, c.get("subject", "")):
             continue
         key = _collapse(s)
@@ -1117,6 +1125,32 @@ def selftest() -> int:
         check("全角冒号: 换成别的条目必须报出漏条目", len(rep2.missing_entries), 1)
         check("全角冒号: 换条目时漏的仍是那条",
               "动作层结论" in (rep2.missing_entries[0] if rep2.missing_entries else ""), True)
+
+        # ⑪ 坏字节源行（U+FFFD）：源 message 带坏字节时，呈现层按 releasecheck
+        #    纪律 2 必须把字修回来（kernel 台账第 45 轮的「同一个上下文窗口」/
+        #    「自动派生签名」两处实测）⇒ 修复后的行与源字面必然不同 ⇒ 不得报
+        #    「正文缺失」。反证：**条目级**判据对该提交仍然生效（不是整单放空）。
+        repo3 = tmp / "demo3"
+        repo3.mkdir()
+        _git(repo3, "init", "-q", "-b", "main")
+        _git(repo3, "config", "user.email", "t@example.com")
+        _git(repo3, "config", "user.name", "T")
+        (repo3 / "f.go").write_text("package f\n")
+        _git(repo3, "add", "-A")
+        _git(repo3, "commit", "-q", "-m",
+             "feat(delta): 坏字节样本\n\n自动派\ufffd\ufffd\ufffd签名与必填标注")
+        _git(repo3, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+        good3 = ("# demo3 CHANGELOG\n\n## [v0.1.0] — 2026-01-01\n\n"
+                 "- feat(delta)：坏字节样本\n\n自动派生签名与必填标注\n")
+        _write_changelog(repo3, good3)
+        rep3 = check_repo(repo3, "demo3")
+        check("坏字节: 呈现层修复后的行不报正文缺失", len(rep3.missing_body), 0)
+        check("坏字节: 基线无问题", rep3.problems, 0)
+        # 反证：条目删掉仍必须报（坏字节只豁免该 body 行，不是放空整个提交）
+        bad3 = good3.replace("- feat(delta)：坏字节样本\n", "")
+        _write_changelog(repo3, bad3)
+        rep3 = check_repo(repo3, "demo3")
+        check("坏字节: 条目级判据仍生效", len(rep3.missing_entries), 1)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1130,6 +1164,7 @@ def selftest() -> int:
     print("✅ verify_changelog_coverage 自测通过"
           "（漏条目 / 正文缺失 / 零信息量不误报 / 类型不符 / 缺版本段 / 更丰富不误红 / "
           "无待发版段不误红 / subject 回声不误红 / 全角冒号 other 类不误报 / "
+          "坏字节源行修复后不误红且条目级仍生效 / "
           "范围口径 repo 模式只查本仓且定时仍全矩阵）")
     return 0
 
