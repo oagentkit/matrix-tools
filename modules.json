@@ -1,832 +1,833 @@
 {
- "$comment": "agentkit → 模块矩阵机器可读定义。拆分判据：框架耦合度 + 依赖地板 + 消费方集合。自底向上分层，tier 小的先发版。结构变更后重跑 scripts/verify_import_direction.py 校验（层级方向 + 依赖声明对账）。ghDescription 与 topics 是建仓元数据的单一数据源，由 scripts/create_repos.py 消费。 | 层位判据（2026-10-19 起按此执行）：**层 = 依赖地板**——tier0/tier1 不得有重量级第三方直接依赖；带 eino/milvus/mcp-go/驱动的仓一律 tier2 起。门禁：scripts/verify_dep_floor.py。 | 分层表有三处载体（profile README / 各模块仓 AGENTS.md+README.md / 门面 agentkit README.md），三处都必须与本文件的 tier 一致——门禁分别是 verify_profile_tiers.py（.github 仓）、verify_repo_tiers.py、verify_facade_tier_table.py。 | compatShells 是 Deprecated 转发壳的机器可读登记（oagentkit/toolgate#93 把兼容期变成可判定数据）：repo=壳所在仓，path=仓内壳目录（版本号 > until 的 tag 携带该目录即应判红），module=旧 import 路径（壳删除后按旧路径 import 即编译失败），until=兼容期截止版本，removedIn=实际删除版本；人读的搬迁映射页见 migration.md。",
- "schemaVersion": 1,
- "sourceModule": "git.enjoye.top/enjoydream/agentkit",
- "defaultOrg": "oagentkit",
- "importRoot": "github.com/{org}",
- "pathScheme": "github.com/{org}/{repo}/{pkg}  —— 包名一律保留，只加模块前缀，import 改写是纯前缀映射",
- "tiers": {
-  "0": "基础层：零重量级第三方地板（纯 stdlib / 第一方基座），可被零依赖核心安全依赖",
-  "1": "能力层：依赖 tier0，仍不引重量级第三方 SDK",
-  "2": "集成层：依赖 tier0/tier1 + 重第三方地板（eino / mcp-go / milvus / 驱动…）",
-  "3": "编排层：依赖 llm 等 tier2 门面",
-  "4": "编排判据层：依赖 guardx/toolgate 等 tier0~2，编排判据单源（ADR-0010）",
-  "5": "装配层：依赖 goagent-kernel + agent，只接线不另写判据"
- },
- "modules": [
-  {
-   "repo": "textx",
-   "tier": 0,
-   "desc": "文本/差异/会话/报告纯函数集",
-   "oekitAnalog": "pkg",
-   "packages": [
-    "textutil",
-    "diffx",
-    "codeintel",
-    "compact",
-    "conversation",
-    "reportutil",
-    "gotyped",
-    "budget",
-    "spill",
-    "offload"
-   ],
-   "heavyDeps": [],
-   "ghDescription": "文本与差异处理——增量切片/unified diff 解析/代码符号索引/会话滚动窗口与压缩/评审报告指纹",
-   "topics": [
-    "go",
-    "text",
-    "diff",
-    "codereview",
-    "session"
-   ],
-   "agentNotes": "- 保持**零仓内依赖的纯函数形态**：能用返回值表达的错误不要用回调里的副作用。\n- 涉及 token / 预算的判定（如 `compact` 的三轨 auto-compact）必须有边界测试，\n  阈值不得写死在实现里。\n- **本仓含嵌套子模块** `gotyped`（go/packages 重依赖隔离，根模块 tier 0 地板零抬升，import 路径不变但版本线独立）。主模块必须保持零外部依赖——import 根模块任一包不该把 x/tools 拖进下游模块图。",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
-   "pkgDesc": {
-    "textutil": "按行边界把文本切成 ≤target(rune) 的增量片，凑片不跨行",
-    "diffx": "unified diff 解析纯函数",
-    "codeintel": "轻量代码符号索引",
-    "compact": "会话压缩策略面：auto-compact 判定（阈值/熔断/token 三轨）+ 压缩/恢复",
-    "conversation": "多轮会话历史原语：滚动窗口切分、历史渲染",
-    "reportutil": "评审/评测报告后处理：severity 归并、sampling、stats、Fingerprint 精确指纹",
-    "gotyped": "go/types 精确调用边抽取——嵌套模块隔离 go/packages 重依赖（x/tools 等），根模块 tier 0 地板零抬升；产出 caller→callee 结构化边，替换词法面同名假边"
-   },
-   "nestedModules": [
+  "$comment": "agentkit → 模块矩阵机器可读定义。拆分判据：框架耦合度 + 依赖地板 + 消费方集合。自底向上分层，tier 小的先发版。结构变更后重跑 scripts/verify_import_direction.py 校验（层级方向 + 依赖声明对账）。ghDescription 与 topics 是建仓元数据的单一数据源，由 scripts/create_repos.py 消费。 | 层位判据（2026-10-19 起按此执行）：**层 = 依赖地板**——tier0/tier1 不得有重量级第三方直接依赖；带 eino/milvus/mcp-go/驱动的仓一律 tier2 起。门禁：scripts/verify_dep_floor.py。 | 分层表有三处载体（profile README / 各模块仓 AGENTS.md+README.md / 门面 agentkit README.md），三处都必须与本文件的 tier 一致——门禁分别是 verify_profile_tiers.py（.github 仓）、verify_repo_tiers.py、verify_facade_tier_table.py。 | compatShells 是 Deprecated 转发壳的机器可读登记（oagentkit/toolgate#93 把兼容期变成可判定数据）：repo=壳所在仓，path=仓内壳目录（版本号 > until 的 tag 携带该目录即应判红），module=旧 import 路径（壳删除后按旧路径 import 即编译失败），until=兼容期截止版本，removedIn=实际删除版本；人读的搬迁映射页见 migration.md。",
+  "schemaVersion": 1,
+  "sourceModule": "git.enjoye.top/enjoydream/agentkit",
+  "defaultOrg": "oagentkit",
+  "importRoot": "github.com/{org}",
+  "pathScheme": "github.com/{org}/{repo}/{pkg}  —— 包名一律保留，只加模块前缀，import 改写是纯前缀映射",
+  "tiers": {
+    "0": "基础层：零重量级第三方地板（纯 stdlib / 第一方基座），可被零依赖核心安全依赖",
+    "1": "能力层：依赖 tier0，仍不引重量级第三方 SDK",
+    "2": "集成层：依赖 tier0/tier1 + 重第三方地板（eino / mcp-go / milvus / 驱动…）",
+    "3": "编排层：依赖 llm 等 tier2 门面",
+    "4": "编排判据层：依赖 guardx/toolgate 等 tier0~2，编排判据单源（ADR-0010）",
+    "5": "装配层：依赖 goagent-kernel + agent，只接线不另写判据"
+  },
+  "modules": [
     {
-     "path": "gotyped",
-     "module": "github.com/oagentkit/textx/gotyped",
-     "desc": "go/types 精确调用边抽取——从主模块拆出：依赖 golang.org/x/tools/go/packages 重依赖，import 路径不变，版本线独立（嵌套模块打 gotyped/vX.Y.Z tag）"
+      "repo": "textx",
+      "tier": 0,
+      "desc": "文本/差异/会话/报告纯函数集",
+      "oekitAnalog": "pkg",
+      "packages": [
+        "textutil",
+        "diffx",
+        "codeintel",
+        "compact",
+        "conversation",
+        "reportutil",
+        "gotyped",
+        "budget",
+        "spill",
+        "offload"
+      ],
+      "heavyDeps": [],
+      "ghDescription": "文本与差异处理——增量切片/unified diff 解析/代码符号索引/会话滚动窗口与压缩/评审报告指纹",
+      "topics": [
+        "go",
+        "text",
+        "diff",
+        "codereview",
+        "session"
+      ],
+      "agentNotes": "- 保持**零仓内依赖的纯函数形态**：能用返回值表达的错误不要用回调里的副作用。\n- 涉及 token / 预算的判定（如 `compact` 的三轨 auto-compact）必须有边界测试，\n  阈值不得写死在实现里。\n- **本仓含嵌套子模块** `gotyped`（go/packages 重依赖隔离，根模块 tier 0 地板零抬升，import 路径不变但版本线独立）。主模块必须保持零外部依赖——import 根模块任一包不该把 x/tools 拖进下游模块图。",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "textutil": "按行边界把文本切成 ≤target(rune) 的增量片，凑片不跨行",
+        "diffx": "unified diff 解析纯函数",
+        "codeintel": "轻量代码符号索引",
+        "compact": "会话压缩策略面：auto-compact 判定（阈值/熔断/token 三轨）+ 压缩/恢复",
+        "conversation": "多轮会话历史原语：滚动窗口切分、历史渲染",
+        "reportutil": "评审/评测报告后处理：severity 归并、sampling、stats、Fingerprint 精确指纹",
+        "gotyped": "go/types 精确调用边抽取——嵌套模块隔离 go/packages 重依赖（x/tools 等），根模块 tier 0 地板零抬升；产出 caller→callee 结构化边，替换词法面同名假边"
+      },
+      "nestedModules": [
+        {
+          "path": "gotyped",
+          "module": "github.com/oagentkit/textx/gotyped",
+          "desc": "go/types 精确调用边抽取——从主模块拆出：依赖 golang.org/x/tools/go/packages 重依赖，import 路径不变，版本线独立（嵌套模块打 gotyped/vX.Y.Z tag）"
+        }
+      ]
+    },
+    {
+      "repo": "runtime",
+      "tier": 0,
+      "desc": "agent 进程运行时——流式节控/泛型事件总线/子进程环境/热插拔/钩子",
+      "oekitAnalog": "无直接对应；并发主体已上移到 oekit/concurrency",
+      "packages": [
+        "pacer",
+        "progress",
+        "procx",
+        "hotplug",
+        "hookx",
+        "notifyx",
+        "notifyx/hook"
+      ],
+      "heavyDeps": [],
+      "hardConstraint": "procx 不能并入 tools —— 它同时被 tier1 的 mcpkit/promptx 使用，并入会造成 tier1→tier2 分层倒挂",
+      "ghDescription": "Agent 进程运行时——LLM token 流式节控/泛型事件总线/子进程最小环境/运行时热插拔/生命周期钩子",
+      "topics": [
+        "go",
+        "runtime",
+        "agent",
+        "stream",
+        "eventbus"
+      ],
+      "agentNotes": "### `progress` 撞名但语义相反（最容易踩）\n\n- `oekit/concurrency/progress` = 长任务**阶段进度追踪器**（`NewTracker`/`PhaseConfig`/`PhaseStatus`）\n- 本仓 `progress` = 泛型**事件总线**（`NewBus[T]`，发布订阅 + 慢消费者丢弃计数）\n\n**任何按包名对齐的迁移/退役判断都会做错。对齐必须按语义。**\n\n### `pacer` ≠ `ratelimit`\n\n`oekit/concurrency/ratelimit` 是**准入控制**（允许发/不允许发），本仓 `pacer` 是**聚合缓冲**\n（攒够窗口再发）。不是同一语义，不要互相替代。\n\n### `procx` 的分层硬约束\n\n`procx` 被 tier1 的 `mcpkit`、`promptx` 使用，**必须留在 tier0**。\n把它并入 tier2 的 `tools` 会造成 tier1→tier2 分层倒挂，违反矩阵不变量。\n\n### `breaker` 已退役（完整退役纪律）\n\n本仓不再有熔断实现。`breaker` 已迁往 `oekit/concurrency/breaker`，\n由 `llm` 仓按模型名分桶后转发调用。\n\n**退役是有前置条件的，不能跳步**——`oekit/concurrency` 的 breaker 缺代绑定、\n探测时限、独立冷却、计数型触发时，库形态消费方只能并行维护第二套熔断器。\n需求链 `#17 → #19 → #20 → #25` 全部落地后才有等价能力。\n\n四步顺序，颠倒任何一步都是构建断裂或语义丢失：\n\n1. **上游先补能力** —— `#17` v0.9.0 → `#19`/`#20` v0.12.0 → `#25` v0.13.0\n2. **消费方改依赖** —— `llm` 从 `oagentkit/runtime` 摘出，改依赖上游\n   （2026-10-18 02:08）\n3. **删本包实现** —— 本仓 `refactor!` 移除 breaker（2026-10-18 02:07）\n4. **删本地兜底** —— 上游 `#25` 修好后，`llm/breaker.go` 里的计数型准入否决段\n   已删除（2026-10-18 06:01），熔断语义全部委托上游\n\n**不要在本仓重新实现熔断。** 需要熔断能力就用 `oekit/concurrency/breaker`。\n",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "pacer": "流式增量节流器：LLM token 分片攒够窗口再发，避免逐条发布洪泛事件通道",
+        "progress": "泛型事件总线 `Bus[T]`（发布订阅 + 慢消费者丢弃计数）",
+        "procx": "子进程最小环境构造 `ChildEnv` + 执行封装，供 spawn 外部进程的包共用",
+        "hotplug": "运行时插拔与原子热替换：`Plugboard` 启停视图 + `Holder[T]` 快照持有点",
+        "hookx": "外部 hook 拦截协议：在关键拦截点派生子进程，stdin 喂 JSON",
+        "notifyx": "生命周期事件通知出口（notify sink）：归一化事件契约可靠外发（webhook/HTTP），Emit 永不阻塞主流程，丢弃计数 + OnDrop 可观测",
+        "notifyx/hook": "挂点侧官方 shim：平台 shell 协议载荷归一化为 notifyx.Payload，映射表/ack 轮询/跨进程节流单源，cmd/notifyx-hook 供 hooks 一行接入"
+      }
+    },
+    {
+      "repo": "guardx",
+      "tier": 0,
+      "desc": "脱敏/出口围栏/权限判定/沙箱档位/跨进程协议",
+      "oekitAnalog": "core",
+      "packages": [
+        "fence",
+        "logredact",
+        "egress",
+        "egressproxy",
+        "permgate",
+        "injectband",
+        "invoke",
+        "toolfail",
+        "sandbox",
+        "wire",
+        "netguard",
+        "rbac",
+        "ticket"
+      ],
+      "heavyDeps": [],
+      "ghDescription": "安全围栏——凭据脱敏/URL 出口 SSRF 防护/工具许可判定链/提示注入卫生（tier0 零外部依赖底座）",
+      "topics": [
+        "go",
+        "security",
+        "redaction",
+        "ssrf",
+        "audit"
+      ],
+      "agentNotes": "### 安全语义不可弱化（本仓的全部价值所在）\n\n- **`egress`** —— 任何由 LLM 决定的 URL 出站前必须过判定。**不得新增「信任 LLM 给出的 URL」这类豁免分支** —— 那是提示词注入的直接落点。\n- **`permgate`** —— 判定默认值必须是**拒绝**，白名单显式开。不得用「未配置即放行」。\n- **`bashguard`** —— 静态解析不执行。**不得改成 exec 执行后再判断**。\n- **`fence`** —— 任何把 LLM 产出或用户输入拼进 prompt 的路径都必须过 `EscapeUntrusted`，不得为可读性绕过。\n- **`toolfail`** —— **不可分类 = 不可重试**（保守缺省）：判据缺失时两种误判成本不对称，误判可重试会把一次失败放大成 N 次，还可能重复施加副作用。**重发安全与重试价值是两个正交维度**：超时值得重试但服务端可能已执行，原样重发即重复施加副作用——只看「可重试」的调用方必然在这两种误判里选一个。\n- **`sandbox`** —— **选不到满足档位的后端即拒绝，绝不降级**：降级会让「宿主声明的强度」与「实际执行的强度」之间没有信号，档位整套机制就成了装饰。**档位序即强弱**，要求档位是下限，满足下限者取最弱（够用且最省）。\n- 安全相关路径**禁止吞 error** —— 判定失败必须阻断而非放行。\n- **本仓必须保持零第三方依赖**（允许第一方基座 github.com/oekit/*；不是「一条 require 都没有」）。Go 的依赖面按 **module** 结算：只 import logredact 的下游，模块图里也会多出本仓的整条 require。带重依赖的能力属于重仓——`audit` 已迁至 `obs/audit`（依赖 oekit/logx），`bashguard` 已迁至 `tools/bashguard`（依赖 mvdan.cc/sh）。\n- **`audit` / `bashguard` 已迁出**（v0.7.0）：`github.com/oagentkit/guardx/audit` → `github.com/oagentkit/obs/audit`，`github.com/oagentkit/guardx/bashguard` → `github.com/oagentkit/tools/bashguard`。旧路径的嵌套 module tag 仍在但**已冻结**，不再有后续版本。\n- **`invoke` 自 `toolgate/invoke` 迁入**（v0.8.0）：它自身只 import `oekit/pkg/errors`，却在 eino 重仓里让消费方白吃 34 个第三方模块。框架无关的原语属于零依赖底座。\n- **`netguard` / `ticket` 自 `goagent-kernel` 迁入**（v0.29.0）：出站守卫与一次性授权票据属**执行安全域**，\n  与 egress / permgate / rbac / fence 同族。判据与导出面逐字不变（迁入即等价）；\n  netguard 的 IP 判定仍**单源 egress**，与 oekit/pkg/urlguard 的已知差异由本仓用例钉住。\n- **`wire`** —— 跨进程调用协议。**两条通道必须是两条连接**（共用一条则「这帧是 Start 还是 Response」只能靠猜，两者 JSON 形状不同，猜错就是「字段读成了另一个意思」）。**失败分类不得退化成自由字符串**（父侧要靠它分「可重试」与「永久拒绝」）。**取消传播靠管道关闭**——管道关闭本身就是最强的取消信号，不需要单独的取消帧。",
+      "loggingRule": "- 本仓**不引日志依赖**（tier 0 零外部依赖底座）。审计留痕在 `github.com/oagentkit/obs/audit`（那里引 logx）。\n- 日志必须经 `logredact` 打码后再落，**不得直接打印原始载荷**。",
+      "pkgDesc": {
+        "fence": "中和不可信文本（LLM 产出、用户输入）中的 markdown 结构，防提示词注入",
+        "logredact": "日志/审计载荷凭据脱敏：连接串/URL/头中的凭据落盘前打码",
+        "egress": "出口围栏：LLM 可控 URL 的字面量层 SSRF 防护",
+        "egressproxy": "进程级出口强制：只监听回环的本地 HTTP 代理（含 CONNECT 隧道），「声明了受限出口」的兑现件——子进程出站流量经目标准入（白/黑名单 + IP 围栏 + 解析钉住）后才能出网",
+        "permgate": "工具调用许可判定链：谁在什么模式下对什么输入得到什么许可",
+        "injectband": "系统带外注入的防伪包裹通道：给系统提示打来源标记，并转义 body 内伪造的同形标签（含大小写/空白变体），防身份伪造。与 fence 互补——fence 封数据侧越权，injectband 封系统侧伪造",
+        "invoke": "工具调用统一契约 + 不可绕过的调用链（构造即保证）；框架无关，不携带 eino / policy 类型",
+        "toolfail": "工具调用失败的分类与处置契约：类别 → 可重试性/退避/需人工/重发安全/面向模型的处置指引。不可分类即不可重试；重发安全与重试价值是两个正交维度",
+        "sandbox": "执行沙箱的档位语义与后端协议：Level（none/process/os/machine，序即强弱）+ Provider + Registry。要求档位是下限，选不到满足者即拒绝、绝不降级",
+        "wire": "跨进程调用协议：帧格式（4B 大端长度 + JSON 负载，不用行分隔——工具输出可能含换行）+ 两条通道（启动通道 Starter/Runner 一次执行、调用通道 Server/Client N 次工具调用）；失败分类跨进程同源（取 toolfail 的分类）、预算权威在父侧、在途调用有硬上限、取消传播靠管道关闭",
+        "netguard": "出站 URL 守卫（SSRF 防护）：凡服务端代发 HTTP 的出口统一判定；IP 策略依据单源 egress，不私补网段表",
+        "rbac": "角色能力矩阵机制：角色→能力集查表、只读档由矩阵推导、授权面指纹；词表是宿主数据，本包只收机制",
+        "ticket": "一次性短时授权票据：签发/消费/过期/用途绑定，消费即作废（用过即焚）；机制与策略分离"
+      }
+    },
+    {
+      "repo": "toolname",
+      "tier": 0,
+      "desc": "工具名 → 程序内标识符的单一真相（规范名判定 + 规整）",
+      "oekitAnalog": "pkg/toolname（曾内嵌 oekit/pkg：v0.58.2 标记 Deprecated、v0.59.0 删除）",
+      "packages": [
+        "toolname"
+      ],
+      "heavyDeps": [],
+      "ghDescription": "工具名净化原语——工具名→程序内标识符的单一真相（JS 标识符判定 + 规整），装配两侧必须逐字一致",
+      "topics": [
+        "go",
+        "tools",
+        "naming",
+        "llm"
+      ],
+      "agentNotes": "- **保持零依赖纯函数形态**：本包被 tier0 核心与工具治理链共同依赖，地板抬高会波及全矩阵。\n- `Normalize` **不保证唯一**（`get-logs` 与 `get_logs` 同得 `get_logs`），撞名是否允许由调用方判定——本包只提供规则，不做集合级判定。\n- 规整规则必须**两侧一致**：生产侧（形态派生）与消费侧（绑定挂载）共用同一套字符规则；改一边不改另一边 ⇒ 契约静默断掉（症状是「工具在目录里，程序就是调不通」）。",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "toolname": "工具名 → 程序内标识符：IsJSIdent 判定原样可用、Normalize 给出规整名（数字开头补 _、前导非法字符跳过、已开始后记 _）"
+      }
+    },
+    {
+      "repo": "queue",
+      "tier": 2,
+      "desc": "DB 即队列 + Postgres 选主 Lease",
+      "oekitAnalog": "k8s",
+      "packages": [
+        "worker",
+        "worker/pglease",
+        "sqllease",
+        "sqlqueue",
+        "outbox"
+      ],
+      "heavyDeps": [
+        "github.com/lib/pq",
+        "modernc.org/sqlite"
+      ],
+      "ghDescription": "DB 即队列 + Postgres Lease 选主——任务表驱动的工作池与主备单活回调",
+      "topics": [
+        "go",
+        "queue",
+        "postgres",
+        "leader-election",
+        "worker"
+      ],
+      "agentNotes": "### 选主语义（正确性红线）\n\n- **`LeaseStore` 必须保证「同一时刻至多一个 leader」。** 条件 UPSERT 不能退化成「先查后写」——\n  那是竞态，不是选主。\n- 租约续期失败/进程失联后，其他实例**必须**能在租约过期后接管。\n- 租约丢失属必须上报事件，`OnStoppedLeading` 要真的执行清理，不得静默吞 error。\n\n### lib/pq 是测试依赖\n\n`github.com/lib/pq` 仅用于 `pglease` 的 DSN 门控集成测试驱动，\n**生产代码禁止 import**。仓内零生产依赖是刻意设计，不要引入。\n集成测试在未设 `postgres://…` DSN 时自动跳过。\n- **层位 t0 → t2**：带 `lib/pq` 驱动地板（PG 选主 Lease 的集成测试也要驱动）——属集成层，不是基础层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-queue\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- leader 变更、租约丢失属关键事件，kv 字段须带 lease 名与实例 id。",
+      "pkgDesc": {
+        "worker": "任务表驱动的工作池（DB 即队列）+ `LeaseStore`/`TaskQueue` 存储接口与参考实现 re-export",
+        "worker/pglease": "`worker.LeaseStore` 的 PostgreSQL 实现（条件 UPSERT 一行即成）",
+        "sqllease": "`worker.LeaseStore` 的 database/sql 参考实现（PG/MySQL/SQLite 三方言）",
+        "sqlqueue": "`worker.TaskQueue` 的 database/sql 参考实现（三方言）",
+        "outbox": "统一副作用 outbox 队列：宿主按 kind 注册退避规格与处理器，机制面只认规格不认业务（与 sqlqueue 的任务认领划清边界）"
+      }
+    },
+    {
+      "repo": "promptx",
+      "tier": 1,
+      "desc": "system prompt 分段组装/运行中转向/文件读后写一致性",
+      "oekitAnalog": "core",
+      "packages": [
+        "sysprompt",
+        "steering",
+        "filestate",
+        "pending",
+        "sessionref",
+        "memorypipe"
+      ],
+      "heavyDeps": [],
+      "dependsOn": [
+        "textx",
+        "guardx"
+      ],
+      "ghDescription": "提示词上下文——system prompt 分段组装/运行中转向队列/文件读后写一致性状态",
+      "topics": [
+        "go",
+        "prompt",
+        "context",
+        "llm"
+      ],
+      "agentNotes": "- `sysprompt` 的 Section 化收集必须区分 **stable / dynamic** 两类：\n  stable 段进缓存前缀，dynamic 段每轮重算。混淆会导致缓存命中率归零。",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "sysprompt": "system prompt 分段组装：Section 化收集 → stable/dynamic 分离",
+        "steering": "运行中转向队列：turn 执行中用户插入的新输入按投递语义生效",
+        "filestate": "读后写一致性状态：编辑/覆写文件前必须读过，且读后文件未被改动"
+      }
+    },
+    {
+      "repo": "obs",
+      "tier": 2,
+      "desc": "敏感操作的结构化审计留痕",
+      "oekitAnalog": "metrics",
+      "packages": [
+        "audit"
+      ],
+      "heavyDeps": [],
+      "dependsOn": [
+        "guardx"
+      ],
+      "ghDescription": "敏感操作审计——结构化审计留痕，字段值统一经 logredact 打码（不引 eino 框架）",
+      "topics": [
+        "go",
+        "audit",
+        "security",
+        "redact"
+      ],
+      "agentNotes": "### 定位（v0.10.0 起）：audit 单包仓\n\n本仓只剩 `audit` 一个包：**执行面的操作留痕**（谁做了什么、参数是什么、结果如何），\n字段值统一经 `guardx/logredact` 打码。\n\n- **Langfuse 只读客户端已迁往 `llm/obsx`**（读写同域，oagentkit/obs#129）：\n  观测/追踪侧的能力（eino callbacks 适配、OTel generation 发射出口）本就在 llm 仓的\n  `obsx`，读端并入后「Langfuse 上有什么、是谁写进去的」一处答全。本仓不再承担观测面。\n- **同层依赖禁令**：`obs` 与 `llm` 同为 tier 2 ⇒ `obs` 不得依赖 `llm` ⇒ 本仓**不能**\n  留一个转发到 `llm/obsx` 的兼容壳 ⇒ `langfuse` 直接删除，下游改 import 路径。\n- `audit` 自 `guardx/audit` 迁入（v0.8.0）：它依赖 `oekit/logx`，而 guardx 是 tier 0\n  零依赖底层，依赖面按 module 结算。包名与职责不变，只是 import 路径变了。\n- **层位仍为 tier 2**：层位标签的原始理由（带 `eino` 地板）随 langfuse 迁出已不成立，\n  但层位是**声明面**（仓内 AGENTS.md / README.md 与 modules.json 必须一致），\n  改层位是独立决策，不在本仓降级动作内顺带做。\n",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-obs\")`。\n- **观测数据不得携带凭据原文**，落盘前过 `guardx/logredact`。\n- `audit` 包的 logger 为 nil 时回退 `logx.NewAuditLogger`（级别锁 `Info`、不受 `LOG_LEVEL` 降级、SetLevel 到 WARN/ERROR 被拒）—— 这是刻意设计，别改回普通 logger。",
+      "pkgDesc": {
+        "audit": "敏感操作的结构化审计留痕（自 guardx/audit 迁入）：字段值统一经 logredact 打码"
+      }
+    },
+    {
+      "repo": "skillkit",
+      "tier": 2,
+      "desc": "SKILL.md 渐进披露 + 领域包契约 + 装配血缘",
+      "oekitAnalog": "pack",
+      "packages": [
+        "skill",
+        "pack",
+        "lineage"
+      ],
+      "heavyDeps": [
+        "github.com/cloudwego/eino",
+        "gopkg.in/yaml.v3",
+        "github.com/Masterminds/semver/v3"
+      ],
+      "dependsOn": [
+        "textx",
+        "guardx"
+      ],
+      "ghDescription": "技能与资产契约——SKILL.md 渐进披露/领域包布局契约/装配血缘图",
+      "topics": [
+        "go",
+        "skill",
+        "prompt",
+        "provenance"
+      ],
+      "agentNotes": "- SKILL.md 的**渐进披露**是硬要求：元数据常驻、正文按需加载。\n  不得为了「一次读全」把正文塞进元数据 —— 那会让常驻上下文无谓膨胀。\n- `pack` 的目录布局是契约面，改动布局等于 breaking，必须升 major。\n- **层位 t1 → t2**：带 `eino` 地板（skill 的工具决策用 eino tool schema）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "skill": "SKILL.md 渐进披露：元数据常驻、正文按需加载；多根技能库与版本判定",
+        "pack": "领域包（expert/pack 目录布局）的契约面",
+        "lineage": "装配血缘：expert → skill → MCP server 三类资产节点的依赖图"
+      }
+    },
+    {
+      "repo": "mcpkit",
+      "tier": 2,
+      "desc": "MCP 客户端/工具池/建连单飞",
+      "oekitAnalog": "registry",
+      "packages": [
+        "mcp",
+        "iface"
+      ],
+      "heavyDeps": [
+        "github.com/mark3labs/mcp-go",
+        "github.com/eino-contrib/jsonschema",
+        "github.com/cloudwego/eino"
+      ],
+      "ghDescription": "MCP 工具池——客户端封装/工具目录/建连单飞/自愈与租约管理",
+      "topics": [
+        "go",
+        "mcp",
+        "tools",
+        "model-context-protocol"
+      ],
+      "agentNotes": "- **建连必须单飞。** 同一 server 的并发建连要合并为一次，\n  不得每次 `Allow` 都新建连接。\n- **等待方的 ctx 取消要各自生效**，不能干等 leader。\n- 工具注解（`mcp.ToolAnnotation`）归一时，`nil` 视为规范缺省，**不得当成「无限制」**。\n- **层位 t1 → t2**：带 `eino` + `mcp-go` 地板（MCP 客户端本身绑框架）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
+      "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
+      "pkgDesc": {
+        "mcp": "MCP 客户端/工具池：工具目录、建连单飞、自愈与租约管理",
+        "iface": "MCP 工具调用面的协议中立声明：失败分类学（ErrorKind）、结果分类载体（ClassifiedError）与工具能力接口（RawNamer/OutputSchemer）——只依赖标准库，供不要 mcp-go 的消费方使用"
+      }
+    },
+    {
+      "repo": "rag",
+      "tier": 2,
+      "desc": "知识检索与本体层——向量化/混合召回/重排 + 实体关系本体契约",
+      "oekitAnalog": "data",
+      "packages": [
+        "knowledge/rag",
+        "wiki",
+        "wiki/fsstore",
+        "milvus",
+        "ontology"
+      ],
+      "heavyDeps": [
+        "github.com/cloudwego/eino",
+        "github.com/milvus-io/milvus-sdk-go/v2",
+        "gopkg.in/yaml.v3"
+      ],
+      "dependsOn": [
+        "textx"
+      ],
+      "ghDescription": "知识检索与本体层——向量化/混合召回/重排（向量后端可插拔，独立子包隔离 sdk 地板）+ 实体关系本体契约与判据",
+      "topics": [
+        "go",
+        "rag",
+        "retrieval",
+        "vector-search",
+        "milvus",
+        "ontology",
+        "knowledge-graph"
+      ],
+      "agentNotes": "- **单路召回失败不得降级为 `(nil, nil)`。** 混合召回中任一路 panic 或失败\n  要作为该路失败参与裁决；全部路失败时**返回 panic 错误而非静默空结果**。\n- 向量后端可插拔，新增后端不得改 `Embedding`/`Retriever` 接口形状 —— 那会让所有后端同时 breaking。\n- **层位 t1 → t2**：带 `eino` + `milvus-sdk` 地板（向量化/混合召回本身绑 SDK）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。\n- **向量后端只住 `rag/milvus` 子包**（oagentkit/rag#156）：根包不得 import 向量 sdk——否则任何 import 根包的调用方都会链接整条传递链（cockroachdb/errors、sentry-go、gogo/protobuf）。`make dep-guard` 是这条不变量的机判（反向验证过：注入即红）。\n- **`rag/ontology` 是本体层的契约与判据面**（oagentkit/rag#145）：只定义 Schema/Triple/Validate/Store，**不做抽取**（提示词与领域强相关，留宿主）、**不建图数据库**（Store 接口 + 内存参考实现）；与 `wiki` 分工——wiki 页是「叙事」、ontology 是「结构」。",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-rag\")`。\n  - 索引/检索路径不得把原始文档内容整段落日志。",
+      "pkgDesc": {
+        "knowledge/rag": "知识检索：Embedding 接口、向量后端可插拔、混合召回与重排",
+        "wiki": "持久 wiki 的写入面：页面 upsert/删除/乐观版本 + 增量摄取与结构检查；不做检索（读侧索引由宿主交给 Indexer 接缝）",
+        "wiki/fsstore": "wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换",
+        "milvus": "向量后端（Milvus）实现：rag/milvus 子包——**只有它链向量 sdk**，根包零向量依赖（本地索引/混合召回调用方不必拖进 milvus 传递链）",
+        "ontology": "实体/关系本体层：Schema/Type/Field 与 Triple 契约 + Validate 判据面 + Store 接口（内存参考实现）——不做抽取、不建图库，契约与领域无关"
+      }
+    },
+    {
+      "repo": "llm",
+      "tier": 2,
+      "desc": "模型客户端/降级链/预算/成本/阶段路由/调用观测",
+      "oekitAnalog": "httpx",
+      "packages": [
+        "llm",
+        "llm/port",
+        "llm/wrap",
+        "llm/llmtest",
+        "obsx",
+        "llm/decision"
+      ],
+      "heavyDeps": [
+        "github.com/cloudwego/eino",
+        "github.com/cloudwego/eino-ext/components/model/openai",
+        "github.com/meguminnnnnnnnn/go-openai",
+        "go.opentelemetry.io/otel",
+        "go.opentelemetry.io/otel/sdk",
+        "go.opentelemetry.io/otel/trace"
+      ],
+      "dependsOn": [
+        "textx"
+      ],
+      "externalNote": "breaker 退役后改依赖 github.com/oekit/concurrency/breaker",
+      "ghDescription": "模型客户端——多模型降级链/任务级预算/成本记账/分阶段路由/LLM 调用观测",
+      "topics": [
+        "go",
+        "llm",
+        "openai",
+        "cost-control",
+        "fallback",
+        "langfuse",
+        "observability"
+      ],
+      "agentNotes": "- **降级链的每一跳都必须记录原因**（成本/限流/超时/内容策略），不得静默换模型。\n- **预算判定必须在调用前**，不能事后扣减 —— 事后扣减等于没有预算。\n- **panic 不能只转成 error。** `RunSafe*` 系列会把 panic 收进全局 `PanicHandler`\n  （库不接 `SetPanicHandler`，默认 `log.Printf`）且返回的 `panic: X` 无哨兵类型，\n  无法挂回领域上下文。用 `RunSafeErr` 前先确认丢掉的结构化上下文可接受。\n- **`obsx` 自 `obs/obsx` 迁入**（v0.12.0）：它绑 eino 框架（callbacks 适配层），而本仓早已 import 它做成本记账与阶段打标——同一关注点，两个包住一起更顺。\n- **Langfuse 只读客户端自 `obs/langfuse` 迁入**（oagentkit/obs#129）：读端与写端同域——写端（OTel generation span 发射出口）本就在本仓 `obsx`；读端并入后「Langfuse 上有什么、是谁写进去的」一处答全。原 `obs/langfuse` 路径已删除（breaking），符号名逐字未变，下游只改 import 行。",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-llm\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- 模型请求/响应落日志前必须脱敏（凭据与用户数据都可能出现在 prompt 里）。",
+      "pkgDesc": {
+        "llm": "模型客户端：多模型降级链、任务级预算、成本记账、分阶段路由、主备切换",
+        "llm/port": "窄接口层（不引 eino）：Complete(ctx,req) 形态的降级链/预算/成本记账；无 eino 的内核（预算/成本/价表/熔断）由根包下沉而来，两条路径共用同一份实现",
+        "llm/wrap": "调用包装与限流适配",
+        "llm/llmtest": "模型层契约测试套件",
+        "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）＋ Langfuse Public API 只读客户端（自 obs/langfuse 迁入，读写同域）",
+        "llm/decision": "System One 协议判定面客户端（非自回归判定模型）：choice/score/noul 三原语 + 校准置信口径（本地算，两端同义）"
+      }
+    },
+    {
+      "repo": "toolgate",
+      "tier": 2,
+      "desc": "工具优先级/并发调度/操作审计门/不可绕过的调用链",
+      "oekitAnalog": "middleware",
+      "packages": [
+        "toolprior",
+        "toolsched",
+        "policy"
+      ],
+      "heavyDeps": [
+        "github.com/cloudwego/eino",
+        "gopkg.in/yaml.v3"
+      ],
+      "dependsOn": [
+        "guardx",
+        "mcpkit"
+      ],
+      "ghDescription": "工具治理——优先级三层约束/注解驱动并发调度/操作审计门/构造期不可绕过的工具调用链",
+      "topics": [
+        "go",
+        "tools",
+        "governance",
+        "scheduling",
+        "policy"
+      ],
+      "agentNotes": "- 优先级三层约束是**收紧**语义：上层只能进一步限制，**不得放宽**下层已设的限制。\n- 并发调度的去重键必须包含全部影响结果的参数，否则会错误合并不等价调用。\n- **`invoke` 已迁至 `github.com/oagentkit/guardx/invoke`**（v0.12.0）：框架无关的原语不该被本仓的 eino 地板拖住。`policy` 改为依赖 guardx/invoke（tier2 → tier0，方向合法）。",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-toolgate\")`。\n- 被拒的工具调用属审计事件，字段需带工具名、调用者、拒绝原因。",
+      "pkgDesc": {
+        "toolprior": "工具优先级三层约束（收紧语义，下层已设的限制不得放宽）",
+        "toolsched": "注解驱动的工具并发调度与去重",
+        "policy": "操作审计门：敏感工具调用的策略判定"
+      }
+    },
+    {
+      "repo": "tools",
+      "tier": 2,
+      "desc": "CLI 编码 agent 统一调用/公开检索/git 沙箱/SAST 扫描/Shell 静态裁决",
+      "oekitAnalog": "kitex-examples",
+      "packages": [
+        "acpx",
+        "websearch",
+        "workcopy",
+        "sast",
+        "bashguard",
+        "bgjob",
+        "cmdpolicy"
+      ],
+      "heavyDeps": [
+        "github.com/cloudwego/eino",
+        "mvdan.cc/sh/v3"
+      ],
+      "dependsOn": [
+        "textx",
+        "guardx"
+      ],
+      "ghDescription": "外部工具接入——CLI 编码 agent 统一调用/公开资料检索/git 工作副本沙箱/确定性 SAST 扫描/Shell 命令静态裁决",
+      "topics": [
+        "go",
+        "tools",
+        "git",
+        "sast",
+        "search"
+      ],
+      "agentNotes": "- **CLI 编码 agent 调用必须隔离环境**（用 `runtime.ChildEnv` 构造最小环境），\n  不得继承完整宿主环境 —— 凭据泄漏面。\n- `workcopy` 的 git 操作必须限制在沙箱目录内，`EnsureMergeBase` 失败要显式报错，\n  不得跳过继续。\n- SAST 扫描是**确定性前置扫描**，不执行被扫代码。\n- **`bashguard` 自 `guardx/bashguard` 迁入**（v0.10.0）：它依赖 `mvdan.cc/sh/v3`（真 shell AST 解析），而 guardx 是 tier 0 零依赖底层。语义不变（静态解析、不执行命令），只是 import 路径变了。",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-tools\")`。\n- 子进程输出落日志前过 `guardx/logredact` —— 外部 CLI 的输出不可信。",
+      "pkgDesc": {
+        "acpx": "CLI 编码 agent 统一调用（claude / codex / gemini / kimi / mcode 等）",
+        "websearch": "公开资料检索抽象，接口可插拔（缺省 SearXNG 自建实例）",
+        "workcopy": "Git 工作副本沙箱：隔离环境 + merge-base 校验",
+        "sast": "确定性 SAST 前置扫描（不执行被扫代码）",
+        "bashguard": "Shell 命令静态风险裁决（自 guardx/bashguard 迁入）：经真 shell AST 判定只读性，不执行命令",
+        "bgjob": "远程后台作业 marker 协议原语：经宿主既有 SSH 会话起「脱离会话的长任务」，退出码走 marker 文件做终态探测与收尾（tools#106）",
+        "cmdpolicy": "命令级放行裁决与事实面：命令解析后判定放行/拒绝，裁决与事实同仓；只收机制，业务词表由宿主注入"
+      }
+    },
+    {
+      "repo": "agent",
+      "tier": 3,
+      "desc": "ReAct 运行样板/反思循环/意图路由/多专家黑板/派发守卫/澄清",
+      "oekitAnalog": "workflow",
+      "packages": [
+        "agentrun",
+        "reflection",
+        "router",
+        "blackboard",
+        "dispatch",
+        "clarify",
+        "roundguard"
+      ],
+      "heavyDeps": [
+        "github.com/cloudwego/eino",
+        "github.com/cloudwego/eino-ext/components/model/openai",
+        "gopkg.in/yaml.v3"
+      ],
+      "dependsOn": [
+        "llm",
+        "textx"
+      ],
+      "ghDescription": "Agent 编排——ReAct 运行样板/计划先行/反思循环/意图路由/多专家黑板/派发守卫",
+      "topics": [
+        "go",
+        "agent",
+        "orchestration",
+        "workflow",
+        "react"
+      ],
+      "agentNotes": "- **编排层不得直连底层实现。** 所有能力经 `llm`/`mcpkit`/`toolgate` 等门面进入，\n  不得绕过门面直接调 provider/MCP client。\n- 反思循环与黑板协作必须有**深度上限与终止条件**，防止无限循环。\n- 派发守卫的 allow 矩阵是白名单，默认拒绝；并有**自派发拒绝**（防止无限递归）。",
+      "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-agent\")`。\n- 面向用户的最终输出落日志前过 `guardx/fence` 的不可信文本中和。",
+      "pkgDesc": {
+        "agentrun": "ReAct 运行样板与计划先行（PlanAndExecute）编排",
+        "reflection": "反思循环",
+        "router": "显式意图路由",
+        "blackboard": "无中心多专家协作黑板",
+        "dispatch": "通用派发守卫：allow 矩阵 + 深度上限 + 自派发拒绝",
+        "clarify": "澄清与标准化词表内核"
+      }
+    },
+    {
+      "repo": "goagent-kernel",
+      "tier": 4,
+      "desc": "多智能体编排判据层——状态机/副作用闸/续跑/介入/事件面的确定性机制",
+      "packages": [
+        "archcheck",
+        "backend",
+        "checkpoint",
+        "commitgate",
+        "contract",
+        "controlplane",
+        "coord",
+        "cost",
+        "deadline",
+        "delegate",
+        "delta",
+        "dispatch",
+        "drain",
+        "egress",
+        "eval",
+        "eventbus",
+        "finalize",
+        "gatecheck",
+        "guardset",
+        "handoff",
+        "hookengine",
+        "invocation",
+        "invocation/invocationtest",
+        "metrics",
+        "ownership",
+        "preset",
+        "protocol",
+        "ptc",
+        "raceprobe",
+        "reconcile",
+        "retryplan",
+        "scheduling",
+        "sideeffect",
+        "sidetest",
+        "skilldisclose",
+        "statemachine",
+        "steer",
+        "taskboard",
+        "taskboard/boardtest",
+        "tenant",
+        "tooldisclose",
+        "trajectory",
+        "watchdog",
+        "worker",
+        "worktree",
+        "worker/faultmatrix"
+      ],
+      "heavyDeps": [
+        "github.com/dop251/goja",
+        "github.com/santhosh-tekuri/jsonschema/v6",
+        "golang.org/x/tools",
+        "gopkg.in/yaml.v3"
+      ],
+      "ghDescription": "多智能体编排通用内核：编排是代码，LLM 只做单环节——确定性编排的机制面（报告协议/状态机/事件总线/副作用闸/续跑契约/介入面），不认识任何领域概念",
+      "topics": [
+        "go",
+        "agent",
+        "orchestration",
+        "sideeffect",
+        "checkpoint"
+      ],
+      "agentNotes": "### 分层口径（v0.70 确立，ADR-0010）\n\n- **纯基础设施→oekit；工具/沙箱/执行安全→oagentkit（guardx/tools）；编排判据→本仓；装配/参考实现→goagent-runtime。** 按概念域分派，不按实现依赖分派。\n- 判定口诀：「这个包需要知道自己在给谁干活吗？」需要 → 编排域留本仓；对话域判据已上抛（roundguard→agent、budget/spill/offload→textx、pending/sessionref/memorypipe→promptx，v0.77.0）。\n- 本仓不 import 领域词表；门禁由自带 archcheck + architecture-policy.yaml 强制（策略先行：新依赖方向先改 policy 再写代码）。\n- 发版是**纯 git tag + 自有 releasecheck 门禁**，不走 matrix release.py；CHANGELOG 由 gen_changelogs.py 生成。\n- 2026-11-26 归属回迁：oagentkit → yi-nology org，module path 为 github.com/yi-nology/goagent-kernel（v0.80.0 起；v0.77.0-v0.79.0 的 oagentkit tag 只能经 oagentkit 路径消费）。",
+      "loggingRule": "- 日志走 `oekit/logx`；编排事件优先走 `eventbus`（结构化、可投影），日志只留人读的判据结论。",
+      "pkgDesc": {
+        "contract": "编排引擎↔宿主状态的唯一边界（纯接口面，零实现）",
+        "statemachine": "环节状态机：条件迁移的纯函数件",
+        "protocol": "统一报告协议：Report 契约 + 五级容错解析 + 白名单校验 + Markdown 渲染",
+        "eventbus": "进程内有损广播 + durable 发布面 + event-tail 补灌（Store 由宿主实现）",
+        "checkpoint": "编排续跑契约：进度快照 + CAS + 「续跑而非重放」恢复判定",
+        "commitgate": "环节终态独占提交闸（凭令牌放闸/释放）",
+        "sideeffect": "副作用「至多一次」跨进程契约：幂等键 + 租约 + 栅栏令牌 + 结果未知态",
+        "sidetest": "sideeffect.Store 共享契约测试套件（宿主存储实现跑同一套断言）",
+        "taskboard": "多 agent 任务板：DAG 依赖 + 认领租约 + 接管代次（boardtest 契约套件随行）",
+        "worker": "任务驱动循环：注册→心跳→领取→续期→恢复→退出",
+        "controlplane": "介入契约：任务查看/运行状态/失败诊断/人工介入 + Store 原子提交",
+        "invocation": "工具调用账本：崩溃后调用身份存续（planned/failed 终态）",
+        "scheduling": "Agent 调度判据面：优先级/加权公平/配额/背压（纯函数，不做队列不做执行）",
+        "dispatch": "改派失败面：三档分类 + 两级判定 + 改派环（可达性归上游 agent/dispatch）",
+        "ptc": "程序化工具编排沙箱：模型写程序→VM 执行→经 bindings 调宿主工具（三重预算）",
+        "tooldisclose": "渐进式工具披露：确定性打分检索换完整 schema + 两类失败二分执行门禁",
+        "guardset": "守卫装配契约：多守卫合成一条拒绝（接上游 guardx/invoke）",
+        "egress": "出口策略：三档单调可比 + 兑现判据 + 强度（declared/enforced 分开）",
+        "gatecheck": "审批层×沙箱层联合判据（两层都同意才放行）",
+        "preset": "具名不可变组合件（egress+gatecheck 预设）",
+        "backend": "任务式执行后端契约（EgressEnforcer/Capable/Spec）",
+        "trajectory": "事件→轨迹行的投影判据（实测/估算不混用）",
+        "watchdog": "被动配对不变量监视（只告警不裁决）",
+        "drain": "优雅排水：轮 ctx 与根 ctx 取消脱钩 + 在途轮收敛",
+        "delta": "增量节流的编排层：(kind,iteration) 键控 + 确定性收口（底座=runtime/pacer）",
+        "retryplan": "重试处置决策：幂等键重放 vs 原样重发的编排级合成（判据=上游 toolfail）",
+        "deadline": "会话级墙钟锚点（首轮认领写一次、续跑轮沿用）",
+        "finalize": "中止→终态四分路由",
+        "steer": "运行中接管五件套",
+        "handoff": "跨进程交接契约（交接点/幂等键/回执地址/时限四问）",
+        "delegate": "异构委托契约面",
+        "ownership": "跨区域所有权权威（提交栅栏纯判据）",
+        "coord": "Board/Store 适配形态约定（控制面/集群面共用）",
+        "tenant": "多租户判据面：隔离/配额/权限上下文（数据面归宿主）",
+        "cost": "运行成本治理口径面",
+        "metrics": "内核指标口径契约面（名称/类型/维度/基数上界单一来源）",
+        "eval": "录制/重放/差异（轨迹回放判定）",
+        "reconcile": "启动对账/归因收敛",
+        "raceprobe": "race 门禁失败形态判定（纯函数层）",
+        "hookengine": "hook 匹配/超时/fail-closed 裁决判据（传输协议归上游 runtime/hookx）",
+        "skilldisclose": "技能披露三信号确定性挑选（与 skillkit/skill 邻接）",
+        "worktree": "工作区冲突判据（声明面）",
+        "archcheck": "架构门禁执行体（可被宿主复用：policy 声明面→逐条判定）",
+        "worker/faultmatrix": "故障注入矩阵本体（NetworkPolicy/PG HA 等真环境判据；CI 提供环境后由宿主测试入口执行）"
+      },
+      "dependsOn": [
+        "guardx",
+        "runtime",
+        "toolgate",
+        "toolname"
+      ],
+      "oekitAnalog": "workflow",
+      "org": "yi-nology"
+    },
+    {
+      "repo": "goagent-runtime",
+      "tier": 5,
+      "desc": "Agent 运行时装配层——把 goagent-kernel 判据装配成业务可直接用的 runtime",
+      "packages": [
+        "chat",
+        "pipeline",
+        "agentloop",
+        "adjudicate",
+        "storage",
+        "storage/sqlitestore",
+        "sqliteadapter",
+        "pgstore",
+        "runtime",
+        "cluster",
+        "observe",
+        "containerbackend",
+        "bridge/llmchat",
+        "bridge/einotool",
+        "trace"
+      ],
+      "heavyDeps": [
+        "github.com/jackc/pgx/v5",
+        "modernc.org/sqlite"
+      ],
+      "ghDescription": "Agent 运行时装配层：把 goagent-kernel 的确定性机制装配成业务方可直接用的 runtime（Loop/Pipeline/存储/事件接线与默认口径）",
+      "topics": [
+        "go",
+        "agent-runtime",
+        "agentloop",
+        "postgres",
+        "sqlite"
+      ],
+      "agentNotes": "### 判据单源纪律（ADR-0001/0002）\n\n- 判据全部来自 goagent-kernel 契约（sideeffect/taskboard/checkpoint/roundguard/eventbus），本仓**只做接线不另写第二套**：三套副作用闸实现（storage 内存/sqliteadapter/pgstore）都跑 kernel `sidetest` 共享套件。\n- **驱动边分包**：`storage` 纯判据零驱动（scripts/check-dep-edges.sh 门禁）；驱动只落在 sqliteadapter/pgstore。\n- **LLM SDK 边嵌套模块**：`bridge`（独立 go.mod）承载 llm/eino 适配器（llmchat/einotool），主 module 零 LLM SDK import（ADR-0003）；不用 bridge 的宿主依赖图里没有 eino。\n- 命名消歧：`oagentkit/runtime`（tier 0）是家族生命周期原语仓（hookx/hotplug/notifyx/pacer/progress）；本仓是装配层，`goagent-` 前缀即家族装配层约定。\n- 发版纯 git tag；2026-11-26 归属回迁：oagentkit → yi-nology org（v0.8.0 起；v0.7.0-v0.7.1 的 oagentkit tag 只能经 oagentkit 路径消费）。",
+      "loggingRule": "- 日志走 `oekit/logx`；loop/cluster 的关键事件（审批挂起/接管/对账）经 `eventbus` 发结构化事件。",
+      "pkgDesc": {
+        "chat": "供应商中立模型窄接口（单方法非流式契约保底 + Delta 流式承载 + DeltaAggregator 归并器）",
+        "pipeline": "工具注册与副作用施加映射（幂等键/资源互斥/重试安全声明 → kernel sideeffect）",
+        "agentloop": "可恢复回合循环：预算→模型→审批→施加→Joint 联合提交→账本续跑",
+        "adjudicate": "副作用未知态的周期裁决框架（枚举→grace→Resolver 链→kernel Runner.Reconcile）",
+        "storage": "存储判据面 Provider 聚合契约 + 内存实现（零驱动边）",
+        "storage/sqlitestore": "standalone 形态 SQLite Provider 绑定（驱动边只在此包）",
+        "sqliteadapter": "SQLite(WAL) 参考实现：11 面统一门面（kernel 契约套件同源）",
+        "pgstore": "PostgreSQL 参考实现：11 面统一门面 + Outbox 事件面 + SIGKILL 故障恢复 e2e",
+        "runtime": "模板装配（NewEmbedded 内存 / NewStandalone SQLite）",
+        "cluster": "多副本模板装配（PG + worker 池：认领/租约/接管代次/跨副本事件面）",
+        "observe": "eventbus → 宿主回调薄适配",
+        "containerbackend": "容器执行后端参考实现（Docker/K8s Job）——宿主抄它不 import 它",
+        "bridge/llmchat": "钦定适配器：oagentkit/llm → chat.Model（嵌套模块，LLM SDK 边只在 bridge）",
+        "bridge/einotool": "钦定适配器：eino InvokableTool → pipeline.Tool（副作用闸字段不猜）"
+      },
+      "dependsOn": [
+        "agent",
+        "goagent-kernel",
+        "guardx"
+      ],
+      "oekitAnalog": "bootstrap",
+      "org": "yi-nology"
     }
-   ]
-  },
-  {
-   "repo": "runtime",
-   "tier": 0,
-   "desc": "agent 进程运行时——流式节控/泛型事件总线/子进程环境/热插拔/钩子",
-   "oekitAnalog": "无直接对应；并发主体已上移到 oekit/concurrency",
-   "packages": [
-    "pacer",
-    "progress",
-    "procx",
-    "hotplug",
-    "hookx",
-    "notifyx",
-    "notifyx/hook"
-   ],
-   "heavyDeps": [],
-   "hardConstraint": "procx 不能并入 tools —— 它同时被 tier1 的 mcpkit/promptx 使用，并入会造成 tier1→tier2 分层倒挂",
-   "ghDescription": "Agent 进程运行时——LLM token 流式节控/泛型事件总线/子进程最小环境/运行时热插拔/生命周期钩子",
-   "topics": [
-    "go",
-    "runtime",
-    "agent",
-    "stream",
-    "eventbus"
-   ],
-   "agentNotes": "### `progress` 撞名但语义相反（最容易踩）\n\n- `oekit/concurrency/progress` = 长任务**阶段进度追踪器**（`NewTracker`/`PhaseConfig`/`PhaseStatus`）\n- 本仓 `progress` = 泛型**事件总线**（`NewBus[T]`，发布订阅 + 慢消费者丢弃计数）\n\n**任何按包名对齐的迁移/退役判断都会做错。对齐必须按语义。**\n\n### `pacer` ≠ `ratelimit`\n\n`oekit/concurrency/ratelimit` 是**准入控制**（允许发/不允许发），本仓 `pacer` 是**聚合缓冲**\n（攒够窗口再发）。不是同一语义，不要互相替代。\n\n### `procx` 的分层硬约束\n\n`procx` 被 tier1 的 `mcpkit`、`promptx` 使用，**必须留在 tier0**。\n把它并入 tier2 的 `tools` 会造成 tier1→tier2 分层倒挂，违反矩阵不变量。\n\n### `breaker` 已退役（完整退役纪律）\n\n本仓不再有熔断实现。`breaker` 已迁往 `oekit/concurrency/breaker`，\n由 `llm` 仓按模型名分桶后转发调用。\n\n**退役是有前置条件的，不能跳步**——`oekit/concurrency` 的 breaker 缺代绑定、\n探测时限、独立冷却、计数型触发时，库形态消费方只能并行维护第二套熔断器。\n需求链 `#17 → #19 → #20 → #25` 全部落地后才有等价能力。\n\n四步顺序，颠倒任何一步都是构建断裂或语义丢失：\n\n1. **上游先补能力** —— `#17` v0.9.0 → `#19`/`#20` v0.12.0 → `#25` v0.13.0\n2. **消费方改依赖** —— `llm` 从 `oagentkit/runtime` 摘出，改依赖上游\n   （2026-10-18 02:08）\n3. **删本包实现** —— 本仓 `refactor!` 移除 breaker（2026-10-18 02:07）\n4. **删本地兜底** —— 上游 `#25` 修好后，`llm/breaker.go` 里的计数型准入否决段\n   已删除（2026-10-18 06:01），熔断语义全部委托上游\n\n**不要在本仓重新实现熔断。** 需要熔断能力就用 `oekit/concurrency/breaker`。\n",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
-   "pkgDesc": {
-    "pacer": "流式增量节流器：LLM token 分片攒够窗口再发，避免逐条发布洪泛事件通道",
-    "progress": "泛型事件总线 `Bus[T]`（发布订阅 + 慢消费者丢弃计数）",
-    "procx": "子进程最小环境构造 `ChildEnv` + 执行封装，供 spawn 外部进程的包共用",
-    "hotplug": "运行时插拔与原子热替换：`Plugboard` 启停视图 + `Holder[T]` 快照持有点",
-    "hookx": "外部 hook 拦截协议：在关键拦截点派生子进程，stdin 喂 JSON",
-    "notifyx": "生命周期事件通知出口（notify sink）：归一化事件契约可靠外发（webhook/HTTP），Emit 永不阻塞主流程，丢弃计数 + OnDrop 可观测",
-    "notifyx/hook": "挂点侧官方 shim：平台 shell 协议载荷归一化为 notifyx.Payload，映射表/ack 轮询/跨进程节流单源，cmd/notifyx-hook 供 hooks 一行接入"
-   }
-  },
-  {
-   "repo": "guardx",
-   "tier": 0,
-   "desc": "脱敏/出口围栏/权限判定/沙箱档位/跨进程协议",
-   "oekitAnalog": "core",
-   "packages": [
-    "fence",
-    "logredact",
-    "egress",
-    "egressproxy",
-    "permgate",
-    "injectband",
-    "invoke",
-    "toolfail",
-    "sandbox",
-    "wire",
-    "netguard",
-    "rbac",
-    "ticket"
-   ],
-   "heavyDeps": [],
-   "ghDescription": "安全围栏——凭据脱敏/URL 出口 SSRF 防护/工具许可判定链/提示注入卫生（tier0 零外部依赖底座）",
-   "topics": [
-    "go",
-    "security",
-    "redaction",
-    "ssrf",
-    "audit"
-   ],
-   "agentNotes": "### 安全语义不可弱化（本仓的全部价值所在）\n\n- **`egress`** —— 任何由 LLM 决定的 URL 出站前必须过判定。**不得新增「信任 LLM 给出的 URL」这类豁免分支** —— 那是提示词注入的直接落点。\n- **`permgate`** —— 判定默认值必须是**拒绝**，白名单显式开。不得用「未配置即放行」。\n- **`bashguard`** —— 静态解析不执行。**不得改成 exec 执行后再判断**。\n- **`fence`** —— 任何把 LLM 产出或用户输入拼进 prompt 的路径都必须过 `EscapeUntrusted`，不得为可读性绕过。\n- **`toolfail`** —— **不可分类 = 不可重试**（保守缺省）：判据缺失时两种误判成本不对称，误判可重试会把一次失败放大成 N 次，还可能重复施加副作用。**重发安全与重试价值是两个正交维度**：超时值得重试但服务端可能已执行，原样重发即重复施加副作用——只看「可重试」的调用方必然在这两种误判里选一个。\n- **`sandbox`** —— **选不到满足档位的后端即拒绝，绝不降级**：降级会让「宿主声明的强度」与「实际执行的强度」之间没有信号，档位整套机制就成了装饰。**档位序即强弱**，要求档位是下限，满足下限者取最弱（够用且最省）。\n- 安全相关路径**禁止吞 error** —— 判定失败必须阻断而非放行。\n- **本仓必须保持零第三方依赖**（允许第一方基座 github.com/oekit/*；不是「一条 require 都没有」）。Go 的依赖面按 **module** 结算：只 import logredact 的下游，模块图里也会多出本仓的整条 require。带重依赖的能力属于重仓——`audit` 已迁至 `obs/audit`（依赖 oekit/logx），`bashguard` 已迁至 `tools/bashguard`（依赖 mvdan.cc/sh）。\n- **`audit` / `bashguard` 已迁出**（v0.7.0）：`github.com/oagentkit/guardx/audit` → `github.com/oagentkit/obs/audit`，`github.com/oagentkit/guardx/bashguard` → `github.com/oagentkit/tools/bashguard`。旧路径的嵌套 module tag 仍在但**已冻结**，不再有后续版本。\n- **`invoke` 自 `toolgate/invoke` 迁入**（v0.8.0）：它自身只 import `oekit/pkg/errors`，却在 eino 重仓里让消费方白吃 34 个第三方模块。框架无关的原语属于零依赖底座。\n- **`netguard` / `ticket` 自 `goagent-kernel` 迁入**（v0.29.0）：出站守卫与一次性授权票据属**执行安全域**，\n  与 egress / permgate / rbac / fence 同族。判据与导出面逐字不变（迁入即等价）；\n  netguard 的 IP 判定仍**单源 egress**，与 oekit/pkg/urlguard 的已知差异由本仓用例钉住。\n- **`wire`** —— 跨进程调用协议。**两条通道必须是两条连接**（共用一条则「这帧是 Start 还是 Response」只能靠猜，两者 JSON 形状不同，猜错就是「字段读成了另一个意思」）。**失败分类不得退化成自由字符串**（父侧要靠它分「可重试」与「永久拒绝」）。**取消传播靠管道关闭**——管道关闭本身就是最强的取消信号，不需要单独的取消帧。",
-   "loggingRule": "- 本仓**不引日志依赖**（tier 0 零外部依赖底座）。审计留痕在 `github.com/oagentkit/obs/audit`（那里引 logx）。\n- 日志必须经 `logredact` 打码后再落，**不得直接打印原始载荷**。",
-   "pkgDesc": {
-    "fence": "中和不可信文本（LLM 产出、用户输入）中的 markdown 结构，防提示词注入",
-    "logredact": "日志/审计载荷凭据脱敏：连接串/URL/头中的凭据落盘前打码",
-    "egress": "出口围栏：LLM 可控 URL 的字面量层 SSRF 防护",
-    "egressproxy": "进程级出口强制：只监听回环的本地 HTTP 代理（含 CONNECT 隧道），「声明了受限出口」的兑现件——子进程出站流量经目标准入（白/黑名单 + IP 围栏 + 解析钉住）后才能出网",
-    "permgate": "工具调用许可判定链：谁在什么模式下对什么输入得到什么许可",
-    "injectband": "系统带外注入的防伪包裹通道：给系统提示打来源标记，并转义 body 内伪造的同形标签（含大小写/空白变体），防身份伪造。与 fence 互补——fence 封数据侧越权，injectband 封系统侧伪造",
-    "invoke": "工具调用统一契约 + 不可绕过的调用链（构造即保证）；框架无关，不携带 eino / policy 类型",
-    "toolfail": "工具调用失败的分类与处置契约：类别 → 可重试性/退避/需人工/重发安全/面向模型的处置指引。不可分类即不可重试；重发安全与重试价值是两个正交维度",
-    "sandbox": "执行沙箱的档位语义与后端协议：Level（none/process/os/machine，序即强弱）+ Provider + Registry。要求档位是下限，选不到满足者即拒绝、绝不降级",
-    "wire": "跨进程调用协议：帧格式（4B 大端长度 + JSON 负载，不用行分隔——工具输出可能含换行）+ 两条通道（启动通道 Starter/Runner 一次执行、调用通道 Server/Client N 次工具调用）；失败分类跨进程同源（取 toolfail 的分类）、预算权威在父侧、在途调用有硬上限、取消传播靠管道关闭",
-    "netguard": "出站 URL 守卫（SSRF 防护）：凡服务端代发 HTTP 的出口统一判定；IP 策略依据单源 egress，不私补网段表",
-    "rbac": "角色能力矩阵机制：角色→能力集查表、只读档由矩阵推导、授权面指纹；词表是宿主数据，本包只收机制",
-    "ticket": "一次性短时授权票据：签发/消费/过期/用途绑定，消费即作废（用过即焚）；机制与策略分离"
-   }
-  },
-  {
-   "repo": "toolname",
-   "tier": 0,
-   "desc": "工具名 → 程序内标识符的单一真相（规范名判定 + 规整）",
-   "oekitAnalog": "pkg/toolname（曾内嵌 oekit/pkg：v0.58.2 标记 Deprecated、v0.59.0 删除）",
-   "packages": [
-    "toolname"
-   ],
-   "heavyDeps": [],
-   "ghDescription": "工具名净化原语——工具名→程序内标识符的单一真相（JS 标识符判定 + 规整），装配两侧必须逐字一致",
-   "topics": [
-    "go",
-    "tools",
-    "naming",
-    "llm"
-   ],
-   "agentNotes": "- **保持零依赖纯函数形态**：本包被 tier0 核心与工具治理链共同依赖，地板抬高会波及全矩阵。\n- `Normalize` **不保证唯一**（`get-logs` 与 `get_logs` 同得 `get_logs`），撞名是否允许由调用方判定——本包只提供规则，不做集合级判定。\n- 规整规则必须**两侧一致**：生产侧（形态派生）与消费侧（绑定挂载）共用同一套字符规则；改一边不改另一边 ⇒ 契约静默断掉（症状是「工具在目录里，程序就是调不通」）。",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
-   "pkgDesc": {
-    "toolname": "工具名 → 程序内标识符：IsJSIdent 判定原样可用、Normalize 给出规整名（数字开头补 _、前导非法字符跳过、已开始后记 _）"
-   }
-  },
-  {
-   "repo": "queue",
-   "tier": 2,
-   "desc": "DB 即队列 + Postgres 选主 Lease",
-   "oekitAnalog": "k8s",
-   "packages": [
-    "worker",
-    "worker/pglease",
-    "sqllease",
-    "sqlqueue",
-    "outbox"
-   ],
-   "heavyDeps": [
-    "github.com/lib/pq",
-    "modernc.org/sqlite"
-   ],
-   "ghDescription": "DB 即队列 + Postgres Lease 选主——任务表驱动的工作池与主备单活回调",
-   "topics": [
-    "go",
-    "queue",
-    "postgres",
-    "leader-election",
-    "worker"
-   ],
-   "agentNotes": "### 选主语义（正确性红线）\n\n- **`LeaseStore` 必须保证「同一时刻至多一个 leader」。** 条件 UPSERT 不能退化成「先查后写」——\n  那是竞态，不是选主。\n- 租约续期失败/进程失联后，其他实例**必须**能在租约过期后接管。\n- 租约丢失属必须上报事件，`OnStoppedLeading` 要真的执行清理，不得静默吞 error。\n\n### lib/pq 是测试依赖\n\n`github.com/lib/pq` 仅用于 `pglease` 的 DSN 门控集成测试驱动，\n**生产代码禁止 import**。仓内零生产依赖是刻意设计，不要引入。\n集成测试在未设 `postgres://…` DSN 时自动跳过。\n- **层位 t0 → t2**：带 `lib/pq` 驱动地板（PG 选主 Lease 的集成测试也要驱动）——属集成层，不是基础层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-queue\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- leader 变更、租约丢失属关键事件，kv 字段须带 lease 名与实例 id。",
-   "pkgDesc": {
-    "worker": "任务表驱动的工作池（DB 即队列）+ `LeaseStore`/`TaskQueue` 存储接口与参考实现 re-export",
-    "worker/pglease": "`worker.LeaseStore` 的 PostgreSQL 实现（条件 UPSERT 一行即成）",
-    "sqllease": "`worker.LeaseStore` 的 database/sql 参考实现（PG/MySQL/SQLite 三方言）",
-    "sqlqueue": "`worker.TaskQueue` 的 database/sql 参考实现（三方言）",
-    "outbox": "统一副作用 outbox 队列：宿主按 kind 注册退避规格与处理器，机制面只认规格不认业务（与 sqlqueue 的任务认领划清边界）"
-   }
-  },
-  {
-   "repo": "promptx",
-   "tier": 1,
-   "desc": "system prompt 分段组装/运行中转向/文件读后写一致性",
-   "oekitAnalog": "core",
-   "packages": [
-    "sysprompt",
-    "steering",
-    "filestate",
-    "pending",
-    "sessionref",
-    "memorypipe"
-   ],
-   "heavyDeps": [],
-   "dependsOn": [
-    "textx",
-    "guardx"
-   ],
-   "ghDescription": "提示词上下文——system prompt 分段组装/运行中转向队列/文件读后写一致性状态",
-   "topics": [
-    "go",
-    "prompt",
-    "context",
-    "llm"
-   ],
-   "agentNotes": "- `sysprompt` 的 Section 化收集必须区分 **stable / dynamic** 两类：\n  stable 段进缓存前缀，dynamic 段每轮重算。混淆会导致缓存命中率归零。",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
-   "pkgDesc": {
-    "sysprompt": "system prompt 分段组装：Section 化收集 → stable/dynamic 分离",
-    "steering": "运行中转向队列：turn 执行中用户插入的新输入按投递语义生效",
-    "filestate": "读后写一致性状态：编辑/覆写文件前必须读过，且读后文件未被改动"
-   }
-  },
-  {
-   "repo": "obs",
-   "tier": 2,
-   "desc": "敏感操作的结构化审计留痕",
-   "oekitAnalog": "metrics",
-   "packages": [
-    "audit"
-   ],
-   "heavyDeps": [],
-   "dependsOn": [
-    "guardx"
-   ],
-   "ghDescription": "敏感操作审计——结构化审计留痕，字段值统一经 logredact 打码（不引 eino 框架）",
-   "topics": [
-    "go",
-    "audit",
-    "security",
-    "redact"
-   ],
-   "agentNotes": "### 定位（v0.10.0 起）：audit 单包仓\n\n本仓只剩 `audit` 一个包：**执行面的操作留痕**（谁做了什么、参数是什么、结果如何），\n字段值统一经 `guardx/logredact` 打码。\n\n- **Langfuse 只读客户端已迁往 `llm/obsx`**（读写同域，oagentkit/obs#129）：\n  观测/追踪侧的能力（eino callbacks 适配、OTel generation 发射出口）本就在 llm 仓的\n  `obsx`，读端并入后「Langfuse 上有什么、是谁写进去的」一处答全。本仓不再承担观测面。\n- **同层依赖禁令**：`obs` 与 `llm` 同为 tier 2 ⇒ `obs` 不得依赖 `llm` ⇒ 本仓**不能**\n  留一个转发到 `llm/obsx` 的兼容壳 ⇒ `langfuse` 直接删除，下游改 import 路径。\n- `audit` 自 `guardx/audit` 迁入（v0.8.0）：它依赖 `oekit/logx`，而 guardx 是 tier 0\n  零依赖底层，依赖面按 module 结算。包名与职责不变，只是 import 路径变了。\n- **层位仍为 tier 2**：层位标签的原始理由（带 `eino` 地板）随 langfuse 迁出已不成立，\n  但层位是**声明面**（仓内 AGENTS.md / README.md 与 modules.json 必须一致），\n  改层位是独立决策，不在本仓降级动作内顺带做。\n",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-obs\")`。\n- **观测数据不得携带凭据原文**，落盘前过 `guardx/logredact`。\n- `audit` 包的 logger 为 nil 时回退 `logx.NewAuditLogger`（级别锁 `Info`、不受 `LOG_LEVEL` 降级、SetLevel 到 WARN/ERROR 被拒）—— 这是刻意设计，别改回普通 logger。",
-   "pkgDesc": {
-    "audit": "敏感操作的结构化审计留痕（自 guardx/audit 迁入）：字段值统一经 logredact 打码"
-   }
-  },
-  {
-   "repo": "skillkit",
-   "tier": 2,
-   "desc": "SKILL.md 渐进披露 + 领域包契约 + 装配血缘",
-   "oekitAnalog": "pack",
-   "packages": [
-    "skill",
-    "pack",
-    "lineage"
-   ],
-   "heavyDeps": [
-    "github.com/cloudwego/eino",
-    "gopkg.in/yaml.v3",
-    "github.com/Masterminds/semver/v3"
-   ],
-   "dependsOn": [
-    "textx",
-    "guardx"
-   ],
-   "ghDescription": "技能与资产契约——SKILL.md 渐进披露/领域包布局契约/装配血缘图",
-   "topics": [
-    "go",
-    "skill",
-    "prompt",
-    "provenance"
-   ],
-   "agentNotes": "- SKILL.md 的**渐进披露**是硬要求：元数据常驻、正文按需加载。\n  不得为了「一次读全」把正文塞进元数据 —— 那会让常驻上下文无谓膨胀。\n- `pack` 的目录布局是契约面，改动布局等于 breaking，必须升 major。\n- **层位 t1 → t2**：带 `eino` 地板（skill 的工具决策用 eino tool schema）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
-   "pkgDesc": {
-    "skill": "SKILL.md 渐进披露：元数据常驻、正文按需加载；多根技能库与版本判定",
-    "pack": "领域包（expert/pack 目录布局）的契约面",
-    "lineage": "装配血缘：expert → skill → MCP server 三类资产节点的依赖图"
-   }
-  },
-  {
-   "repo": "mcpkit",
-   "tier": 2,
-   "desc": "MCP 客户端/工具池/建连单飞",
-   "oekitAnalog": "registry",
-   "packages": [
-    "mcp",
-    "iface"
-   ],
-   "heavyDeps": [
-    "github.com/mark3labs/mcp-go",
-    "github.com/eino-contrib/jsonschema",
-    "github.com/cloudwego/eino"
-   ],
-   "ghDescription": "MCP 工具池——客户端封装/工具目录/建连单飞/自愈与租约管理",
-   "topics": [
-    "go",
-    "mcp",
-    "tools",
-    "model-context-protocol"
-   ],
-   "agentNotes": "- **建连必须单飞。** 同一 server 的并发建连要合并为一次，\n  不得每次 `Allow` 都新建连接。\n- **等待方的 ctx 取消要各自生效**，不能干等 leader。\n- 工具注解（`mcp.ToolAnnotation`）归一时，`nil` 视为规范缺省，**不得当成「无限制」**。\n- **层位 t1 → t2**：带 `eino` + `mcp-go` 地板（MCP 客户端本身绑框架）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。",
-   "loggingRule": "- **本仓不引入日志依赖。** tier0 加日志等于给所有下游抬地板；需要观测输出时返回 error 或交给调用方。",
-   "pkgDesc": {
-    "mcp": "MCP 客户端/工具池：工具目录、建连单飞、自愈与租约管理",
-    "iface": "MCP 工具调用面的协议中立声明：失败分类学（ErrorKind）、结果分类载体（ClassifiedError）与工具能力接口（RawNamer/OutputSchemer）——只依赖标准库，供不要 mcp-go 的消费方使用"
-   }
-  },
-  {
-   "repo": "rag",
-   "tier": 2,
-   "desc": "知识检索与本体层——向量化/混合召回/重排 + 实体关系本体契约",
-   "oekitAnalog": "data",
-   "packages": [
-    "knowledge/rag",
-    "wiki",
-    "wiki/fsstore",
-    "milvus",
-    "ontology"
-   ],
-   "heavyDeps": [
-    "github.com/cloudwego/eino",
-    "github.com/milvus-io/milvus-sdk-go/v2",
-    "gopkg.in/yaml.v3"
-   ],
-   "dependsOn": [
-    "textx"
-   ],
-   "ghDescription": "知识检索与本体层——向量化/混合召回/重排（向量后端可插拔，独立子包隔离 sdk 地板）+ 实体关系本体契约与判据",
-   "topics": [
-    "go",
-    "rag",
-    "retrieval",
-    "vector-search",
-    "milvus",
-    "ontology",
-    "knowledge-graph"
-   ],
-   "agentNotes": "- **单路召回失败不得降级为 `(nil, nil)`。** 混合召回中任一路 panic 或失败\n  要作为该路失败参与裁决；全部路失败时**返回 panic 错误而非静默空结果**。\n- 向量后端可插拔，新增后端不得改 `Embedding`/`Retriever` 接口形状 —— 那会让所有后端同时 breaking。\n- **层位 t1 → t2**：带 `eino` + `milvus-sdk` 地板（向量化/混合召回本身绑 SDK）——属集成层。重定位后 tier0/tier1 = 零重量级第三方地板的层（可被零依赖核心安全依赖）。\n- **向量后端只住 `rag/milvus` 子包**（oagentkit/rag#156）：根包不得 import 向量 sdk——否则任何 import 根包的调用方都会链接整条传递链（cockroachdb/errors、sentry-go、gogo/protobuf）。`make dep-guard` 是这条不变量的机判（反向验证过：注入即红）。\n- **`rag/ontology` 是本体层的契约与判据面**（oagentkit/rag#145）：只定义 Schema/Triple/Validate/Store，**不做抽取**（提示词与领域强相关，留宿主）、**不建图数据库**（Store 接口 + 内存参考实现）；与 `wiki` 分工——wiki 页是「叙事」、ontology 是「结构」。",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-rag\")`。\n  - 索引/检索路径不得把原始文档内容整段落日志。",
-   "pkgDesc": {
-    "knowledge/rag": "知识检索：Embedding 接口、向量后端可插拔、混合召回与重排",
-    "wiki": "持久 wiki 的写入面：页面 upsert/删除/乐观版本 + 增量摄取与结构检查；不做检索（读侧索引由宿主交给 Indexer 接缝）",
-    "wiki/fsstore": "wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换",
-    "milvus": "向量后端（Milvus）实现：rag/milvus 子包——**只有它链向量 sdk**，根包零向量依赖（本地索引/混合召回调用方不必拖进 milvus 传递链）",
-    "ontology": "实体/关系本体层：Schema/Type/Field 与 Triple 契约 + Validate 判据面 + Store 接口（内存参考实现）——不做抽取、不建图库，契约与领域无关"
-   }
-  },
-  {
-   "repo": "llm",
-   "tier": 2,
-   "desc": "模型客户端/降级链/预算/成本/阶段路由/调用观测",
-   "oekitAnalog": "httpx",
-   "packages": [
-    "llm",
-    "llm/port",
-    "llm/wrap",
-    "llm/llmtest",
-    "obsx",
-    "llm/decision"
-   ],
-   "heavyDeps": [
-    "github.com/cloudwego/eino",
-    "github.com/cloudwego/eino-ext/components/model/openai",
-    "github.com/meguminnnnnnnnn/go-openai",
-    "go.opentelemetry.io/otel",
-    "go.opentelemetry.io/otel/sdk",
-    "go.opentelemetry.io/otel/trace"
-   ],
-   "dependsOn": [
-    "textx"
-   ],
-   "externalNote": "breaker 退役后改依赖 github.com/oekit/concurrency/breaker",
-   "ghDescription": "模型客户端——多模型降级链/任务级预算/成本记账/分阶段路由/LLM 调用观测",
-   "topics": [
-    "go",
-    "llm",
-    "openai",
-    "cost-control",
-    "fallback",
-    "langfuse",
-    "observability"
-   ],
-   "agentNotes": "- **降级链的每一跳都必须记录原因**（成本/限流/超时/内容策略），不得静默换模型。\n- **预算判定必须在调用前**，不能事后扣减 —— 事后扣减等于没有预算。\n- **panic 不能只转成 error。** `RunSafe*` 系列会把 panic 收进全局 `PanicHandler`\n  （库不接 `SetPanicHandler`，默认 `log.Printf`）且返回的 `panic: X` 无哨兵类型，\n  无法挂回领域上下文。用 `RunSafeErr` 前先确认丢掉的结构化上下文可接受。\n- **`obsx` 自 `obs/obsx` 迁入**（v0.12.0）：它绑 eino 框架（callbacks 适配层），而本仓早已 import 它做成本记账与阶段打标——同一关注点，两个包住一起更顺。\n- **Langfuse 只读客户端自 `obs/langfuse` 迁入**（oagentkit/obs#129）：读端与写端同域——写端（OTel generation span 发射出口）本就在本仓 `obsx`；读端并入后「Langfuse 上有什么、是谁写进去的」一处答全。原 `obs/langfuse` 路径已删除（breaking），符号名逐字未变，下游只改 import 行。",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-llm\")`，\n  禁止 `Default()`/`WithService` 声明包级 logger。\n- 模型请求/响应落日志前必须脱敏（凭据与用户数据都可能出现在 prompt 里）。",
-   "pkgDesc": {
-    "llm": "模型客户端：多模型降级链、任务级预算、成本记账、分阶段路由、主备切换",
-    "llm/port": "窄接口层（不引 eino）：Complete(ctx,req) 形态的降级链/预算/成本记账；无 eino 的内核（预算/成本/价表/熔断）由根包下沉而来，两条路径共用同一份实现",
-    "llm/wrap": "调用包装与限流适配",
-    "llm/llmtest": "模型层契约测试套件",
-    "obsx": "eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）＋ Langfuse Public API 只读客户端（自 obs/langfuse 迁入，读写同域）",
-    "llm/decision": "System One 协议判定面客户端（非自回归判定模型）：choice/score/noul 三原语 + 校准置信口径（本地算，两端同义）"
-   }
-  },
-  {
-   "repo": "toolgate",
-   "tier": 2,
-   "desc": "工具优先级/并发调度/操作审计门/不可绕过的调用链",
-   "oekitAnalog": "middleware",
-   "packages": [
-    "toolprior",
-    "toolsched",
-    "policy"
-   ],
-   "heavyDeps": [
-    "github.com/cloudwego/eino",
-    "gopkg.in/yaml.v3"
-   ],
-   "dependsOn": [
-    "guardx",
-    "mcpkit"
-   ],
-   "ghDescription": "工具治理——优先级三层约束/注解驱动并发调度/操作审计门/构造期不可绕过的工具调用链",
-   "topics": [
-    "go",
-    "tools",
-    "governance",
-    "scheduling",
-    "policy"
-   ],
-   "agentNotes": "- 优先级三层约束是**收紧**语义：上层只能进一步限制，**不得放宽**下层已设的限制。\n- 并发调度的去重键必须包含全部影响结果的参数，否则会错误合并不等价调用。\n- **`invoke` 已迁至 `github.com/oagentkit/guardx/invoke`**（v0.12.0）：框架无关的原语不该被本仓的 eino 地板拖住。`policy` 改为依赖 guardx/invoke（tier2 → tier0，方向合法）。",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-toolgate\")`。\n- 被拒的工具调用属审计事件，字段需带工具名、调用者、拒绝原因。",
-   "pkgDesc": {
-    "toolprior": "工具优先级三层约束（收紧语义，下层已设的限制不得放宽）",
-    "toolsched": "注解驱动的工具并发调度与去重",
-    "policy": "操作审计门：敏感工具调用的策略判定"
-   }
-  },
-  {
-   "repo": "tools",
-   "tier": 2,
-   "desc": "CLI 编码 agent 统一调用/公开检索/git 沙箱/SAST 扫描/Shell 静态裁决",
-   "oekitAnalog": "kitex-examples",
-   "packages": [
-    "acpx",
-    "websearch",
-    "workcopy",
-    "sast",
-    "bashguard",
-    "bgjob",
-    "cmdpolicy"
-   ],
-   "heavyDeps": [
-    "github.com/cloudwego/eino",
-    "mvdan.cc/sh/v3"
-   ],
-   "dependsOn": [
-    "textx",
-    "guardx"
-   ],
-   "ghDescription": "外部工具接入——CLI 编码 agent 统一调用/公开资料检索/git 工作副本沙箱/确定性 SAST 扫描/Shell 命令静态裁决",
-   "topics": [
-    "go",
-    "tools",
-    "git",
-    "sast",
-    "search"
-   ],
-   "agentNotes": "- **CLI 编码 agent 调用必须隔离环境**（用 `runtime.ChildEnv` 构造最小环境），\n  不得继承完整宿主环境 —— 凭据泄漏面。\n- `workcopy` 的 git 操作必须限制在沙箱目录内，`EnsureMergeBase` 失败要显式报错，\n  不得跳过继续。\n- SAST 扫描是**确定性前置扫描**，不执行被扫代码。\n- **`bashguard` 自 `guardx/bashguard` 迁入**（v0.10.0）：它依赖 `mvdan.cc/sh/v3`（真 shell AST 解析），而 guardx 是 tier 0 零依赖底层。语义不变（静态解析、不执行命令），只是 import 路径变了。",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-tools\")`。\n- 子进程输出落日志前过 `guardx/logredact` —— 外部 CLI 的输出不可信。",
-   "pkgDesc": {
-    "acpx": "CLI 编码 agent 统一调用（claude / codex / gemini / kimi / mcode 等）",
-    "websearch": "公开资料检索抽象，接口可插拔（缺省 SearXNG 自建实例）",
-    "workcopy": "Git 工作副本沙箱：隔离环境 + merge-base 校验",
-    "sast": "确定性 SAST 前置扫描（不执行被扫代码）",
-    "bashguard": "Shell 命令静态风险裁决（自 guardx/bashguard 迁入）：经真 shell AST 判定只读性，不执行命令",
-    "bgjob": "远程后台作业 marker 协议原语：经宿主既有 SSH 会话起「脱离会话的长任务」，退出码走 marker 文件做终态探测与收尾（tools#106）",
-    "cmdpolicy": "命令级放行裁决与事实面：命令解析后判定放行/拒绝，裁决与事实同仓；只收机制，业务词表由宿主注入"
-   }
-  },
-  {
-   "repo": "agent",
-   "tier": 3,
-   "desc": "ReAct 运行样板/反思循环/意图路由/多专家黑板/派发守卫/澄清",
-   "oekitAnalog": "workflow",
-   "packages": [
-    "agentrun",
-    "reflection",
-    "router",
-    "blackboard",
-    "dispatch",
-    "clarify",
-    "roundguard"
-   ],
-   "heavyDeps": [
-    "github.com/cloudwego/eino",
-    "github.com/cloudwego/eino-ext/components/model/openai",
-    "gopkg.in/yaml.v3"
-   ],
-   "dependsOn": [
-    "llm",
-    "textx"
-   ],
-   "ghDescription": "Agent 编排——ReAct 运行样板/计划先行/反思循环/意图路由/多专家黑板/派发守卫",
-   "topics": [
-    "go",
-    "agent",
-    "orchestration",
-    "workflow",
-    "react"
-   ],
-   "agentNotes": "- **编排层不得直连底层实现。** 所有能力经 `llm`/`mcpkit`/`toolgate` 等门面进入，\n  不得绕过门面直接调 provider/MCP client。\n- 反思循环与黑板协作必须有**深度上限与终止条件**，防止无限循环。\n- 派发守卫的 allow 矩阵是白名单，默认拒绝；并有**自派发拒绝**（防止无限递归）。",
-   "loggingRule": "- 日志走 `oekit/logx`，组件 logger 用 `logx.Delegating(\"oagentkit-agent\")`。\n- 面向用户的最终输出落日志前过 `guardx/fence` 的不可信文本中和。",
-   "pkgDesc": {
-    "agentrun": "ReAct 运行样板与计划先行（PlanAndExecute）编排",
-    "reflection": "反思循环",
-    "router": "显式意图路由",
-    "blackboard": "无中心多专家协作黑板",
-    "dispatch": "通用派发守卫：allow 矩阵 + 深度上限 + 自派发拒绝",
-    "clarify": "澄清与标准化词表内核"
-   }
-  },
-  {
-   "repo": "goagent-kernel",
-   "tier": 4,
-   "desc": "多智能体编排判据层——状态机/副作用闸/续跑/介入/事件面的确定性机制",
-   "packages": [
-    "archcheck",
-    "backend",
-    "checkpoint",
-    "commitgate",
-    "contract",
-    "controlplane",
-    "coord",
-    "cost",
-    "deadline",
-    "delegate",
-    "delta",
-    "dispatch",
-    "drain",
-    "egress",
-    "eval",
-    "eventbus",
-    "finalize",
-    "gatecheck",
-    "guardset",
-    "handoff",
-    "hookengine",
-    "invocation",
-    "invocation/invocationtest",
-    "metrics",
-    "ownership",
-    "preset",
-    "protocol",
-    "ptc",
-    "raceprobe",
-    "reconcile",
-    "retryplan",
-    "scheduling",
-    "sideeffect",
-    "sidetest",
-    "skilldisclose",
-    "statemachine",
-    "steer",
-    "taskboard",
-    "taskboard/boardtest",
-    "tenant",
-    "tooldisclose",
-    "trajectory",
-    "watchdog",
-    "worker",
-    "worktree",
-    "worker/faultmatrix"
-   ],
-   "heavyDeps": [
-    "github.com/dop251/goja",
-    "github.com/santhosh-tekuri/jsonschema/v6",
-    "golang.org/x/tools",
-    "gopkg.in/yaml.v3"
-   ],
-   "ghDescription": "多智能体编排通用内核：编排是代码，LLM 只做单环节——确定性编排的机制面（报告协议/状态机/事件总线/副作用闸/续跑契约/介入面），不认识任何领域概念",
-   "topics": [
-    "go",
-    "agent",
-    "orchestration",
-    "sideeffect",
-    "checkpoint"
-   ],
-   "agentNotes": "### 分层口径（v0.70 确立，ADR-0010）\n\n- **纯基础设施→oekit；工具/沙箱/执行安全→oagentkit（guardx/tools）；编排判据→本仓；装配/参考实现→goagent-runtime。** 按概念域分派，不按实现依赖分派。\n- 判定口诀：「这个包需要知道自己在给谁干活吗？」需要 → 编排域留本仓；对话域判据已上抛（roundguard→agent、budget/spill/offload→textx、pending/sessionref/memorypipe→promptx，v0.77.0）。\n- 本仓不 import 领域词表；门禁由自带 archcheck + architecture-policy.yaml 强制（策略先行：新依赖方向先改 policy 再写代码）。\n- 发版是**纯 git tag + 自有 releasecheck 门禁**，不走 matrix release.py；CHANGELOG 由 gen_changelogs.py 生成。\n- 2026-11-26 归属回迁：oagentkit → yi-nology org，module path 为 github.com/yi-nology/goagent-kernel（v0.80.0 起；v0.77.0-v0.79.0 的 oagentkit tag 只能经 oagentkit 路径消费）。",
-   "loggingRule": "- 日志走 `oekit/logx`；编排事件优先走 `eventbus`（结构化、可投影），日志只留人读的判据结论。",
-   "pkgDesc": {
-    "contract": "编排引擎↔宿主状态的唯一边界（纯接口面，零实现）",
-    "statemachine": "环节状态机：条件迁移的纯函数件",
-    "protocol": "统一报告协议：Report 契约 + 五级容错解析 + 白名单校验 + Markdown 渲染",
-    "eventbus": "进程内有损广播 + durable 发布面 + event-tail 补灌（Store 由宿主实现）",
-    "checkpoint": "编排续跑契约：进度快照 + CAS + 「续跑而非重放」恢复判定",
-    "commitgate": "环节终态独占提交闸（凭令牌放闸/释放）",
-    "sideeffect": "副作用「至多一次」跨进程契约：幂等键 + 租约 + 栅栏令牌 + 结果未知态",
-    "sidetest": "sideeffect.Store 共享契约测试套件（宿主存储实现跑同一套断言）",
-    "taskboard": "多 agent 任务板：DAG 依赖 + 认领租约 + 接管代次（boardtest 契约套件随行）",
-    "worker": "任务驱动循环：注册→心跳→领取→续期→恢复→退出",
-    "controlplane": "介入契约：任务查看/运行状态/失败诊断/人工介入 + Store 原子提交",
-    "invocation": "工具调用账本：崩溃后调用身份存续（planned/failed 终态）",
-    "scheduling": "Agent 调度判据面：优先级/加权公平/配额/背压（纯函数，不做队列不做执行）",
-    "dispatch": "改派失败面：三档分类 + 两级判定 + 改派环（可达性归上游 agent/dispatch）",
-    "ptc": "程序化工具编排沙箱：模型写程序→VM 执行→经 bindings 调宿主工具（三重预算）",
-    "tooldisclose": "渐进式工具披露：确定性打分检索换完整 schema + 两类失败二分执行门禁",
-    "guardset": "守卫装配契约：多守卫合成一条拒绝（接上游 guardx/invoke）",
-    "egress": "出口策略：三档单调可比 + 兑现判据 + 强度（declared/enforced 分开）",
-    "gatecheck": "审批层×沙箱层联合判据（两层都同意才放行）",
-    "preset": "具名不可变组合件（egress+gatecheck 预设）",
-    "backend": "任务式执行后端契约（EgressEnforcer/Capable/Spec）",
-    "trajectory": "事件→轨迹行的投影判据（实测/估算不混用）",
-    "watchdog": "被动配对不变量监视（只告警不裁决）",
-    "drain": "优雅排水：轮 ctx 与根 ctx 取消脱钩 + 在途轮收敛",
-    "delta": "增量节流的编排层：(kind,iteration) 键控 + 确定性收口（底座=runtime/pacer）",
-    "retryplan": "重试处置决策：幂等键重放 vs 原样重发的编排级合成（判据=上游 toolfail）",
-    "deadline": "会话级墙钟锚点（首轮认领写一次、续跑轮沿用）",
-    "finalize": "中止→终态四分路由",
-    "steer": "运行中接管五件套",
-    "handoff": "跨进程交接契约（交接点/幂等键/回执地址/时限四问）",
-    "delegate": "异构委托契约面",
-    "ownership": "跨区域所有权权威（提交栅栏纯判据）",
-    "coord": "Board/Store 适配形态约定（控制面/集群面共用）",
-    "tenant": "多租户判据面：隔离/配额/权限上下文（数据面归宿主）",
-    "cost": "运行成本治理口径面",
-    "metrics": "内核指标口径契约面（名称/类型/维度/基数上界单一来源）",
-    "eval": "录制/重放/差异（轨迹回放判定）",
-    "reconcile": "启动对账/归因收敛",
-    "raceprobe": "race 门禁失败形态判定（纯函数层）",
-    "hookengine": "hook 匹配/超时/fail-closed 裁决判据（传输协议归上游 runtime/hookx）",
-    "skilldisclose": "技能披露三信号确定性挑选（与 skillkit/skill 邻接）",
-    "worktree": "工作区冲突判据（声明面）",
-    "archcheck": "架构门禁执行体（可被宿主复用：policy 声明面→逐条判定）",
-    "worker/faultmatrix": "故障注入矩阵本体（NetworkPolicy/PG HA 等真环境判据；CI 提供环境后由宿主测试入口执行）"
-   },
-   "dependsOn": [
-    "guardx",
-    "runtime",
-    "toolgate",
-    "toolname"
-   ],
-   "oekitAnalog": "workflow",
-   "org": "yi-nology"
-  },
-  {
-   "repo": "goagent-runtime",
-   "tier": 5,
-   "desc": "Agent 运行时装配层——把 goagent-kernel 判据装配成业务可直接用的 runtime",
-   "packages": [
-    "chat",
-    "pipeline",
-    "agentloop",
-    "adjudicate",
-    "storage",
-    "storage/sqlitestore",
-    "sqliteadapter",
-    "pgstore",
-    "runtime",
-    "cluster",
-    "observe",
-    "containerbackend",
-    "bridge/llmchat",
-    "bridge/einotool"
-   ],
-   "heavyDeps": [
-    "github.com/jackc/pgx/v5",
-    "modernc.org/sqlite"
-   ],
-   "ghDescription": "Agent 运行时装配层：把 goagent-kernel 的确定性机制装配成业务方可直接用的 runtime（Loop/Pipeline/存储/事件接线与默认口径）",
-   "topics": [
-    "go",
-    "agent-runtime",
-    "agentloop",
-    "postgres",
-    "sqlite"
-   ],
-   "agentNotes": "### 判据单源纪律（ADR-0001/0002）\n\n- 判据全部来自 goagent-kernel 契约（sideeffect/taskboard/checkpoint/roundguard/eventbus），本仓**只做接线不另写第二套**：三套副作用闸实现（storage 内存/sqliteadapter/pgstore）都跑 kernel `sidetest` 共享套件。\n- **驱动边分包**：`storage` 纯判据零驱动（scripts/check-dep-edges.sh 门禁）；驱动只落在 sqliteadapter/pgstore。\n- **LLM SDK 边嵌套模块**：`bridge`（独立 go.mod）承载 llm/eino 适配器（llmchat/einotool），主 module 零 LLM SDK import（ADR-0003）；不用 bridge 的宿主依赖图里没有 eino。\n- 命名消歧：`oagentkit/runtime`（tier 0）是家族生命周期原语仓（hookx/hotplug/notifyx/pacer/progress）；本仓是装配层，`goagent-` 前缀即家族装配层约定。\n- 发版纯 git tag；2026-11-26 归属回迁：oagentkit → yi-nology org（v0.8.0 起；v0.7.0-v0.7.1 的 oagentkit tag 只能经 oagentkit 路径消费）。",
-   "loggingRule": "- 日志走 `oekit/logx`；loop/cluster 的关键事件（审批挂起/接管/对账）经 `eventbus` 发结构化事件。",
-   "pkgDesc": {
-    "chat": "供应商中立模型窄接口（单方法非流式契约保底 + Delta 流式承载 + DeltaAggregator 归并器）",
-    "pipeline": "工具注册与副作用施加映射（幂等键/资源互斥/重试安全声明 → kernel sideeffect）",
-    "agentloop": "可恢复回合循环：预算→模型→审批→施加→Joint 联合提交→账本续跑",
-    "adjudicate": "副作用未知态的周期裁决框架（枚举→grace→Resolver 链→kernel Runner.Reconcile）",
-    "storage": "存储判据面 Provider 聚合契约 + 内存实现（零驱动边）",
-    "storage/sqlitestore": "standalone 形态 SQLite Provider 绑定（驱动边只在此包）",
-    "sqliteadapter": "SQLite(WAL) 参考实现：11 面统一门面（kernel 契约套件同源）",
-    "pgstore": "PostgreSQL 参考实现：11 面统一门面 + Outbox 事件面 + SIGKILL 故障恢复 e2e",
-    "runtime": "模板装配（NewEmbedded 内存 / NewStandalone SQLite）",
-    "cluster": "多副本模板装配（PG + worker 池：认领/租约/接管代次/跨副本事件面）",
-    "observe": "eventbus → 宿主回调薄适配",
-    "containerbackend": "容器执行后端参考实现（Docker/K8s Job）——宿主抄它不 import 它",
-    "bridge/llmchat": "钦定适配器：oagentkit/llm → chat.Model（嵌套模块，LLM SDK 边只在 bridge）",
-    "bridge/einotool": "钦定适配器：eino InvokableTool → pipeline.Tool（副作用闸字段不猜）"
-   },
-   "dependsOn": [
-    "agent",
-    "goagent-kernel",
-    "guardx"
-   ],
-   "oekitAnalog": "bootstrap",
-   "org": "yi-nology"
-  }
- ],
- "infraRepos": [
-  {
-   "repo": "agentkit",
-   "role": "门面仓——已退役（v1.9.0）：48 个 re-export 转发包全部删除，module 保留声明 + 零依赖 go.mod 作墓碑与迁移指引。退役条件机器化为 retireWhen（matrix-tools#196）并已提前执行（见 retired 字段）；门面族守卫（verify_facade_retirement / packages / symbols / tier_table / release）对 retired 状态全部豁免或改判墓碑形状",
-   "ghDescription": "【门面仓·已退役】本项目已拆分为 github.com/oagentkit/* 共 14 个独立发版仓，v1.9.0 起兼容转发层全部删除（BREAKING），旧 import 路径一律改上游真身",
-   "topics": [
-    "go",
-    "deprecated",
-    "facade",
-    "migration"
-   ],
-   "goModule": true,
-   "moduleNote": "门面仓本身是发布的 Go module（github.com/oagentkit/agentkit），也有自己的破坏性变更（v1.8.0 起 re-export 地板跟到各模块新版）。它不进 modules 列表——门面 v1.x 后退役，不是矩阵的长期成员——但它的 breakingIndex 必须进机器可读源，否则消费方从门面装走的是什么版本没人说得清。",
-   "retireWhen": {
-    "notAfter": "2027-05-31",
-    "reason": "（历史登记，已被 retired 提前兑现）原判定：外部下游仍经旧单仓 module path（git.enjoye.top/enjoydream/agentkit）消费门面语义，归档前必须保活；矩阵内已零消费。到期未归档 ⇒ 守卫判红",
-    "matrixInternalZeroImports": true,
-    "decidedAt": "2026-11-10",
-    "decidedBy": "matrix-tools#196 机器化——原「按 README 写死的期限退役」中 README 从未写死期限"
-   },
-   "retired": {
-    "version": "v1.9.0",
-    "date": "2026-11-13",
-    "packagesDeleted": 48,
-    "reason": "兼容逻辑清仓车道：矩阵内零消费已验证，48 个转发包全部删除（BREAKING），旧 import 路径 github.com/oagentkit/agentkit/* 自 v1.9.0 起编译失败；go.mod 清空全部 require（零代码零依赖），README 留 48 包 → 上游对照表作迁移指引。较 notAfter 2027-05-31 提前退役；归档待旧单仓 git.enjoye.top/enjoydream/agentkit 下线后执行",
-    "decidedBy": "agentkit#198"
-   }
-  },
-  {
-   "repo": ".github",
-   "role": "org profile + 共享 reusable workflow（照抄 oekit/.github，改 org 与域名）",
-   "ghDescription": "oagentkit org profile 与共享 CI——go-ci.yml 为各仓 ci.yml 的唯一规则来源",
-   "topics": [
-    "ci",
-    "github-actions"
-   ]
-  },
-  {
-   "repo": "matrix-tools",
-   "role": "版本矩阵生成/审计/巡检（照抄 oekit/matrix-tools：gen_versions.py、ekit2oekit.py 同源思路）",
-   "ghDescription": "oagentkit 模块矩阵自动化——版本矩阵生成、依赖方向审计、import 改写",
-   "topics": [
-    "tooling",
-    "codegen",
-    "matrix"
-   ]
-  },
-  {
-   "repo": "oagentkit.github.io",
-   "role": "llms.txt 模块索引 + 文档站点",
-   "ghDescription": "oagentkit 文档站——llms.txt 模块索引、架构总览、各层指南",
-   "topics": [
-    "documentation",
-    "llms-txt"
-   ]
-  }
- ],
- "retiringPackages": [
-  {
-   "kind": "retired",
-   "pkg": "breaker",
-   "replacement": "github.com/oekit/concurrency/breaker",
-   "consumedBy": "llm/breaker.go —— 只做按模型名分桶 + 转发，不再有任何本地语义兜底",
-   "issueChain": {
-    "17": "三态 + 代绑定 + 探测时限 —— 已落地 v0.9.0",
-    "19": "冷却期与探测时限解耦（WithCooldown）—— 已落地 v0.12.0",
-    "20": "计数型触发（WithConsecutiveFailures）—— 已落地 v0.12.0",
-    "25": "计数型只切状态、切不了放行决策 —— 已落地 v0.13.0，llm 侧兜底已删除"
-   },
-   "status": "已完成：llm v0.4.0 起全量使用上游 GenBreaker",
-   "issueRepo": "oekit/concurrency",
-   "timelineModule": "runtime"
-  },
-  {
-   "kind": "retired",
-   "pkg": "llm/llm",
-   "repo": "llm",
-   "importPath": "github.com/oagentkit/llm/llm",
-   "canonicalPath": "github.com/oagentkit/llm",
-   "availableIn": "llm v0.18.0 起",
-   "removedIn": "llm v0.22.0",
-   "impl": "（已删除）原 llm/llm/compat.go —— 镜像根包全部 81 个导出符号；类型用 type 别名、函数用 var 转发、常量原样转发",
-   "whyNotInPackages": "规范包清单的 import 路径规则把「包名末段 == 仓名」收口到 module 根（matrix_paths.new_import_path）；登记它会让 versions.json 给根包与它登记同一个 importPath",
-   "issueRepo": "oagentkit/llm",
-   "issueChain": {
-    "47": "需求：llm/llm 扁平化后缺兼容子包 —— 跨大版本升级的下游需整仓改 import 路径（已关闭）",
-    "48": "实现：补 llm/llm 兼容层 —— 恢复 v0.7.0~v0.8.0 的历史 import 路径（已合入 llm v0.18.0）"
-   },
-   "status": "已完成：llm v0.22.0 删除兼容镜像（BREAKING，llm#181）——旧路径 import 一律改根包 github.com/oagentkit/llm（符号同名，调用点零改动）",
-   "plan": "（已兑现）新代码一律直接 import github.com/oagentkit/llm",
-   "timelineModule": "llm"
-  },
-  {
-   "kind": "moved",
-   "pkg": "obs/langfuse",
-   "repo": "obs",
-   "importPath": "github.com/oagentkit/obs/langfuse",
-   "canonicalPath": "github.com/oagentkit/llm/obsx",
-   "replacement": "github.com/oagentkit/llm/obsx",
-   "consumedBy": "llm/obsx —— Langfuse 写/发射端与读端同域；读端实现迁入本包",
-   "impl": "（已删除）obs/langfuse/{client.go,types.go} —— 只读客户端 + 契约类型；6 个导出符号在 llm/obsx 同名承接（逐字未变 ⇒ 调用点零改动，只动 import 行）",
-   "issueRepo": "oagentkit/obs",
-   "issueChain": {
-    "129": "langfuse 读端并入 llm/obsx（读写同域）；obs 降为 audit 单包仓 —— 已落地"
-   },
-   "status": "已完成：obs 删除 obs/langfuse（BREAKING）——旧路径 import 一律改 github.com/oagentkit/llm/obsx（承接方 llm#231 已合）",
-   "timelineModule": "obs"
-  }
- ],
- "compatShells": [
-  {
-   "repo": "toolgate",
-   "path": "invoke",
-   "module": "github.com/oagentkit/toolgate/invoke",
-   "until": "v0.16.0",
-   "removedIn": "v0.17.0"
-  }
- ],
- "droppedPackages": [
-  {
-   "pkg": "<root>",
-   "reason": "仓根 integration_test.go 依赖全部包，拆分后无处安放",
-   "action": "移到独立仓 github.com/{org}/agentkit-e2e，或并入 agent 仓的 _test 包"
-  }
- ]
+  ],
+  "infraRepos": [
+    {
+      "repo": "agentkit",
+      "role": "门面仓——已退役（v1.9.0）：48 个 re-export 转发包全部删除，module 保留声明 + 零依赖 go.mod 作墓碑与迁移指引。退役条件机器化为 retireWhen（matrix-tools#196）并已提前执行（见 retired 字段）；门面族守卫（verify_facade_retirement / packages / symbols / tier_table / release）对 retired 状态全部豁免或改判墓碑形状",
+      "ghDescription": "【门面仓·已退役】本项目已拆分为 github.com/oagentkit/* 共 14 个独立发版仓，v1.9.0 起兼容转发层全部删除（BREAKING），旧 import 路径一律改上游真身",
+      "topics": [
+        "go",
+        "deprecated",
+        "facade",
+        "migration"
+      ],
+      "goModule": true,
+      "moduleNote": "门面仓本身是发布的 Go module（github.com/oagentkit/agentkit），也有自己的破坏性变更（v1.8.0 起 re-export 地板跟到各模块新版）。它不进 modules 列表——门面 v1.x 后退役，不是矩阵的长期成员——但它的 breakingIndex 必须进机器可读源，否则消费方从门面装走的是什么版本没人说得清。",
+      "retireWhen": {
+        "notAfter": "2027-05-31",
+        "reason": "（历史登记，已被 retired 提前兑现）原判定：外部下游仍经旧单仓 module path（git.enjoye.top/enjoydream/agentkit）消费门面语义，归档前必须保活；矩阵内已零消费。到期未归档 ⇒ 守卫判红",
+        "matrixInternalZeroImports": true,
+        "decidedAt": "2026-11-10",
+        "decidedBy": "matrix-tools#196 机器化——原「按 README 写死的期限退役」中 README 从未写死期限"
+      },
+      "retired": {
+        "version": "v1.9.0",
+        "date": "2026-11-13",
+        "packagesDeleted": 48,
+        "reason": "兼容逻辑清仓车道：矩阵内零消费已验证，48 个转发包全部删除（BREAKING），旧 import 路径 github.com/oagentkit/agentkit/* 自 v1.9.0 起编译失败；go.mod 清空全部 require（零代码零依赖），README 留 48 包 → 上游对照表作迁移指引。较 notAfter 2027-05-31 提前退役；归档待旧单仓 git.enjoye.top/enjoydream/agentkit 下线后执行",
+        "decidedBy": "agentkit#198"
+      }
+    },
+    {
+      "repo": ".github",
+      "role": "org profile + 共享 reusable workflow（照抄 oekit/.github，改 org 与域名）",
+      "ghDescription": "oagentkit org profile 与共享 CI——go-ci.yml 为各仓 ci.yml 的唯一规则来源",
+      "topics": [
+        "ci",
+        "github-actions"
+      ]
+    },
+    {
+      "repo": "matrix-tools",
+      "role": "版本矩阵生成/审计/巡检（照抄 oekit/matrix-tools：gen_versions.py、ekit2oekit.py 同源思路）",
+      "ghDescription": "oagentkit 模块矩阵自动化——版本矩阵生成、依赖方向审计、import 改写",
+      "topics": [
+        "tooling",
+        "codegen",
+        "matrix"
+      ]
+    },
+    {
+      "repo": "oagentkit.github.io",
+      "role": "llms.txt 模块索引 + 文档站点",
+      "ghDescription": "oagentkit 文档站——llms.txt 模块索引、架构总览、各层指南",
+      "topics": [
+        "documentation",
+        "llms-txt"
+      ]
+    }
+  ],
+  "retiringPackages": [
+    {
+      "kind": "retired",
+      "pkg": "breaker",
+      "replacement": "github.com/oekit/concurrency/breaker",
+      "consumedBy": "llm/breaker.go —— 只做按模型名分桶 + 转发，不再有任何本地语义兜底",
+      "issueChain": {
+        "17": "三态 + 代绑定 + 探测时限 —— 已落地 v0.9.0",
+        "19": "冷却期与探测时限解耦（WithCooldown）—— 已落地 v0.12.0",
+        "20": "计数型触发（WithConsecutiveFailures）—— 已落地 v0.12.0",
+        "25": "计数型只切状态、切不了放行决策 —— 已落地 v0.13.0，llm 侧兜底已删除"
+      },
+      "status": "已完成：llm v0.4.0 起全量使用上游 GenBreaker",
+      "issueRepo": "oekit/concurrency",
+      "timelineModule": "runtime"
+    },
+    {
+      "kind": "retired",
+      "pkg": "llm/llm",
+      "repo": "llm",
+      "importPath": "github.com/oagentkit/llm/llm",
+      "canonicalPath": "github.com/oagentkit/llm",
+      "availableIn": "llm v0.18.0 起",
+      "removedIn": "llm v0.22.0",
+      "impl": "（已删除）原 llm/llm/compat.go —— 镜像根包全部 81 个导出符号；类型用 type 别名、函数用 var 转发、常量原样转发",
+      "whyNotInPackages": "规范包清单的 import 路径规则把「包名末段 == 仓名」收口到 module 根（matrix_paths.new_import_path）；登记它会让 versions.json 给根包与它登记同一个 importPath",
+      "issueRepo": "oagentkit/llm",
+      "issueChain": {
+        "47": "需求：llm/llm 扁平化后缺兼容子包 —— 跨大版本升级的下游需整仓改 import 路径（已关闭）",
+        "48": "实现：补 llm/llm 兼容层 —— 恢复 v0.7.0~v0.8.0 的历史 import 路径（已合入 llm v0.18.0）"
+      },
+      "status": "已完成：llm v0.22.0 删除兼容镜像（BREAKING，llm#181）——旧路径 import 一律改根包 github.com/oagentkit/llm（符号同名，调用点零改动）",
+      "plan": "（已兑现）新代码一律直接 import github.com/oagentkit/llm",
+      "timelineModule": "llm"
+    },
+    {
+      "kind": "moved",
+      "pkg": "obs/langfuse",
+      "repo": "obs",
+      "importPath": "github.com/oagentkit/obs/langfuse",
+      "canonicalPath": "github.com/oagentkit/llm/obsx",
+      "replacement": "github.com/oagentkit/llm/obsx",
+      "consumedBy": "llm/obsx —— Langfuse 写/发射端与读端同域；读端实现迁入本包",
+      "impl": "（已删除）obs/langfuse/{client.go,types.go} —— 只读客户端 + 契约类型；6 个导出符号在 llm/obsx 同名承接（逐字未变 ⇒ 调用点零改动，只动 import 行）",
+      "issueRepo": "oagentkit/obs",
+      "issueChain": {
+        "129": "langfuse 读端并入 llm/obsx（读写同域）；obs 降为 audit 单包仓 —— 已落地"
+      },
+      "status": "已完成：obs 删除 obs/langfuse（BREAKING）——旧路径 import 一律改 github.com/oagentkit/llm/obsx（承接方 llm#231 已合）",
+      "timelineModule": "obs"
+    }
+  ],
+  "compatShells": [
+    {
+      "repo": "toolgate",
+      "path": "invoke",
+      "module": "github.com/oagentkit/toolgate/invoke",
+      "until": "v0.16.0",
+      "removedIn": "v0.17.0"
+    }
+  ],
+  "droppedPackages": [
+    {
+      "pkg": "<root>",
+      "reason": "仓根 integration_test.go 依赖全部包，拆分后无处安放",
+      "action": "移到独立仓 github.com/{org}/agentkit-e2e，或并入 agent 仓的 _test 包"
+    }
+  ]
 }
