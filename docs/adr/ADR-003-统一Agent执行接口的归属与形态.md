@@ -1,11 +1,13 @@
 # ADR-003 · 统一 Agent 执行接口的归属与形态
 
+> **分面声明**：本 ADR 是**治理面 canon**（三方案拒收面 / 门禁接线 / 与 ADR-001/002/ADR-0010 的集成）；仓内面 canon 是 `oagentkit/agent` 仓的 `docs/adr/ADR-001-Agent接口归属与窄接口形态.md`（三入口对照表详版、四条归属理由、适配器测试面以该篇为准）。两篇核心裁决逐条一致，实现锚点以 `oagentkit/agent/iface` 与 `yi-nology/goagent-runtime/agentiface` 为准。
+
 | 项 | 内容 |
 |---|---|
 | **状态** | 已采纳（Accepted） |
 | **日期** | 2026-11-28 |
 | **背景** | oagentkit 演进评审 2.3-问题一/三（Agent 层没有接口面，「一个 Agent 是什么」无从谈起；缺统一执行语义）+ 2.4-阶段一「优先稳定 Agent 接口」。全矩阵 grep `type Agent interface` 为零，两套可运行入口形态各异。issue `oagentkit/agent#174`。 |
-| **决策** | ① **归属**：窄接口放 `oagentkit/agent` 新子包 **`iface`**（被依赖方——依赖方向决定，§二三方案对比；实现侧 `iface/doc.go` 独立推出同一结论并以编译期断言 `var _ iface.Agent = (*agentrun.Agent)(nil)` 锚定）。② **形态**：`iface.Agent{ Run(ctx, Input) (Result, error) }`——只定语义不定装配；`Result.Status` 是宿主状态词表**透传**（词表单源 kernel/contract，本包不定义任何状态常量）；事件以 **`Input.OnEvent` 调用方回调**形态收（原生词表透传、不翻译、不代 recover、不支持必须显式拒绝——不建第三份传输，§三）。③ **adapter 分落两仓**：`agentrun.Agent` 在 `oagentkit/agent`，agentloop 与 contract 边界适配在 `yi-nology/goagent-runtime/bridge/agentiface`（只有它同时 import 两边）；**不强迁存量**，原签名不动。④ 定级 **Experimental**（ADR-002 判据）。 |
+| **决策** | ① **归属**：窄接口放 `oagentkit/agent` 新子包 **`iface`**（被依赖方——依赖方向决定，§二三方案对比；实现侧 `iface/doc.go` 独立推出同一结论并以编译期断言 `var _ iface.Agent = (*agentrun.Agent)(nil)` 锚定）。② **形态**：`iface.Agent{ Run(ctx, Input) (Result, error) }`——只定语义不定装配；`Result.Status` 是宿主状态词表**透传**（词表单源 kernel/contract，本包不定义任何状态常量）；事件以 **`Input.OnEvent` 调用方回调**形态收（原生词表透传、不翻译、不代 recover、不支持必须显式拒绝——不建第三份传输，§三）。③ **adapter 分落两仓**：`agentrun.Agent` 在 `oagentkit/agent`，agentloop 与 contract 边界适配在 `yi-nology/goagent-runtime/agentiface`（主 module 顶层——**不是** `bridge/`：bridge 是嵌套 module，立意是 eino/LLM SDK 边隔离，本包无 LLM 边，放进去反而污染其声明面；runtime 同时 import agent 与 kernel 的事实不变）；**不强迁存量**，原签名不动。④ 定级 **Experimental**（ADR-002 判据）。 |
 | **后果** | 消费方写泛化代码只依赖 `iface.Agent` 一个面；三入口语义差异被对照表钉死而不是散在各自文档；agent 仓新增包触发 `verify_api_lifecycle` 覆盖双向判据（不登记即红）；跨仓词表对账由 runtime 侧 bridge 测试常绿守着；实现与本 ADR 互为锚点（实现注释引用本对照表，本 ADR §四引用实现映射规则）。 |
 | **依据** | 三入口 2026-11-28 逐仓实测（§一，含评审快照勘误）；go.mod 依赖边实况（ADR-001 §一，思想层零依赖 kernel、runtime→agent 已存在）；runtime `ADR-0010` 已背书「同一入口形态 `Run(ctx, input) → Result`、状态词表归 kernel contract」——本 ADR 是该形态在 Agent 层的类型化；kernel `contract/status.go` 13 值词表单源实测；`verify_import_direction` 模块级 `dependsOn` 守卫（runtime→agent 已声明）。 |
 
@@ -115,7 +117,7 @@ type Agent interface {
 | adapter | 落点 | 映射要点（以实现为锚） |
 |---|---|---|
 | **agentrun** | `oagentkit/agent`（`agentrun.Agent` 结构体，`agentrun→iface` 方向自然） | `Input.SessionID` 忽略（无会话概念，不报错）；`Input.OnEvent` 追加为 `WithOnEvent`（**末个生效**，故窄接口输入面优先于 `Opts` 预设回调）；`statusOf`：`DeadlineExceeded→timed_out`、`Canceled→cancelled`、其余→`failed`、成功→`succeeded`（全部 ∈ contract 13 值，常量块逐字对齐 + 注释声明跨仓对账点）；失败**原样返回 error**（失败信息不塞 Result） |
-| **agentloop + contract 边界** | `yi-nology/goagent-runtime/bridge/agentiface`（只有它同时 import agent 与 kernel） | agentloop 侧：`Input.SessionID` 空则用构造期默认会话，`*Result` 的 `Status/Final` 透传（Loop 的 Status 本就是 contract 词表）；contract 边界：词表对账——agentrun adapter 的字面量映射与 agentloop 的透传值**逐一过 `contract.IsKnownStatus`**，跨仓词表一致性常绿即本 ADR「透传不定义」的机器证明 |
+| **agentloop + contract 边界** | `yi-nology/goagent-runtime/agentiface`（主 module 顶层；同时 import agent 与 kernel） | agentloop 侧：`Input.SessionID` 空则**显式报错**（会话制入口不静默降级；一次性形态指回 `agentrun` 适配器），`*Result` 的 `Status/Final` 透传（Loop 的 Status 本就是 contract 词表）；contract 边界：词表对账实装为**字面量对齐链两半**——agent 侧 `agentrun/iface_test.go` 钉适配器输出字面量、runtime 侧 `agentiface/contract_test.go` 钉 `contract` 常量 == 同一批字面量（`TestContractStatusLiteralsAlignWithAgentAdapter`），两侧任一改值双红；agentloop 侧另有过程态收口断言（模型失败时 loop 留 `running`，适配器必须收口到终态）。跨仓词表一致性常绿即本 ADR「透传不定义」的机器证明 |
 
 **不强迁存量**：`agentrun.Run` 与 `Loop.Run` 原签名不动，`iface.Agent` 是
 增量面（拿窄面的消费方按需取用）；两个 adapter 均随所在包定级
@@ -140,4 +142,4 @@ Experimental（ADR-002），晋级按三维判据走。
 - 形态背书：`yi-nology/goagent-runtime` `docs/adr/ADR-0010`（执行接口两模型分立、共享语义不成模型——`Run(ctx, input) → Result` 同一入口形态与词表归 kernel 的出处）
 - runtime 侧镜像：`yi-nology/goagent-runtime#39`（W2 Loop 与 Pipeline 边界）、#38（对象模型——本面不重复其 Session/Run/Turn 建模）
 - 词表单源：`yi-nology/goagent-kernel` `contract/status.go`（13 值）、`contract` 包 `RunContext`/`StepSink`
-- 实现锚点：`oagentkit/agent/iface`（doc.go 含本裁决的实现侧论证）、`agentrun/iface.go`（agentrun adapter）、`yi-nology/goagent-runtime/bridge/agentiface`（agentloop + contract 边界 adapter）
+- 实现锚点：`oagentkit/agent/iface`（doc.go 含本裁决的实现侧论证）、`agentrun/iface.go`（agentrun adapter）、`yi-nology/goagent-runtime/agentiface`（agentloop + contract 边界 adapter）
