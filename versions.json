@@ -8114,7 +8114,7 @@
       "repo": "goagent-runtime",
       "url": "https://github.com/yi-nology/goagent-runtime",
       "tier": 5,
-      "latest": "v0.8.0",
+      "latest": "v0.9.0",
       "packages": [
         {
           "pkg": "chat",
