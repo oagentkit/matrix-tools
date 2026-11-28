@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 6,
   "moduleCount": 16,
-  "packageCount": 136,
+  "packageCount": 137,
   "modules": [
     {
       "repo": "textx",
@@ -8185,6 +8185,11 @@
           "pkg": "bridge/einotool",
           "importPath": "github.com/yi-nology/goagent-runtime/einotool",
           "fromLegacy": "agentkit/bridge/einotool"
+        },
+        {
+          "pkg": "trace",
+          "importPath": "github.com/yi-nology/goagent-runtime/trace",
+          "fromLegacy": "agentkit/trace"
         }
       ],
       "matrixDeps": [
