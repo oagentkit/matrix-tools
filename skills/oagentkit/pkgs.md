@@ -223,3 +223,4 @@
 | `bridge/einotool` | 钦定适配器：eino InvokableTool → pipeline.Tool（副作用闸字段不猜） |
 | `trace` | — |
 | `agentiface` | — |
+| `preset` | — |
