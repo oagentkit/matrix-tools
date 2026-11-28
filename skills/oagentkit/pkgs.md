@@ -140,6 +140,7 @@
 
 | 子包 | 用途 |
 |---|---|
+| `iface` | — |
 | `agentrun` | ReAct 运行样板与计划先行（PlanAndExecute）编排 |
 | `reflection` | 反思循环 |
 | `router` | 显式意图路由 |

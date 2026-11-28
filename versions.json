@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 6,
   "moduleCount": 16,
-  "packageCount": 137,
+  "packageCount": 138,
   "modules": [
     {
       "repo": "textx",
@@ -5680,6 +5680,10 @@
       "tier": 3,
       "latest": "v0.16.0",
       "packages": [
+        {
+          "pkg": "iface",
+          "importPath": "github.com/oagentkit/agent/iface"
+        },
         {
           "pkg": "agentrun",
           "importPath": "github.com/oagentkit/agent/agentrun",
