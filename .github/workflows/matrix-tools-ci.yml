@@ -523,15 +523,18 @@ jobs:
         # 它们的真实性由 matrix-truth job 的联网对账门禁负责。
         run: python3 scripts/verify_versions_drift.py
 
-      - name: llms.txt 可确定性重生成
-        # llms.txt 本身在站点仓，本仓只验「生成是确定的」：
+      - name: llms.txt / 场景页可确定性重生成
+        # 产物本身在站点仓，本仓只验「生成是确定的」：
         # 连跑两次结果不同就说明生成器里有随机性/时间戳，那是漂移的根源。
+        # 场景页（#258 gen_llms_txt --out-page）与 llms.txt 同一次跑出，一并钉住。
         run: |
           set -euo pipefail
-          python3 scripts/gen_llms_txt.py --matrix modules.json --out /tmp/llms.a.txt
-          python3 scripts/gen_llms_txt.py --matrix modules.json --out /tmp/llms.b.txt
-          if diff -q /tmp/llms.a.txt /tmp/llms.b.txt; then
-            echo "✅ 生成确定"
+          python3 scripts/gen_llms_txt.py --matrix modules.json \
+            --out /tmp/llms.a.txt --out-page /tmp/page.a.md
+          python3 scripts/gen_llms_txt.py --matrix modules.json \
+            --out /tmp/llms.b.txt --out-page /tmp/page.b.md
+          if diff -q /tmp/llms.a.txt /tmp/llms.b.txt && diff -q /tmp/page.a.md /tmp/page.b.md; then
+            echo "✅ 生成确定（llms.txt + 场景页）"
           else
             echo "❌ 两次生成结果不同"; exit 1
           fi
@@ -590,6 +593,20 @@ jobs:
           python3 scripts/verify_modules_copy.py --matrix modules.json \
             --compare site/data/modules.json \
             --compare site/docs/public/modules.json
+
+      - name: 站点 llms.txt / 场景页副本与源生成一致
+        # llms.txt 与 docs/reference/scenarios.md 都是 gen_llms_txt.py 的
+        # **逐字节副本**（场景页走 --out-page，#258 同一纪律）。
+        # 手改副本 ⇒ 本步红——手改会在下次生成时消失，门禁必须在消失**之前**报红，
+        # 否则手改与生成器互相顶替、没人知道哪边是对的。
+        # 修法 = 源先副本后：本地跑生成器写回，再提站点 PR。
+        # （org 规则仓 repo-ci 的 matrix-docs 也守 llms.txt；这里补的是
+        #   matrix-tools 自己 push 后的站点副本面 + 场景页。）
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_docs.py --matrix modules.json \
+            --llms site/docs/public/llms.txt \
+            --page site/docs/reference/scenarios.md
 
   matrix-local-guards:
     name: Matrix local guards (层级方向 / 门面规则 / 仓文档)

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """从 modules.json 生成 llms.txt —— 面向 LLM 的模块索引。
 
-对标 oekit 的 https://oekit.github.io/llms.txt：模块清单 + 分层 + 安装行 + AI Agent 要点。
-模块信息全部来自 modules.json，不手写，避免与矩阵漂移。
+对标 oekit 的 https://oekit.github.io/llms.txt：模块清单 + 分层 + 安装行 +
+场景选型表 + AI Agent 要点。模块信息全部来自 modules.json，不手写，避免与矩阵漂移。
+
+场景选型表（matrix-tools#258）与站点场景页共用 gen_skill 的 SCENARIOS 数据区与
+渲染函数——同一张表在 skill / llms.txt / 站点三个出口逐字一致。
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import gen_skill  # noqa: E402  场景表数据 + 渲染的单源（SCENARIOS / scenario_tables）
 from matrix_paths import (  # noqa: E402  路径规则与 rewrite_imports.py 同源
     OLD_ROOT,
     build_mapping,
@@ -38,7 +42,8 @@ FACADE_BASELINE = HERE / "facade_package_baseline.json"
 
 # 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
 # ⚠️ 这组参数必须**无副作用**、且能让脚本**真正走完入口**（不能只让 argparse 早退）。
-SMOKE_ARGS = ["--matrix", "@repo/matrix-tools/modules.json", "--out", "@tmpdir/llms.txt"]
+SMOKE_ARGS = ["--matrix", "@repo/matrix-tools/modules.json", "--out", "@tmpdir/llms.txt",
+              "--out-page", "@tmpdir/scenarios.md"]
 
 def facade_package_names() -> list[str]:
     """门面转发包名清单（取自冻结基线）。
@@ -148,10 +153,59 @@ def compat_by_repo(data: dict) -> dict[str, list[dict]]:
     return out
 
 
+# 五形态样例入口（goagent-runtime#46 / #53 交付的 examples）——
+# 场景表回答「用什么」，这五条回答「拼起来长什么样」（go run 即通）。
+_FIVE_FORMS_BASE = ("https://github.com/yi-nology/goagent-runtime"
+                    "/tree/main/examples")
+
+
+def five_forms_block() -> list[str]:
+    b = _FIVE_FORMS_BASE
+    return [
+        "### 五形态样例入口（goagent-runtime）",
+        "",
+        "场景表各条「拼起来长什么样」的完整可跑样例（`go run` 即通，README ≤10 行，"
+        "每形态标注所用 tier 与依赖仓）：",
+        "",
+        f"- **Simple**（最简模型 + 工具闭环）：[`examples/simple`]({b}/simple)",
+        f"- **Workflow**（固定 Step 流程，样例级拼装；真定步执行器的正主是 "
+        f"[goagent-runtime#39](https://github.com/yi-nology/goagent-runtime/issues/39)）："
+        f"[`examples/workflow`]({b}/workflow)",
+        f"- **ReAct**（自主工具循环）：[`examples/react`]({b}/react)",
+        f"- **Multi-Agent**（多专家协作，装配上游 `agent/router` + `blackboard`）："
+        f"[`examples/multiagent`]({b}/multiagent)",
+        f"- **Long-running**（长任务中断恢复：Interrupt → Resume，副作用不重放）："
+        f"[`examples/longrunning`]({b}/longrunning)",
+    ]
+
+
+def scenario_block(d: dict, heading: str) -> list[str]:
+    """场景选型表段（llms.txt 与站点场景页共用）。
+
+    数据与渲染的单源都在 gen_skill（SCENARIOS 手写数据区 + scenario_tables）——
+    同一张表要出 skill / llms.txt / 站点三个出口，各写一遍渲染必然漂成三张表。
+    """
+    out: list[str] = []
+    if heading:
+        out += [heading, ""]
+    out += [
+        "> 组合成本问题的一半是「找不到」——这张表回答「我要做什么 → 用什么」，"
+        "六组全量。**数据单源是 `matrix-tools/scripts/gen_skill.py` 的 SCENARIOS "
+        "手写数据区**（与 oagentkit skill 的场景表同源渲染）；`import 拖累面` 列由 "
+        "modules.json 的 heavyDeps 现算——import 即拖进 eino / milvus / mcp-go 等重依赖。",
+        "",
+        gen_skill.scenario_tables(d),
+        "",
+    ]
+    return out + five_forms_block() + [""]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--matrix", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--out-page",
+                    help="另存站点场景页（oagentkit.github.io docs/reference/scenarios.md 的源）")
     ap.add_argument("--site", default="https://oagentkit.github.io",
                     help="拼进产物的站点对外地址，必须 http(s):// 开头（matrix-tools#199）")
     ap.add_argument("--versions", default=str(HERE.parent / "versions.json"),
@@ -315,6 +369,10 @@ def main() -> int:
             L.append(f"  - 安装：`go get github.com/{morg}/{m['repo']}@latest`")
         L.append("")
 
+    # 场景选型表（matrix-tools#258）：按场景直查，回答「找不到」那一半组合成本。
+    # 数据/渲染单源在 gen_skill——与 skill 场景表逐字同源。
+    L.extend(scenario_block(d, "## 场景选型表（按场景直查）"))
+
     # 机读归属表的对外渲染（评审 2.3-问题一：三层各自造相似机制 ⇒ 归属必须先于代码）。
     # 单源是 modules.json 的 mechanisms 字段，本段只是它的投影——
     # 判红由 scripts/verify_mechanism_ownership.py 承担（关键词命中未登记 ⇒ 红）。
@@ -466,6 +524,20 @@ def main() -> int:
 
     Path(args.out).write_text("\n".join(L), encoding="utf-8")
     print(f"# 生成 {args.out}（{len(L)} 行，{len(mods)} 模块 / {npkg} 包）")
+
+    # 站点场景页（matrix-tools#258）：与 llms.txt 场景段同源的独立人读页。
+    # 站点持**逐字节副本**（docs/reference/scenarios.md），校验走 verify_docs --page。
+    if args.out_page:
+        page = [
+            "# 场景选型表：我要做什么 → 用什么", "",
+            "这一页与 oagentkit skill 的场景表**同源**（数据单源："
+            "`matrix-tools/scripts/gen_skill.py` 的 SCENARIOS 手写数据区），"
+            "由 `gen_llms_txt.py --out-page` 生成——**手改会在下次生成时消失**。", "",
+            "同源渲染：[llms.txt 的场景选型表段](/llms.txt) · "
+            "[机器事实（模块 × 包 × 版本）](/reference/packages)", "",
+        ] + scenario_block(d, "")
+        Path(args.out_page).write_text("\n".join(page), encoding="utf-8")
+        print(f"# 生成 {args.out_page}（{len(page)} 行）")
     return 0
 
 

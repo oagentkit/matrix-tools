@@ -12,14 +12,14 @@
 | tier0 | [`textx`](https://github.com/oagentkit/textx) | 文本/差异/会话/报告纯函数集 | — | `textx/AGENTS.md` |
 | tier0 | [`toolname`](https://github.com/oagentkit/toolname) | 工具名 → 程序内标识符的单一真相（规范名判定 + 规整） | — | `toolname/AGENTS.md` |
 | tier1 | [`promptx`](https://github.com/oagentkit/promptx) | system prompt 分段组装/运行中转向/文件读后写一致性 | — | `promptx/AGENTS.md` |
-| tier2 | [`llm`](https://github.com/oagentkit/llm) | 模型客户端/降级链/预算/成本/阶段路由/调用观测 | eino、openai、go-openai、otel、sdk、trace | `llm/AGENTS.md` |
+| tier2 | [`llm`](https://github.com/oagentkit/llm) | 模型客户端/降级链/预算/成本/阶段路由/调用观测 | eino、openai、go-openai、otel | `llm/AGENTS.md` |
 | tier2 | [`mcpkit`](https://github.com/oagentkit/mcpkit) | MCP 客户端/工具池/建连单飞 | mcp-go、jsonschema、eino | `mcpkit/AGENTS.md` |
 | tier2 | [`obs`](https://github.com/oagentkit/obs) | 敏感操作的结构化审计留痕 | — | `obs/AGENTS.md` |
 | tier2 | [`queue`](https://github.com/oagentkit/queue) | DB 即队列 + Postgres 选主 Lease | pq、sqlite | `queue/AGENTS.md` |
-| tier2 | [`rag`](https://github.com/oagentkit/rag) | 知识检索与本体层——向量化/混合召回/重排 + 实体关系本体契约 | eino、v2、yaml.v3 | `rag/AGENTS.md` |
-| tier2 | [`skillkit`](https://github.com/oagentkit/skillkit) | SKILL.md 渐进披露 + 领域包契约 + 装配血缘 | eino、yaml.v3、v3 | `skillkit/AGENTS.md` |
+| tier2 | [`rag`](https://github.com/oagentkit/rag) | 知识检索与本体层——向量化/混合召回/重排 + 实体关系本体契约 | eino、milvus-sdk-go、yaml.v3 | `rag/AGENTS.md` |
+| tier2 | [`skillkit`](https://github.com/oagentkit/skillkit) | SKILL.md 渐进披露 + 领域包契约 + 装配血缘 | eino、yaml.v3、semver | `skillkit/AGENTS.md` |
 | tier2 | [`toolgate`](https://github.com/oagentkit/toolgate) | 工具优先级/并发调度/操作审计门/不可绕过的调用链 | eino、yaml.v3 | `toolgate/AGENTS.md` |
-| tier2 | [`tools`](https://github.com/oagentkit/tools) | CLI 编码 agent 统一调用/公开检索/git 沙箱/SAST 扫描/Shell 静态裁决 | eino、v3 | `tools/AGENTS.md` |
+| tier2 | [`tools`](https://github.com/oagentkit/tools) | CLI 编码 agent 统一调用/公开检索/git 沙箱/SAST 扫描/Shell 静态裁决 | eino、sh | `tools/AGENTS.md` |
 | tier3 | [`agent`](https://github.com/oagentkit/agent) | ReAct 运行样板/反思循环/意图路由/多专家黑板/派发守卫/澄清 | eino、openai、yaml.v3 | `agent/AGENTS.md` |
-| tier4 | [`goagent-kernel`](https://github.com/oagentkit/goagent-kernel) | 多智能体编排判据层——状态机/副作用闸/续跑/介入/事件面的确定性机制 | goja、v6、tools、yaml.v3 | `goagent-kernel/AGENTS.md` |
-| tier5 | [`goagent-runtime`](https://github.com/oagentkit/goagent-runtime) | Agent 运行时装配层——把 goagent-kernel 判据装配成业务可直接用的 runtime | v5、sqlite | `goagent-runtime/AGENTS.md` |
+| tier4 | [`goagent-kernel`](https://github.com/oagentkit/goagent-kernel) | 多智能体编排判据层——状态机/副作用闸/续跑/介入/事件面的确定性机制 | goja、jsonschema、tools、yaml.v3 | `goagent-kernel/AGENTS.md` |
+| tier5 | [`goagent-runtime`](https://github.com/oagentkit/goagent-runtime) | Agent 运行时装配层——把 goagent-kernel 判据装配成业务可直接用的 runtime | pgx、sqlite | `goagent-runtime/AGENTS.md` |

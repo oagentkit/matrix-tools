@@ -24,8 +24,8 @@ oagentkit 模块矩阵的自动化仓 —— 生成、审计、改写、发布�
 | `scripts/gen_docs.py` | 从 `modules.json` 生成各仓的 `README.md` 与 `AGENTS.md` 的**骨架**（见下方警告） |
 | `scripts/create_repos.py` | 按矩阵建仓（带 description 与 topics，幂等，默认 dry-run） |
 | `scripts/publish_repo.sh` | 单仓发版流水线：改写 → tidy → build → vet → test -race → commit → push → tag |
-| `scripts/gen_llms_txt.py` | 从 `modules.json` 生成 `llms.txt`（面向 LLM 的模块索引） |
-| `scripts/verify_docs.py` | **防漂移**：重新生成 `llms.txt` 与提交版比对，不一致 exit 1（`--fix` 直接覆盖） |
+| `scripts/gen_llms_txt.py` | 从 `modules.json` 生成 `llms.txt`（面向 LLM 的模块索引）与站点场景页（`--out-page`，场景表数据/渲染单源在 gen_skill，#258） |
+| `scripts/verify_docs.py` | **防漂移**：重新生成 `llms.txt` / 场景页（`--page`）与提交版比对，不一致 exit 1（`--fix` 直接覆盖） |
 | `scripts/verify_mechanism_ownership.py` | **归属守卫**：`modules.json` `mechanisms` 八机制表自洽；包名命中机制关键词却未登记归属 ⇒ 红；仓名后缀撞名对（`runtime` ⊂ `goagent-runtime`）缺 `qualifier` 消歧字段 ⇒ 红（ADR-001，评审 2.3-问题一） |
 | `scripts/verify_repo_docs.py` | **防抹除**：检测各仓 README/AGENTS 与 `gen_docs.py` 输出的差异（只报告，不提供 `--fix`） |
 | `scripts/check_facade_imports.py` | **退役守卫**：扫描下游是否仍 import 门面仓/旧 module，命中 exit 1 |

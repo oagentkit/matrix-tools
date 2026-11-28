@@ -10,6 +10,7 @@ modules.json         单一数据源：16 个模块 + 包清单 + 分层 + 依�
                       + 八机制归属（mechanisms 字段，ADR-001）+ 元信息
 versions.json        生成物：机器可读版本矩阵（由 gen_versions.py 生成，勿手改）
 scripts/             工具链（见下）
+skills/oagentkit/    AI 入口 skill 渲染产物（源=scripts/gen_skill.py，勿手改）
 .github/workflows/   本仓自己的 CI
 docs/adr/            架构决策记录（ADR-001 三层边界与八机制归属）
 ```

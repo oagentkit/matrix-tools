@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -37,6 +38,55 @@ SMOKE_ARGS = ["--check"]
 
 def load_modules() -> dict:
     return json.loads(MODULES_JSON.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# 渲染共用件（gen_llms_txt 的 llms.txt 场景段与站点场景页 import 本模块复用）
+# ---------------------------------------------------------------------------
+
+# heavyDeps 展示短名：尾段是噪声（sdk/trace/纯版本后缀）时回退到上一段。
+# 实测：llm 的 heavyDeps 直接取尾段会渲染成「otel、sdk、trace」——后两个词
+# 其实是同一条 go.opentelemetry.io/otel/sdk/trace 的尾巴 ⇒ 展示必须吃掉噪声，
+# 否则读者以为拖了三个依赖。
+_HEAVY_NOISE = {"sdk", "trace"}
+_HEAVY_VER = re.compile(r"^v\d+$")
+
+
+def heavy_dep_short(path: str) -> str:
+    parts = [p for p in path.split("/") if p]
+    while len(parts) > 1 and (parts[-1] in _HEAVY_NOISE or _HEAVY_VER.match(parts[-1])):
+        parts.pop()
+    return parts[-1]
+
+
+def scenario_tables(data: dict) -> str:
+    """六组场景选型表（markdown，含 import 拖累面列）。
+
+    数据单源 = 本文件的 `SCENARIOS` 手写数据区；`import 拖累面` 列由
+    `data`（modules.json 文档）的 heavyDeps **现算**——不写死，
+    矩阵改了这里跟着改。
+
+    ## 为什么抽成函数
+
+    同一张表要出三个出口：SKILL.md（skill）、llms.txt（下游 AI）、
+    站点场景页（人类读者）。三处各写一遍渲染 ⇒ 必然漂成三张略有差异的表
+    （本仓 AGENTS 的「生成物必须同源」纪律）。所以渲染只此一份，
+    调用方传各自的 modules.json 文档进来。
+    """
+    heavy = {m["repo"]: sorted({heavy_dep_short(p) for p in m.get("heavyDeps", [])})
+             for m in data.get("modules", [])}
+    out: list[str] = []
+    for group, rows in SCENARIOS:
+        out.append(f"### {group}\n")
+        out.append("| 我要做什么 | 用什么 | import 拖累面 | 组合提示 | 红线 |")
+        out.append("|---|---|---|---|---|")
+        for r in rows:
+            deps = sorted({d for repo in r.get("mods", []) for d in heavy.get(repo, [])})
+            dep_cell = "、".join(deps) if deps else "—"
+            out.append(f"| {r['scene']} | {r['use']} | {dep_cell} | "
+                       f"{r.get('tips', '—')} | {r.get('redline', '—')} |")
+        out.append("")
+    return "\n".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +252,10 @@ def _module_table() -> str:
     mods = load_modules()["modules"]
     out = ["| tier | 模块 | 一句话 | heavyDeps（import 即拖入） | 深入 |", "|---|---|---|---|---|"]
     for m in sorted(mods, key=lambda x: (x["tier"], x["repo"])):
-        hd = "、".join(d.split("/")[-1] for d in m.get("heavyDeps", [])) or "—"
+        # 去重保序：otel / otel-sdk / otel-sdk-trace 三条路径短名都是 otel，
+        # 不去重会渲染成「otel、otel、otel」（实测 llm 行）。
+        hd = "、".join(dict.fromkeys(
+            heavy_dep_short(d) for d in m.get("heavyDeps", []))) or "—"
         out.append(f"| {_tier_label(m['tier']).split()[0]} | [`{m['repo']}`](https://github.com/oagentkit/{m['repo']}) "
                    f"| {m['desc']} | {hd} | `{m['repo']}/AGENTS.md` |")
     return "\n".join(out)
@@ -254,14 +307,6 @@ def render_skill() -> str:
         + "".join(f"  {ln}\n" for ln in skill_description().splitlines())
         + "---\n\n"
     )
-    sc = []
-    for group, rows in SCENARIOS:
-        sc.append(f"### {group}\n")
-        sc.append("| 我要做什么 | 用什么 | 组合提示 | 红线 |")
-        sc.append("|---|---|---|---|")
-        for r in rows:
-            sc.append(f"| {r['scene']} | {r['use']} | {r.get('tips', '—')} | {r.get('redline', '—')} |")
-        sc.append("")
     nmod, _npkg = _matrix_counts()
     body = f"""# oagentkit 包选型与用法入口
 
@@ -278,7 +323,7 @@ def render_skill() -> str:
 
 ## 场景选型表
 
-{chr(10).join(sc)}
+{scenario_tables(load_modules())}
 ## 红线速览（出处标注；per-repo 全量在该仓 AGENTS.md）
 
 {chr(10).join(f"- {r}" for r in REDLINES)}
