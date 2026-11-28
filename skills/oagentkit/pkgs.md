@@ -74,7 +74,7 @@
 | `llm/llmtest` | 模型层契约测试套件 |
 | `obsx` | eino callbacks 体系的 LLM 调用追踪 + token 用量采集 + 分阶段打标（自 obs/obsx 迁入）＋ Langfuse Public API 只读客户端（自 obs/langfuse 迁入，读写同域） |
 | `llm/decision` | System One 协议判定面客户端（非自回归判定模型）：choice/score/noul 三原语 + 校准置信口径（本地算，两端同义） |
-| `conformance` | — |
+| `conformance` | Completer 契约套件：换 Completer 实现的合规验证——降级原因可分类/预算前置判定/Classifier 分类行为/ErrEmptyChain·ErrCircuitOpen 哨兵语义（正/负对照，面向第三方实现者） |
 
 ### mcpkit（tier2）
 
@@ -82,7 +82,7 @@
 |---|---|
 | `mcp` | MCP 客户端/工具池：工具目录、建连单飞、自愈与租约管理 |
 | `iface` | MCP 工具调用面的协议中立声明：失败分类学（ErrorKind）、结果分类载体（ClassifiedError）与工具能力接口（RawNamer/OutputSchemer）——只依赖标准库，供不要 mcp-go 的消费方使用 |
-| `conformance` | — |
+| `conformance` | MCP 工具面契约套件：ErrorKind 五类语义钉住 + 信封契约消费方视角 + RawNamer/OutputSchemer 零值口径（toolfail 分类轴对照，只对照不互改判据） |
 
 ### obs（tier2）
 
@@ -109,7 +109,7 @@
 | `wiki/fsstore` | wiki.Store 的文件系统参考实现：一页一个 markdown（元数据 YAML front-matter），同目录临时文件 + Rename 原子替换 |
 | `milvus` | 向量后端（Milvus）实现：rag/milvus 子包——**只有它链向量 sdk**，根包零向量依赖（本地索引/混合召回调用方不必拖进 milvus 传递链） |
 | `ontology` | 实体/关系本体层：Schema/Type/Field 与 Triple 契约 + Validate 判据面 + Store 接口（内存参考实现）——不做抽取、不建图库，契约与领域无关 |
-| `embedtest` | — |
+| `embedtest` | Embedder 契约套件：确定性/排序一致性分级声明 + 批量单条一致 + 维度契约 + 边界 + 错误不静默（正/负对照，面向第三方实现者） |
 
 ### skillkit（tier2）
 
@@ -223,4 +223,4 @@
 | `bridge/einotool` | 钦定适配器：eino InvokableTool → pipeline.Tool（副作用闸字段不猜） |
 | `trace` | — |
 | `agentiface` | — |
-| `preset` | — |
+| `preset` | 五形态标准装配（真装配非转发，ADR-004 落地面）：Simple/ReAct/Workflow/Multi/Long-running 各自默认口径——装配→会话→Run→Close 一体 |
