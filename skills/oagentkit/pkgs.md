@@ -219,3 +219,4 @@
 | `bridge/llmchat` | 钦定适配器：oagentkit/llm → chat.Model（嵌套模块，LLM SDK 边只在 bridge） |
 | `bridge/einotool` | 钦定适配器：eino InvokableTool → pipeline.Tool（副作用闸字段不猜） |
 | `trace` | — |
+| `agentiface` | — |

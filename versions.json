@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 6,
   "moduleCount": 16,
-  "packageCount": 138,
+  "packageCount": 139,
   "modules": [
     {
       "repo": "textx",
@@ -8119,6 +8119,10 @@
         {
           "pkg": "trace",
           "importPath": "github.com/yi-nology/goagent-runtime/trace"
+        },
+        {
+          "pkg": "agentiface",
+          "importPath": "github.com/yi-nology/goagent-runtime/agentiface"
         }
       ],
       "matrixDeps": [
