@@ -295,6 +295,11 @@ def main() -> int:
             pkgs = "、".join(f"`{p.rsplit('/', 1)[-1]}`" for p in m["packages"])
             L.append(f"- [{m['repo']}](https://github.com/{morg}/{m['repo']}): "
                      f"{m['ghDescription']}")
+            # 消歧限定词（modules.json qualifier 字段）：短名撞车的两个仓
+            # （runtime ⊂ goagent-runtime）在文档里必须带限定语，否则 AI/人
+            # 按短名找仓必错一个。命名撞车裁决 = 消歧字段，不改名（ADR-001 §三）。
+            if m.get("qualifier"):
+                L.append(f"  - 消歧：{m['qualifier']}")
             L.append(f"  - 包：{pkgs}")
             for cp in compat.get(m["repo"], []):
                 L.append(
@@ -308,6 +313,35 @@ def main() -> int:
                     for x in sorted(m["dependsOn"]))
                 L.append(f"  - 依赖：{deps}")
             L.append(f"  - 安装：`go get github.com/{morg}/{m['repo']}@latest`")
+        L.append("")
+
+    # 机读归属表的对外渲染（评审 2.3-问题一：三层各自造相似机制 ⇒ 归属必须先于代码）。
+    # 单源是 modules.json 的 mechanisms 字段，本段只是它的投影——
+    # 判红由 scripts/verify_mechanism_ownership.py 承担（关键词命中未登记 ⇒ 红）。
+    mechs = d.get("mechanisms") or []
+    if mechs:
+        L.append("## 机制归属（八机制判据单源）")
+        L.append("")
+        L.append("> 三层（Agent / Runtime / Kernel）的机制判据归属表。"
+                 "**机读单源是 matrix-tools 的 `modules.json` `mechanisms` 字段**"
+                 "（本段是投影）；机制关键词命中的包必须登记归属，"
+                 "否则 `verify_mechanism_ownership.py` 判红。"
+                 "边界与裁决见 matrix-tools `docs/adr/ADR-001`。")
+        L.append("")
+        for me in mechs:
+            owners = "、".join(
+                f"`{o['pkg']}`（{o.get('scope', '')}）"
+                for o in me.get("owners", []))
+            line = f"- **{me.get('name', me.get('id'))}** — 单源：{owners}"
+            consumers = me.get("consumers") or []
+            if consumers:
+                line += f"；消费方：{'、'.join(consumers)}"
+            L.append(line)
+            claims = me.get("claims") or []
+            if claims:
+                L.append(f"  - 同族包：{'、'.join(f'`{c}`' for c in claims)}")
+            if me.get("note"):
+                L.append(f"  - {me['note']}")
         L.append("")
 
     # 门面退役登记（单一数据源：modules.json infraRepos.agentkit.retired）。

@@ -63,6 +63,7 @@
       "repo": "runtime",
       "tier": 0,
       "desc": "agent 进程运行时——流式节控/泛型事件总线/子进程环境/热插拔/钩子",
+      "qualifier": "进程运行时机制件（pacer/procx/hookx 等，tier0）——非 goagent-runtime",
       "oekitAnalog": "无直接对应；并发主体已上移到 oekit/concurrency",
       "packages": [
         "pacer",
@@ -649,6 +650,7 @@
       "repo": "goagent-runtime",
       "tier": 5,
       "desc": "Agent 运行时装配层——把 goagent-kernel 判据装配成业务可直接用的 runtime",
+      "qualifier": "Agent 应用运行时装配层（tier5）——非 oagentkit/runtime",
       "packages": [
         "chat",
         "pipeline",
@@ -703,6 +705,224 @@
       ],
       "oekitAnalog": "bootstrap",
       "org": "yi-nology"
+    }
+  ],
+  "mechanisms": [
+    {
+      "id": "lifecycle",
+      "name": "生命周期",
+      "owners": [
+        {
+          "scope": "任务/会话状态词表与终态判定（AllStatuses/ClassifyStatus，Stable）",
+          "pkg": "goagent-kernel/contract"
+        }
+      ],
+      "claims": [],
+      "consumers": [
+        "goagent-runtime"
+      ],
+      "keywords": [
+        "lifecycle"
+      ],
+      "exempt": [],
+      "note": "状态词表单源在 contract（statemachine 的常量是其别名，kernel#354/#357）；agent/agentrun 的 Run 迭代生命周期是编排层自有循环控制、不承载任务状态；进程级钩子归 runtime/hookx（机制件，非状态判定）。"
+    },
+    {
+      "id": "timeout",
+      "name": "超时",
+      "owners": [
+        {
+          "scope": "会话墙钟错误身份（ErrSessionDeadline 定义处，#333 别名自 contract）",
+          "pkg": "goagent-kernel/deadline"
+        },
+        {
+          "scope": "超时的失败归类与重发语义（ClassTransient 含超时；可重试≠可重发）",
+          "pkg": "guardx/toolfail"
+        }
+      ],
+      "claims": [],
+      "consumers": [
+        "goagent-kernel",
+        "toolgate"
+      ],
+      "keywords": [
+        "timeout",
+        "deadline"
+      ],
+      "exempt": [],
+      "note": "三轴计时实现分立：会话墙钟=goagent-kernel/deadline、模型=llm、工具=toolgate/toolsched——三轴对照表由 oagentkit/guardx#222 交付；「超时算哪类、能否重发」的判据单源 guardx/toolfail。"
+    },
+    {
+      "id": "retry",
+      "name": "重试",
+      "owners": [
+        {
+          "scope": "可重试性判定（Classify/RetryableReporter；ClassUnknown 不可重试）",
+          "pkg": "guardx/toolfail"
+        }
+      ],
+      "claims": [
+        "goagent-kernel/retryplan"
+      ],
+      "consumers": [
+        "goagent-kernel",
+        "toolgate"
+      ],
+      "keywords": [
+        "retry"
+      ],
+      "exempt": [],
+      "note": "执行原语（退避/限流/单飞）在矩阵外 oekit/concurrency；llm 经 RetryableReporter 鸭子契约消费判据（不 import toolfail，见 llm ratelimit_retry 注释）；kernel/retryplan 是任务级重试计划，可重试性仍走 toolfail。"
+    },
+    {
+      "id": "failure",
+      "name": "失败分类",
+      "owners": [
+        {
+          "scope": "调用失败分类学（Class 词表+哨兵+三判定路径）",
+          "pkg": "guardx/toolfail"
+        },
+        {
+          "scope": "MCP 协议层错误分类（ErrorKind）",
+          "pkg": "mcpkit/iface"
+        }
+      ],
+      "claims": [],
+      "consumers": [
+        "goagent-kernel",
+        "toolgate"
+      ],
+      "keywords": [
+        "toolfail",
+        "failclass"
+      ],
+      "exempt": [],
+      "note": "两层分类轴：toolfail=调用失败语义单源，mcpkit/iface=MCP 协议层分类，两者映射对齐由 oagentkit/mcpkit#173 conformance 钉住；llm 根包 RetryHint bool 分类收编进行中（oagentkit/llm#234）。"
+    },
+    {
+      "id": "state",
+      "name": "状态",
+      "owners": [
+        {
+          "scope": "环节状态枚举与谓词（Valid/枚举；词表值别名 contract #354/#357）",
+          "pkg": "goagent-kernel/statemachine"
+        }
+      ],
+      "claims": [],
+      "consumers": [],
+      "keywords": [
+        "state",
+        "statemachine"
+      ],
+      "exempt": [
+        {
+          "pkg": "promptx/filestate",
+          "reason": "文件读写一致性状态——promptx 域自持，词面命中但非任务状态机"
+        }
+      ],
+      "note": "词表值单点定义在 contract（#357：statemachine 常量是别名）；矩阵内零 import——enum 出口是宿主面（enum.go 头注释：宿主接编排协议要知道合法状态）。"
+    },
+    {
+      "id": "scheduling",
+      "name": "任务调度",
+      "owners": [
+        {
+          "scope": "可达性/深度/自派发（能不能派）",
+          "pkg": "agent/dispatch"
+        },
+        {
+          "scope": "优先级/公平/配额/背压（怎么排）",
+          "pkg": "goagent-kernel/scheduling"
+        },
+        {
+          "scope": "并发执行调度（同时跑几个）",
+          "pkg": "toolgate/toolsched"
+        },
+        {
+          "scope": "改派失败面（失败后还能不能再派、派给谁）",
+          "pkg": "goagent-kernel/dispatch"
+        }
+      ],
+      "claims": [],
+      "consumers": [
+        "goagent-runtime"
+      ],
+      "keywords": [
+        "sched",
+        "dispatch"
+      ],
+      "exempt": [],
+      "note": "四判据面分立是 kernel ADR-0009 已裁结论，本表不重开；kernel 原可达性门面 v0.35.0 已整包删除（dispatch.go 包头：消费方直连上游 agent/dispatch）。矩阵内 agent/dispatch 由 goagent-runtime 的 examples/multiagent 消费，scheduling/toolsched/kernel-dispatch 零 import（宿主面）。"
+    },
+    {
+      "id": "events",
+      "name": "事件",
+      "owners": [
+        {
+          "scope": "任务事件词表（机制层 snake_case 单源）",
+          "pkg": "goagent-kernel/eventbus"
+        },
+        {
+          "scope": "泛型钩子传输（带超时 Hook Runner）",
+          "pkg": "runtime/hookx"
+        },
+        {
+          "scope": "泛型通知传输",
+          "pkg": "runtime/notifyx"
+        },
+        {
+          "scope": "泛型广播传输（有损观测总线）",
+          "pkg": "runtime/progress"
+        }
+      ],
+      "claims": [
+        "runtime/notifyx/hook",
+        "goagent-kernel/hookengine"
+      ],
+      "consumers": [
+        "goagent-runtime",
+        "goagent-kernel"
+      ],
+      "keywords": [
+        "event",
+        "hook",
+        "notify",
+        "progress"
+      ],
+      "exempt": [],
+      "note": "词表分层单源：机制层 kernel/eventbus（snake_case ~40 事件）+ 应用层 goagent-runtime run_*/worker_*（runtime#42 裁决）；runtime/progress 是泛型有损广播、与任务事件语义不同（llms.txt 易踩坑条目「progress 撞名但语义相反」指的是它与 oekit/concurrency/progress）；hookengine 是 kernel 侧消费 hookx 的引擎。"
+    },
+    {
+      "id": "recovery",
+      "name": "恢复",
+      "owners": [
+        {
+          "scope": "断点与续跑（Snapshot/Resume）",
+          "pkg": "goagent-kernel/checkpoint"
+        }
+      ],
+      "claims": [
+        "goagent-kernel/reconcile",
+        "goagent-kernel/finalize",
+        "goagent-kernel/ownership",
+        "goagent-kernel/drain",
+        "goagent-kernel/watchdog"
+      ],
+      "consumers": [
+        "goagent-runtime"
+      ],
+      "keywords": [
+        "checkpoint",
+        "reconcile",
+        "resume",
+        "recover",
+        "drain",
+        "finalize",
+        "ownership",
+        "watchdog"
+      ],
+      "exempt": [],
+      "note": "checkpoint 断点/恢复是恢复面的跨仓提供方（goagent-runtime 经 loadHistory/commit 消费）；reconcile 对账、finalize 终态收敛、ownership 租约、watchdog 配对监控、drain 停机排水是同族包（kernel#527 Recovery Plane 清单；drain 不写终态、留给启动对账）。两套分类正交：#527 按 kernel 仓内平面切，本表按跨仓机制族切，不互相改写。"
     }
   ],
   "infraRepos": [

@@ -536,6 +536,16 @@ jobs:
             echo "❌ 两次生成结果不同"; exit 1
           fi
 
+      - name: 八机制归属表（机制包关键词必须登记归属 / 撞名仓对必须带 qualifier）
+        # matrix-tools#255：评审 2.3-问题一——三层各自造相似机制的根因是
+        # 归属只写在 ADR 散文里、没有判定。这里把它变成红灯：
+        #   ① 包名命中某机制 keywords 却没在该机制 claims/exempt 登记 ⇒ 红；
+        #   ② owner/claim/consumer 指向不存在的包/仓（陈旧引用）⇒ 红；
+        #   ③ 仓名后缀撞名对（runtime ⊂ goagent-runtime）缺 qualifier ⇒ 红。
+        # 只读 modules.json（oracle independent），不需克隆矩阵。
+        # selftest 由 selftest_all 按 AST 自动发现（guards job 的 selftest_all --shard）。
+        run: python3 scripts/verify_mechanism_ownership.py --matrix modules.json
+
   site-modules-copy:
     name: Site modules.json copy (站点副本 vs 矩阵源)
     # modules.json 是矩阵的单一数据源；站点仓 data/modules.json 是它的**副本**。
