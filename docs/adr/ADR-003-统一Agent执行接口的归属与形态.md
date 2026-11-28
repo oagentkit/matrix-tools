@@ -5,13 +5,13 @@
 | **状态** | 已采纳（Accepted） |
 | **日期** | 2026-11-28 |
 | **背景** | oagentkit 演进评审 2.3-问题一/三（Agent 层没有接口面，「一个 Agent 是什么」无从谈起；缺统一执行语义）+ 2.4-阶段一「优先稳定 Agent 接口」。全矩阵 grep `type Agent interface` 为零，两套可运行入口形态各异。issue `oagentkit/agent#174`。 |
-| **决策** | ① **归属**：窄接口放 `oagentkit/agent` 新子包 **`iface`**（被依赖方——依赖方向决定，§二三方案对比）。② **形态**：`Runner interface { Run(ctx, Input) (Result, error) }`——只定语义不定装配；`Result.Status` 是宿主状态词表**透传**（词表单源 kernel/contract，思想层不定义词表）；**事件不进接口**（事件传输与词表已有分层双单源，收进来就是第三份，§三）。③ **adapter 分落两仓**：agentrun adapter 在 `oagentkit/agent`，agentloop adapter + contract 词表对账在 `yi-nology/goagent-runtime`（只有它同时 import 两边）；**不强迁存量**，原签名不动。④ 定级 **Experimental**（ADR-002 判据）。 |
-| **后果** | 消费方写泛化代码只依赖 `iface.Runner` 一个面；三入口语义差异被对照表钉死而不是散在各自文档；agent 仓新增包触发 `verify_api_lifecycle` 覆盖双向判据（不登记即红）；跨仓词表对账由 runtime 侧 conformance test 常绿守着。 |
-| **依据** | 三入口 2026-11-28 逐仓实测（§一，含评审快照勘误）；go.mod 依赖边实况（ADR-001 §一，思想层零依赖 kernel、runtime→agent 已存在）；kernel `contract/status.go` 13 值词表单源实测；`verify_import_direction` 模块级 `dependsOn` 守卫（runtime→agent 已声明）。 |
+| **决策** | ① **归属**：窄接口放 `oagentkit/agent` 新子包 **`iface`**（被依赖方——依赖方向决定，§二三方案对比；实现侧 `iface/doc.go` 独立推出同一结论并以编译期断言 `var _ iface.Agent = (*agentrun.Agent)(nil)` 锚定）。② **形态**：`iface.Agent{ Run(ctx, Input) (Result, error) }`——只定语义不定装配；`Result.Status` 是宿主状态词表**透传**（词表单源 kernel/contract，本包不定义任何状态常量）；事件以 **`Input.OnEvent` 调用方回调**形态收（原生词表透传、不翻译、不代 recover、不支持必须显式拒绝——不建第三份传输，§三）。③ **adapter 分落两仓**：`agentrun.Agent` 在 `oagentkit/agent`，agentloop 与 contract 边界适配在 `yi-nology/goagent-runtime/bridge/agentiface`（只有它同时 import 两边）；**不强迁存量**，原签名不动。④ 定级 **Experimental**（ADR-002 判据）。 |
+| **后果** | 消费方写泛化代码只依赖 `iface.Agent` 一个面；三入口语义差异被对照表钉死而不是散在各自文档；agent 仓新增包触发 `verify_api_lifecycle` 覆盖双向判据（不登记即红）；跨仓词表对账由 runtime 侧 bridge 测试常绿守着；实现与本 ADR 互为锚点（实现注释引用本对照表，本 ADR §四引用实现映射规则）。 |
+| **依据** | 三入口 2026-11-28 逐仓实测（§一，含评审快照勘误）；go.mod 依赖边实况（ADR-001 §一，思想层零依赖 kernel、runtime→agent 已存在）；runtime `ADR-0010` 已背书「同一入口形态 `Run(ctx, input) → Result`、状态词表归 kernel contract」——本 ADR 是该形态在 Agent 层的类型化；kernel `contract/status.go` 13 值词表单源实测；`verify_import_direction` 模块级 `dependsOn` 守卫（runtime→agent 已声明）。 |
 
 > **一句话结论**：接口放**被依赖方**（agent 仓 `iface` 子包），形态收窄到
-> 「一次输入一次输出」，事件与词表都不收——统一的是执行语义的**契约面**，
-> 不是再造一份传输或词表。
+> 「一次输入一次输出」，事件走调用方回调的原生词表透传——统一的是执行语义的
+> **契约面**，不是再造一份传输或词表。
 
 ---
 
@@ -40,7 +40,7 @@
 
 | 候选 | 判定 | 理由 |
 |---|---|---|
-| **`oagentkit/agent` 新子包 `iface`** ✅ | 采用 | agent 是**被依赖方**：`runtime→agent` 边已存在（`roundguard` 4 处，已登记 `dependsOn`），agentrun 就住在本仓——原生实现零跨仓；思想层自述「Agent 的执行面长什么样」与其职责（智能行为与决策编排）相容 |
+| **`oagentkit/agent` 新子包 `iface`** ✅ | 采用 | agent 是**被依赖方**：`runtime→agent` 边已存在（`roundguard` 4 处，已登记 `dependsOn`），agentrun 就住在本仓——原生实现零跨仓；思想层自述「Agent 的执行面长什么样」与其职责（智能行为与决策编排）相容。实现侧 `iface/doc.go` 独立论证同一结论：接口放装配层则思想层的**自我描述**反向依赖装配层（tier 3 → tier 5 违反分层），且编译期断言 `var _ iface.Agent = (*agentrun.Agent)(nil)` 写不出来——实现关系无从查证 |
 | `yi-nology/goagent-runtime` | ❌ | `runtime→agent` 已存在，接口放 runtime 则 agentrun 要实现它必须 `agent→runtime`——**反向必成环**（Go module 直接拒绝） |
 | `yi-nology/goagent-kernel/contract` 扩面 | ❌ | 思想层**零依赖 kernel** 是 ADR-001 钉死的红线（`verify_import_direction` 反向判红）；接口放 kernel 等于让 agent 为自己的接口面引 kernel |
 | 新开独立小仓 | ❌ | 模块准入三问（oekit#344 同型判据）：使用场景已被 agent 覆盖、无独立生命周期，不独立成仓 |
@@ -51,21 +51,26 @@ blackboard/dispatch/…），新子包与既有组织方式一致；`iface` 命�
 
 ## 三、形态裁决：窄接口收什么、不收什么
 
-```go
-package iface // github.com/oagentkit/agent/iface
+实现签名（`oagentkit/agent/iface`，以实现为锚）：
 
+```go
 type Input struct {
-    SessionID string // 会话锚点；入口无会话概念时忽略（各 adapter 文档注明）
-    Query     string // 一轮的起始输入
+    Query     string         // 本轮输入；空串合法性由实现方裁
+    SessionID string         // 会话锚点；空 = 一次性执行（agentrun 天然为空）
+    OnEvent   func(Event)    // 过程事件回调（可 nil）；不代 recover；不支持必须显式拒绝
 }
 
 type Result struct {
-    Status          string // 宿主状态词表透传（单源 kernel/contract；本层不定义词表）
-    Final           string // 终答文本
-    PendingApproval string // 挂起等审批的调用 ID（waiting_approval 形态时有值；决策走各入口原生面）
+    Status string // 宿主状态词表透传（kernel contract 词表；本包不定义状态常量）
+    Final  string // 终答文本（Status=succeeded 时有值）；失败信息由 error 承载
 }
 
-type Runner interface {
+type Event struct {          // 原生词表透传信封，不做翻译层
+    Type, Text, Tool, CallID string
+    Payload                  map[string]any
+}
+
+type Agent interface {
     Run(ctx context.Context, in Input) (Result, error)
 }
 ```
@@ -73,57 +78,66 @@ type Runner interface {
 **收的**：
 
 - **一次输入一次输出**——`Run(ctx, Input) (Result, error)`。三入口里最窄的
-  共同语义就是「给上下文和输入，拿回一次执行的结果」；Config 装配、会话
-  装配全部留在各入口构造器（**只定语义不定装配**）。
+  共同语义就是「给上下文和输入，拿回一次执行的结果」；这正是 runtime
+  `ADR-0010` 已背书的入口形态（「共享的是语义与读面，不是控制流抽象」）在
+  Agent 层的类型化。Config 装配、会话装配全部留在各入口构造器
+  （**只定语义不定装配**）。
 - **`Result.Status` 是透传不是定义**：词表单源是 kernel `contract/status.go`
-  的 13 值表（ADR-001 生命周期机制行），思想层不定义、不解释取值；空串 =
-  入口未提供状态。adapter 层允许出现词表字面量做映射（薄、单点），**跨仓
-  对账由 runtime 侧 conformance test 承担**（§四）——agent 仓自己不引 kernel，
-  也不养第二份词表定义。
+  的 13 值表（ADR-001 生命周期机制行），本包**不定义任何状态常量**——另立
+  常量集就是词表分叉（contract#354/#357 收编过的形态）。空串 = 入口未提供
+  状态。adapter 层允许出现词表字面量做映射（薄、单点常量块），**跨仓对账由
+  runtime 侧 bridge 测试承担**（§四）——agent 仓自己不引 kernel，也不养
+  第二份词表定义。
+- **事件以 `Input.OnEvent` 调用方回调形态收**（本 ADR 与实现对齐后的裁决，
+  取代评审倾向的独立订阅面）：回调由**调用方提供、适配器接线到入口原生面**
+  （agentrun `WithOnEvent` / agentloop `Emitter`）——不建第三份传输；
+  `Event.Type` 沿用**入口原生词表**不做翻译（两套词表对照即 §一事件行），
+  需要统一词表的消费方按 runtime ADR-0010/事件分层单源走 kernel eventbus。
+  两条纪律与各入口既有约定逐字对齐：回调 panic **不代 recover**（与
+  `agentrun.WithOnEvent` 同约）；**不支持事件翻译的实现必须显式拒绝**
+  （返回错误），不得静默丢弃——静默丢事件等于对消费方撒谎「没有事件」。
 
 **不收的（及理由）**：
 
-- **事件订阅不进接口**。评审倾向里有「+ 事件订阅」，但 ADR-001 已裁事件
-  双单源：词表 `kernel/eventbus`（机制层）+ `runtime#42`（应用层 `run_*`/
-  `worker_*`），传输 `runtime/hookx`/`notifyx`。iface 再收一个订阅面就是
-  **第三份传输**——各入口原生成熟面（agentrun `WithOnEvent` 回调、agentloop
-  `Emitter` 持久发布）保持原样，消费方要事件就用原生面。对照表（§一）把
-  三种事件机制并排钉死，这就是「统一事件语义」在本层的正确形态：**统一的是
-  认知，不是管道**。
-- **不收 Usage/Rounds/ToolCalls 等观测字段**——它们在 agentloop `*Result`
-  里有结构化原生返回，窄面收了就要为 agentrun 的 string 出口编造字段；
-  需要观测的消费方用原生类型。
-- **不收 Approve/Resume 等控制方法**——挂起决策与恢复是装配层与机制层的
-  面（agentloop `Approve`、kernel `checkpoint`），收进 Runner 会让「一个
-  Runner」背上整个生命周期，违背窄接口初衷。
+- **不收独立订阅方法 / 事件总线**——订阅面进接口方法就要定义返回通道与
+  生命周期（谁关、缓冲多大），那是传输语义，归 `runtime/hookx`/`notifyx`；
+  `Input.OnEvent` 的回调形态避开这一切。
+- **不收 `PendingApproval` / `Approve` 等控制方法**——挂起决策与恢复是装配
+  层与机制层的面（agentloop `Approve`、kernel `checkpoint`），收进接口会让
+  「一个 Agent」背上整个生命周期；挂起时的丰富读面（`PendingCallID` /
+  `RunID` / `Rounds` / `Uncertain`）经**适配器的原生句柄**取，窄面只保
+  `Status`+`Final`。
+- **不收 Usage/Rounds/ToolCalls 等观测字段**——同理：窄面收了就要为
+  agentrun 的 string 出口编造字段；需要观测的消费方用原生类型。
 
 ## 四、adapter 落点（不强迁存量）
 
-| adapter | 落点 | 映射要点 |
+| adapter | 落点 | 映射要点（以实现为锚） |
 |---|---|---|
-| **agentrun** | `oagentkit/agent`（`agentrun` 包内，`agentrun→iface` 方向自然） | `SessionID` 忽略（无会话概念）；`Status`：nil→`succeeded`、`DeadlineExceeded`→`timed_out`、`Canceled`→`cancelled`、其余→`failed`（全部 ∈ contract 13 值）；`RunFn` 测试注入口，生产默认 `agentrun.Run` |
-| **agentloop** | `yi-nology/goagent-runtime`（`agentloop` 包内） | `Input.SessionID` 空则用构造期默认；`*Result` 的 `Status/Final/PendingCallID` 逐字段透传（Loop 的 Status 本就是 contract 词表）；error 路径 best-effort 补状态 |
-| **contract 词表对账** | `yi-nology/goagent-runtime`（只有它同时 import agent 与 kernel） | conformance test：agentrun adapter 的字面量映射与 agentloop 的透传值**逐一过 `contract.IsKnownStatus`**——跨仓词表一致性常绿即本 ADR「透传不定义」的机器证明 |
+| **agentrun** | `oagentkit/agent`（`agentrun.Agent` 结构体，`agentrun→iface` 方向自然） | `Input.SessionID` 忽略（无会话概念，不报错）；`Input.OnEvent` 追加为 `WithOnEvent`（**末个生效**，故窄接口输入面优先于 `Opts` 预设回调）；`statusOf`：`DeadlineExceeded→timed_out`、`Canceled→cancelled`、其余→`failed`、成功→`succeeded`（全部 ∈ contract 13 值，常量块逐字对齐 + 注释声明跨仓对账点）；失败**原样返回 error**（失败信息不塞 Result） |
+| **agentloop + contract 边界** | `yi-nology/goagent-runtime/bridge/agentiface`（只有它同时 import agent 与 kernel） | agentloop 侧：`Input.SessionID` 空则用构造期默认会话，`*Result` 的 `Status/Final` 透传（Loop 的 Status 本就是 contract 词表）；contract 边界：词表对账——agentrun adapter 的字面量映射与 agentloop 的透传值**逐一过 `contract.IsKnownStatus`**，跨仓词表一致性常绿即本 ADR「透传不定义」的机器证明 |
 
-**不强迁存量**：`agentrun.Run` 与 `Loop.Run` 原签名不动，adapter 是增量面
-（拿窄面的消费方按需取用）；两个 adapter 均标 Experimental（ADR-002），
-晋级按三维判据走。
+**不强迁存量**：`agentrun.Run` 与 `Loop.Run` 原签名不动，`iface.Agent` 是
+增量面（拿窄面的消费方按需取用）；两个 adapter 均随所在包定级
+Experimental（ADR-002），晋级按三维判据走。
 
 ## 五、定级与门禁
 
 1. `agent/api-lifecycle.yaml` 登记 `iface`（Experimental，reason 注明
-   「ADR-003 新面，未过一个 minor 无 breaking 窗口」）+ 包注释
-   `// 生命周期: Experimental——…` 标记——`verify_api_lifecycle` 覆盖双向
-   判据：**新增包不登记即红**（ADR-002 §二，清单已放跑不掉）。
+   「agent#174 新面，未过一个 minor 无 breaking 窗口」）+ 包注释
+   `// 生命周期: Experimental——…` 标记（已随 `iface/doc.go` 落）——
+   `verify_api_lifecycle` 覆盖双向判据：**新增包不登记即红**（ADR-002 §二，
+   清单已放跑不掉）。
 2. `verify_import_direction`：`runtime→agent` 模块级 `dependsOn` 已声明，
    新增 `agentrun`/`iface` 子包 import 不产生新模块边；反向红线（思想层
-   零依赖 kernel）不受影响——iface 与 adapter 均不引 kernel。
-3. runtime 侧 conformance test 进既有测试面（`agentloop` 包）。
+   零依赖 kernel）不受影响——iface 与 agentrun adapter 均不引 kernel。
+3. runtime 侧 bridge 测试进 `goagent-runtime` 既有测试面。
 
 ## 关联
 
 - issue：`oagentkit/agent#174`（本 ADR 的执行单）、`oagentkit/matrix-tools#254`（演进总纲）
 - 边界前置：`ADR-001`（三层边界与八机制归属——本 ADR 的依赖方向与词表/事件单源引用源）、`ADR-002`（api-lifecycle 判据——定级走它）
-- runtime 侧镜像：`yi-nology/goagent-runtime#39`（Loop 与 Pipeline 执行接口边界 ADR-0010）、#38（对象模型——本面不重复其 Session/Run/Turn 建模）
+- 形态背书：`yi-nology/goagent-runtime` `docs/adr/ADR-0010`（执行接口两模型分立、共享语义不成模型——`Run(ctx, input) → Result` 同一入口形态与词表归 kernel 的出处）
+- runtime 侧镜像：`yi-nology/goagent-runtime#39`（W2 Loop 与 Pipeline 边界）、#38（对象模型——本面不重复其 Session/Run/Turn 建模）
 - 词表单源：`yi-nology/goagent-kernel` `contract/status.go`（13 值）、`contract` 包 `RunContext`/`StepSink`
-- 状态：agentrun adapter 与 runtime conformance 随本 ADR 配套 PR 落地（`oagentkit/agent#174` 验收）
+- 实现锚点：`oagentkit/agent/iface`（doc.go 含本裁决的实现侧论证）、`agentrun/iface.go`（agentrun adapter）、`yi-nology/goagent-runtime/bridge/agentiface`（agentloop + contract 边界 adapter）
