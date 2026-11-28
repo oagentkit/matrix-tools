@@ -1,0 +1,7 @@
+# api-lifecycle 定级清单 fixture（冒烟用：判定逻辑见 verify_api_lifecycle.py）
+version: 1
+packages:
+  - pkg: demopkg
+    level: Experimental
+    since: v0.1.0
+    reason: fixture——窄接口未过一个 minor 无 breaking 窗口
