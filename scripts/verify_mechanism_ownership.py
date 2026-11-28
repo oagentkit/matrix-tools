@@ -12,10 +12,17 @@
 1. **表自洽**：八机制 id 齐全不重复；`owners/claims/consumers/keywords/note`
    齐全；`owners/claims` 指向真实存在的 `repo/pkg`；`consumers` 指向真实仓；
    `exempt` 必须带 `reason`（豁免是记录一次判断，不是免死金牌）。
-2. **关键词网**：包路径（`repo/pkg` 小写）命中某机制的 `keywords` ⇒
-   该包必须在该机制的 `owners/claims/exempt` 里登记归属，否则**判红**。
+2. **关键词网**：包路径（`repo/pkg` 小写）命中某机制的 `keywords` **或
+   `criteria[].keywords`**（#177 判据级）⇒ 该包必须在该机制的
+   `owners/claims/exempt` 里登记归属，否则**判红**。
    —— 这就是验收里的「新增机制包若八机制表中无归属 ⇒ 判红」。
-3. **撞名消歧**：一个仓名是另一个的后缀（`runtime` ⊂ `goagent-runtime`）
+3. **判据落点**（`criteria`，matrix-tools#177）：确定性调度判据命中关键词的包
+   必须落在**命中判据的 `repos` 并集**内——落点错仓即红（登记了也红）。
+   词面跨判据时靠并集放行（`toolsched` 命中 ordering 的「sched」但归
+   concurrency 落点）；同词异义走 `exempt` 写 reason（如 `textx/budget`
+   是上下文窗口预算、不是执行级调度判据）。登记（2.）管「表里有没有」，
+   本条管「放的地方对不对」。
+4. **撞名消歧**：一个仓名是另一个的后缀（`runtime` ⊂ `goagent-runtime`）
    ⇒ 双方都必须带非空 `qualifier`。命名撞车走**消歧字段**而不是改名
    （改名 = 跨 org breaking + 历史 tag/文档全改；ADR §三裁决）。
 
@@ -181,9 +188,14 @@ def judge(data: dict, report: Report,
         registered[mid] = reg
 
     # -- 2. 关键词网（包名命中 ⇒ 必须登记归属）----------------------------
+    # 判据关键词（criteria[].keywords，#177）同样进登记网：落点对但没登记
+    # ⇒ 表里看不见它，照样红。
     for mech in mechs:
         mid = mech.get("id") or "?"
         kws = [k.lower() for k in (mech.get("keywords") or []) if isinstance(k, str)]
+        for c in (mech.get("criteria") or []):
+            if isinstance(c, dict):
+                kws.extend(k.lower() for k in (c.get("keywords") or []) if isinstance(k, str))
         if mid not in registered or not kws:
             continue
         reg = registered[mid]
@@ -197,6 +209,69 @@ def judge(data: dict, report: Report,
                         f"命中机制 {mid} 的关键词「{hit}」但未登记归属",
                         f"加进 mechanisms[{mid}] 的 claims（同机制）"
                         f"或 exempt 写 reason（词面命中但不同机制）")
+
+    # -- 2.5 判据落点（#177：确定性调度判据不许落在声明仓之外）------------
+    # 判据级关键词 + 声明落点仓：包命中某判据关键词 ⇒ 其仓必须在**命中判据**
+    # 的 repos 并集里（词面跨判据时靠并集放行，例：toolsched 命中 ordering
+    # 的「sched」但归 concurrency 落点）；exempt 已记档豁免。这是「判据落在
+    # 归属表声明仓之外 ⇒ 判红」的机器形态——登记（2.）管「表里有没有」，
+    # 本节管「放的地方对不对」。
+    for mech in mechs:
+        mid = mech.get("id") or "?"
+        crits = mech.get("criteria")
+        if crits is None:
+            continue
+        if not isinstance(crits, list):
+            report.red(mid, "criteria 必须是列表", "判据落点表：[{id, scope, keywords, repos}]")
+            continue
+        seen_c: set[str] = set()
+        for c in crits:
+            if not isinstance(c, dict):
+                report.red(mid, f"criteria 条目必须是对象：{c!r}")
+                continue
+            cid = c.get("id") or "?"
+            if not isinstance(cid, str) or not cid.strip() or cid == "?":
+                report.red(mid, f"criteria 条目缺 id：{c!r}")
+            elif cid in seen_c:
+                report.red(mid, f"criteria id 重复：{cid}")
+            else:
+                seen_c.add(cid)
+            for field in ("scope",):
+                if not isinstance(c.get(field), str) or not c.get(field, "").strip():
+                    report.red(mid, f"criteria[{cid}] 缺 {field}",
+                               "判据面要自解释（例：递归上限（派多深））")
+            for field in ("keywords", "repos"):
+                v = c.get(field)
+                if not isinstance(v, list) or not v or \
+                        not all(isinstance(x, str) and x.strip() for x in v):
+                    report.red(mid, f"criteria[{cid}] 的 {field} 为空或含空值",
+                               "keywords 是包名命中词（小写）；repos 是允许落点仓")
+            for r in (c.get("repos") or []):
+                if isinstance(r, str) and r not in inv:
+                    report.red(mid, f"criteria[{cid}] 的落点仓不存在：{r!r}")
+
+        crits_ok = [c for c in crits if isinstance(c, dict)]
+        exempt_pkgs = {e.get("pkg", "").lower() for e in (mech.get("exempt") or [])
+                       if isinstance(e, dict)}
+        for repo, pkgs in sorted(inv.items()):
+            for pkg in sorted(pkgs):
+                full = f"{repo}/{pkg}".lower()
+                if full in exempt_pkgs:
+                    continue   # 已记档豁免（exempt 必带 reason，1. 已核）
+                matched = [c for c in crits_ok
+                           if any(isinstance(k, str) and k.lower() in full
+                                  for k in (c.get("keywords") or []))]
+                if not matched:
+                    continue
+                allowed = {r for c in matched for r in (c.get("repos") or [])
+                           if isinstance(r, str)}
+                if repo not in allowed:
+                    ids = sorted(c.get("id") or "?" for c in matched)
+                    report.red(
+                        f"{repo}/{pkg}",
+                        f"命中判据 {ids} 的关键词但仓不在声明落点 {sorted(allowed)} 内",
+                        "确定性调度判据只许落在归属表声明仓——挪进声明仓，"
+                        "或改归属表（过 review）；词面命中但不同判据走 exempt 写 reason")
 
     # -- 3. 八机制承诺 ---------------------------------------------------
     for mid in expected_ids:
@@ -337,6 +412,66 @@ def selftest() -> int:
             m["exempt"] = [{"pkg": "demo/retryx"}]
     rep = _run_judge(data)
     check("exempt 缺 reason 判红", any("exempt 缺 reason" in f.message for f in rep.reds), True)
+
+    # -- 判据落点（#177） ------------------------------------------------
+    def with_criteria(**over) -> dict:
+        data = copy.deepcopy(base)
+        for m in data["mechanisms"]:
+            if m["id"] == "scheduling":
+                m["criteria"] = [{
+                    "id": "reach-depth", "scope": "递归上限",
+                    "keywords": ["depth"], "repos": ["runtime"],
+                }]
+                m.update(over)
+        return data
+
+    # ⑨ 判据落点越界（关键词命中但仓不在声明落点）⇒ 红，且点名到包
+    data = with_criteria()
+    for mod in data["modules"]:
+        if mod["repo"] == "demo":
+            mod["packages"] = ["core", "retryx", "depthlimit"]
+    for m in data["mechanisms"]:
+        if m["id"] == "scheduling":
+            m["claims"] = ["demo/depthlimit"]
+    rep = _run_judge(data)
+    check("判据落点越界判红", any("不在声明落点" in f.message for f in rep.reds), True)
+    check("落点红点名到包", "demo/depthlimit" in _red_subjects(rep), True)
+
+    # ⑩ 判据命中但没登记 ⇒ 红（判据关键词进登记网）
+    data = with_criteria()
+    for mod in data["modules"]:
+        if mod["repo"] == "runtime":
+            mod["packages"] = ["pacer", "depthlimit"]
+    rep = _run_judge(data)
+    check("判据命中未登记判红", any("未登记归属" in f.message for f in rep.reds), True)
+
+    # ⑪ exempt 带 reason ⇒ 落点与登记双豁免（同词异义记档形态）
+    data = with_criteria()
+    for mod in data["modules"]:
+        if mod["repo"] == "demo":
+            mod["packages"] = ["core", "retryx", "depthlimit"]
+    for m in data["mechanisms"]:
+        if m["id"] == "scheduling":
+            m["exempt"] = [{"pkg": "demo/depthlimit", "reason": "同词异义记档"}]
+    rep = _run_judge(data)
+    check("exempt 记档后落点放行", rep.reds, [])
+
+    # ⑫ 词面跨判据：包命中超集关键词、被其中一个判据的落点放行 ⇒ 绿
+    data = copy.deepcopy(base)
+    for mod in data["modules"]:
+        if mod["repo"] == "runtime":
+            mod["packages"] = ["pacer", "toolsched"]
+    for m in data["mechanisms"]:
+        if m["id"] == "scheduling":
+            m["criteria"] = [
+                {"id": "concurrency", "scope": "并发", "keywords": ["toolsched"],
+                 "repos": ["runtime"]},
+                {"id": "ordering", "scope": "次序", "keywords": ["sched"],
+                 "repos": ["goagent-runtime"]},
+            ]
+            m["claims"] = ["runtime/toolsched"]
+    rep = _run_judge(data)
+    check("跨判据并集放行", rep.reds, [])
 
     # ⑨ 撞名对缺 qualifier ⇒ 红；补上 ⇒ 绿
     data = copy.deepcopy(base)

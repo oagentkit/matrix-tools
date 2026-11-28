@@ -845,7 +845,9 @@
           "pkg": "goagent-kernel/dispatch"
         }
       ],
-      "claims": [],
+      "claims": [
+        "agent/blackboard"
+      ],
       "consumers": [
         "goagent-runtime"
       ],
@@ -853,8 +855,75 @@
         "sched",
         "dispatch"
       ],
-      "exempt": [],
-      "note": "四判据面分立是 kernel ADR-0009 已裁结论，本表不重开；kernel 原可达性门面 v0.35.0 已整包删除（dispatch.go 包头：消费方直连上游 agent/dispatch）。矩阵内 agent/dispatch 由 goagent-runtime 的 examples/multiagent 消费，scheduling/toolsched/kernel-dispatch 零 import（宿主面）。"
+      "exempt": [
+        {
+          "pkg": "textx/budget",
+          "reason": "上下文窗口预算（对话域文本计量/压实计划），非执行级调度判据——同词异义记档防误并（ADR-001 附录 §六）"
+        }
+      ],
+      "note": "四判据面分立是 kernel ADR-0009 已裁结论，本表不重开；kernel 原可达性门面 v0.35.0 已整包删除（dispatch.go 包头：消费方直连上游 agent/dispatch）。矩阵内 agent/dispatch 由 goagent-runtime 的 examples/multiagent 消费，scheduling/toolsched/kernel-dispatch 零 import（宿主面）。",
+      "criteria": [
+        {
+          "id": "reach-depth",
+          "scope": "可达性/递归上限（能不能派、派多深）",
+          "keywords": [
+            "dispatch",
+            "depth"
+          ],
+          "repos": [
+            "agent",
+            "goagent-kernel"
+          ],
+          "note": "递归上限单源 = agent/dispatch.Guard maxDepth/AssertDepth；kernel/dispatch 是改派失败面（failover），共居 dispatch 名下但判据正交（ADR-001 附录 §六）"
+        },
+        {
+          "id": "concurrency",
+          "scope": "并发执行调度（同时跑几个）",
+          "keywords": [
+            "toolsched",
+            "concurren"
+          ],
+          "repos": [
+            "toolgate"
+          ],
+          "note": "唯一并发调度仓 toolgate/toolsched；kernel 无对应物且不该有（调度判据归属 kernel ADR-0009）"
+        },
+        {
+          "id": "ordering",
+          "scope": "优先级/公平/配额/背压（怎么排）",
+          "keywords": [
+            "sched",
+            "priority",
+            "backpressure"
+          ],
+          "repos": [
+            "goagent-kernel"
+          ],
+          "note": "单源 kernel/scheduling；MaxQueue 是队列深度（背压轴）不是派发递归深度——同词异义不许并（ADR-001 附录 §六）"
+        },
+        {
+          "id": "budget",
+          "scope": "执行级预算（调用前判定）",
+          "keywords": [
+            "budget"
+          ],
+          "repos": [
+            "llm"
+          ],
+          "note": "单源 llm 任务级预算面（budgetGate 调用前判定，事后扣减判不合规）；textx/budget 是上下文窗口预算——同词异义走 exempt"
+        },
+        {
+          "id": "visibility",
+          "scope": "上下文可见性（谁看得见什么）",
+          "keywords": [
+            "blackboard"
+          ],
+          "repos": [
+            "agent"
+          ],
+          "note": "单源 agent/blackboard；promptx 是跨会话注入面（消费方），可见性判定不落 promptx"
+        }
+      ]
     },
     {
       "id": "events",
