@@ -37,6 +37,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# 入口冒烟声明（通用守卫 scripts/verify_cli_smoke.py 会真跑一次）
+# ⚠️ --selftest 是纯合成夹具：零网络、零写入、确定性退出 0——冒烟跑它
+#    真正走完 argparse → selftest 全入口，不触任何数据面（raw 回退不在该路径上）。
+SMOKE_ARGS = ["--selftest"]
+
 # 单仓迁出默认 org 的映射（matrix_paths 同款；当前只此两仓，新增时改这里）
 ORG_OVERRIDES = {
     "goagent-kernel": "yi-nology",
