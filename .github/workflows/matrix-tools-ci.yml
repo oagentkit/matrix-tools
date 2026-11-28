@@ -549,6 +549,14 @@ jobs:
         # selftest 由 selftest_all 按 AST 自动发现（guards job 的 selftest_all --shard）。
         run: python3 scripts/verify_mechanism_ownership.py --matrix modules.json
 
+      - name: 七词语义表契约锚（锚表 ↔ 真实测试代码，agent#175）
+        # oagentkit/agent#175：exec-semantics.md 照 kernel error-semantics 惯例的
+        # 机器面——锚是测试的索引，测试删除/改名而锚表未改 ⇒ 表退化成装饰 ⇒ 红。
+        # 数据面本地优先 + raw.githubusercontent 回退（含 yi-nology 两仓 org 覆盖），
+        # 读不到 = 判不了 = 红（#79）。只读文档与测试文件，不需克隆矩阵。
+        # selftest 由 selftest_all 按 AST 自动发现（--selftest 五形态正反例）。
+        run: python3 scripts/verify_semantic_anchors.py --doc docs/exec-semantics.md
+
   site-modules-copy:
     name: Site modules.json copy (站点副本 vs 矩阵源)
     # modules.json 是矩阵的单一数据源；站点仓 data/modules.json 是它的**副本**。
