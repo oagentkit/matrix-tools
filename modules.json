@@ -667,7 +667,8 @@
         "containerbackend",
         "bridge/llmchat",
         "bridge/einotool",
-        "trace"
+        "trace",
+        "agentiface"
       ],
       "heavyDeps": [
         "github.com/jackc/pgx/v5",
