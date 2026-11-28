@@ -27,6 +27,7 @@ oagentkit 模块矩阵的自动化仓 —— 生成、审计、改写、发布�
 | `scripts/gen_llms_txt.py` | 从 `modules.json` 生成 `llms.txt`（面向 LLM 的模块索引）与站点场景页（`--out-page`，场景表数据/渲染单源在 gen_skill，#258） |
 | `scripts/verify_docs.py` | **防漂移**：重新生成 `llms.txt` / 场景页（`--page`）与提交版比对，不一致 exit 1（`--fix` 直接覆盖） |
 | `scripts/verify_mechanism_ownership.py` | **归属守卫**：`modules.json` `mechanisms` 八机制表自洽；包名命中机制关键词却未登记归属 ⇒ 红；仓名后缀撞名对（`runtime` ⊂ `goagent-runtime`）缺 `qualifier` 消歧字段 ⇒ 红（ADR-001，评审 2.3-问题一） |
+| `scripts/verify_api_lifecycle.py` | **定级门禁**（kernel apilifecheck 判据同源，ADR-002）：已接入仓的清单自洽 + 源码生产包↔清单双向覆盖（**新增包无定级判红**）+ 包注释 `// 生命周期:` 标记对账；未接入仓报 info（opt-in 分批） |
 | `scripts/verify_repo_docs.py` | **防抹除**：检测各仓 README/AGENTS 与 `gen_docs.py` 输出的差异（只报告，不提供 `--fix`） |
 | `scripts/check_facade_imports.py` | **退役守卫**：扫描下游是否仍 import 门面仓/旧 module，命中 exit 1 |
 | `scripts/verify_facade_frozen.py` | **冻结守卫**：门面仓已废弃（v1.x 退役条件已满足），**不得再长出新包**——门面的实际包集合必须 ⊆ 冻结基线 `scripts/facade_package_baseline.json`（2026-10-20 的人工快照，不从矩阵推导）。判据单向：新增包 / 新增转发目标 ⇒ 红；上游删包、门面跟着删 ⇒ 绿。「取不到」分两种：网络失败 ⇒ 红，门面已不存在 ⇒ 绿（门面不在就没有新增可言）。门面已于 v1.9.0 整仓退役（modules.json `retired` 登记）：空门面 = 墓碑形态 ⇒ 绿 |

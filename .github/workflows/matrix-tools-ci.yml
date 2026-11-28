@@ -631,6 +631,7 @@ jobs:
         with:
           go-version: '1.26'
           go-cache-dependency-path: 'matrix-tools/go.sum'
+          pyyaml: 'true'   # verify_api_lifecycle 解析各仓 api-lifecycle.yaml
       - name: Clone 矩阵各仓
         # 清单来自 modules.json（单一数据源），不写死仓名。
         # depth 1 即可：层级方向只看源码与 go.mod，不需要历史。
@@ -670,6 +671,12 @@ jobs:
         # 兼容壳豁免读 modules.json 的 compatShells 段（toolgate#93 的机器可读登记；
         # 壳删除后豁免自然熄灭），不是整仓豁免——同仓其它未登记目录照报。
         run: python3 matrix-tools/scripts/verify_ghost_packages.py --root .
+
+      - name: api-lifecycle 定级（清单自洽 / 新增包无定级 / 包注释标记对账）
+        # matrix-tools#256：kernel apilifecheck 判据的矩阵侧推广（ADR-002 同源）。
+        # opt-in：没放 api-lifecycle.yaml 的仓报「未接入」info；清单一放全套生效。
+        # 判据单源在 matrix-tools，各仓 CI 只 --repo 调用（本步是矩阵侧全量扫）。
+        run: python3 matrix-tools/scripts/verify_api_lifecycle.py --root .
 
       - name: 第一方依赖方向（tier 方向 / 依赖声明对账 / 矩阵内不消费门面）
         # --fail-on-yellow：与同族守卫（verify_repo_tiers / verify_repo_dep_claims /
@@ -1030,5 +1037,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-matrix-tools
+        with:
+          # verify_api_lifecycle 的 selftest 要解析 yaml fixture（判据本体走真解析器）
+          pyyaml: 'true'
       - name: 跑第 ${{ matrix.shard }} 片自测
         run: python3 scripts/selftest_all.py --shard ${{ matrix.shard }}/${{ needs.selftestplan.outputs.shards }}

@@ -1011,6 +1011,30 @@
       "since": "2026-11-28",
       "note": "评审 2.3-问题一（三层各自造相似机制）的机器化：归属此前只存在于 ADR 散文里，没有判定。本守卫只读 modules.json 自身（不 import 任何生成器 ⇒ oracle independent）；关键词是**包名启发式**——抓形态不抓语义，漏报靠关键词维护、误报靠 exempt 带理由豁免（豁免必须写 reason，防免死金牌）。CI 放 drift job：判据只需 modules.json，不需克隆矩阵（克隆面归 matrix-local-guards）。真判定步骤 + selftest 自动发现（selftest_all AST）两腿都在该 workflow。",
       "kind": "gate"
+    },
+    {
+      "id": "api-lifecycle-registration",
+      "claim": "已接入 api-lifecycle 的仓（清单一放即生效）：清单自洽（version/level 词表/since 形态/reason 必填/Deprecated 带 replacement 且符号真实存在）、源码生产包↔清单双向覆盖（新增包无定级与幽灵登记同红）、包注释 `// 生命周期:` 标记恰好一处且与清单级别对账",
+      "judges": [
+        "verify_api_lifecycle.py"
+      ],
+      "oracle": "independent",
+      "sharedWith": [],
+      "facts": "各仓源码目录（生产 .go 包枚举）+ 各仓 api-lifecycle.yaml；判据同源 kernel docs/api-compat.md（ADR-002，不复制判据）",
+      "ci": [
+        {
+          "file": "matrix-tools/.github/workflows/matrix-tools-ci.yml",
+          "job": "matrix-local-guards",
+          "triggers": [
+            "pull_request",
+            "push",
+            "schedule"
+          ]
+        }
+      ],
+      "since": "2026-11-28",
+      "kind": "gate",
+      "note": "评审 2.3-问题五（替换成本可控需要机器可判定的定级）+ 阶段一能力稳定化。**接入是 opt-in**：仓里没有 api-lifecycle.yaml ⇒ 报「未接入」info、退出 0（推广批次见 ADR-002 §三，批次进度看脚本的「已接入 N / 扫描 M」note，不另立台账）；清单一放全套判定立即生效——新增包必须显式定级，不允许逍遥于承诺之外。判据同源 kernel api-compat.md（breaking 四类/三级承诺/晋级三维/清单格式），实现单源本仓 verify_api_lifecycle.py，各仓 CI 只 --repo 调用不复制判据。包注释识别是词法近似（package 行回溯连续 // 行），边界在脚本 docstring 诚实声明、selftest 正反例钉形态；对 kernel 真仓实测零红。pyyaml 是依赖：matrix-local-guards 与 selftest 分片的 setup 都要 pyyaml: 'true'。"
     }
   ],
   "retired": [
