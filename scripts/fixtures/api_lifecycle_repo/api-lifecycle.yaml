@@ -5,3 +5,7 @@ packages:
     level: Experimental
     since: v0.1.0
     reason: fixture——窄接口未过一个 minor 无 breaking 窗口
+  - pkg: api_lifecycle_repo
+    level: Experimental
+    since: v0.1.0
+    reason: fixture 根包——钉住 --repo . 的根包名解析
