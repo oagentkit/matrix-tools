@@ -247,7 +247,13 @@ def judge_manifest(data: dict, pkgs: dict[str, Path],
 
 
 def judge_repo(repo: Path, report: Report) -> str:
-    """单仓判定。返回状态 ∈ {checked, opted-in-empty, not-opted-in}。"""
+    """单仓判定。返回状态 ∈ {checked, opted-in-empty, not-opted-in}。
+
+    先 `resolve()`：调用方常写 `--repo .`（各仓 CI 形态），而 `Path(".").name`
+    是**空串**——根包（如 llm）会按空名对账，源码有根包 ⇒ 未登记/幽灵登记双红。
+    实测踩到：go-ci 接线用 `--repo .` 指向 llm 即中招。
+    """
+    repo = repo.resolve()
     manifest = repo / "api-lifecycle.yaml"
     if not manifest.is_file():
         report.info(repo.name, "未接入 api-lifecycle（无 api-lifecycle.yaml）——"
@@ -293,6 +299,10 @@ packages:
     level: Experimental
     since: v0.1.0
     reason: fixture——窄接口未过一个 minor 无 breaking 窗口
+  - pkg: demorepo
+    level: Experimental
+    since: v0.1.0
+    reason: fixture 根包——钉住 --repo . 的根包名解析（Path(".").name 是空串）
 """
 
 _FIXTURE_GO = """\
@@ -302,6 +312,13 @@ _FIXTURE_GO = """\
 package demopkg
 """
 
+_FIXTURE_ROOT_GO = """\
+// Package demorepo fixture 根包（钉住 --repo . 形态的根包名解析）。
+//
+// 生命周期: Experimental——fixture。
+package demorepo
+"""
+
 
 def _write_fixture(root: Path, manifest: str = _FIXTURE_MANIFEST,
                    go_src: str = _FIXTURE_GO) -> Path:
@@ -309,6 +326,7 @@ def _write_fixture(root: Path, manifest: str = _FIXTURE_MANIFEST,
     (repo / "demopkg").mkdir(parents=True, exist_ok=True)
     (repo / "api-lifecycle.yaml").write_text(manifest, encoding="utf-8")
     (repo / "demopkg" / "demo.go").write_text(go_src, encoding="utf-8")
+    (repo / "root.go").write_text(_FIXTURE_ROOT_GO, encoding="utf-8")
     (repo / "go.mod").write_text("module example.com/demorepo\n", encoding="utf-8")
     return repo
 
@@ -398,6 +416,15 @@ def selftest() -> int:
         check("⑨ CLI 正常调用退出码", proc.returncode, 0)
         check("⑨ CLI 输出无 Traceback", "Traceback" in out, False)
         check("⑨ CLI 输出无 AttributeError", "AttributeError" in out, False)
+
+        # ⑩ 相对路径形态 `--repo .`（各仓 CI 接线形态）：根包名必须解析成目录名
+        #    （Path(".").name 是空串 ⇒ 根包对账会双红，实测 llm 中招）
+        proc10 = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--repo", "."],
+            cwd=repo, capture_output=True, text=True, timeout=60)
+        out10 = (proc10.stdout or "") + (proc10.stderr or "")
+        check("⑩ --repo . 退出码", proc10.returncode, 0)
+        check("⑩ --repo . 无 Traceback", "Traceback" in out10, False)
 
     if fails:
         print("❌ verify_api_lifecycle 自测失败：")
