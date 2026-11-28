@@ -83,17 +83,32 @@ def prod_packages(repo: Path) -> dict[str, Path]:
 
     口径对齐 kernel `pkgs.go`：含生产 `.go` 的目录都算（含子包），
     排除 `cmd/`、`testdata/`、`vendor/`、点目录与 `_test.go`-only。
+
+    **剪掉嵌套独立检出**：子目录里带 `.git`（文件或目录：submodule /
+    worktree / go-ci 把 matrix-tools 判据检出并排放在 workspace）的目录
+    整棵不计——那是别人的包面。实测（agent#179 首跑）：go-ci 的
+    `matrix-tools/` 检出里有 scripts/fixtures 与 symdump，不剪会被当成
+    agent 的未登记生产包判红。
     """
+    import os
     out: dict[str, Path] = {}
-    for p in sorted(repo.rglob("*.go")):
-        if p.name.endswith("_test.go"):
+    repo = repo.resolve()
+    for dirpath, dirnames, filenames in os.walk(repo):
+        d = Path(dirpath)
+        rel = d.relative_to(repo)
+        if rel != Path(".") and any(part in ("cmd", "testdata", "vendor")
+                                    or part.startswith(".")
+                                    for part in rel.parts):
+            dirnames[:] = []
             continue
-        rel = p.parent.relative_to(repo)
-        if any(part in ("cmd", "testdata", "vendor") or part.startswith(".")
-               for part in rel.parts):
+        # 剪枝：嵌套独立检出（.git 文件或目录都算）整棵不进
+        dirnames[:] = [n for n in dirnames
+                       if not (d / n / ".git").exists() and not n.startswith(".")]
+        if not any(f.endswith(".go") and not f.endswith("_test.go")
+                   for f in filenames):
             continue
-        pkg = repo.name if str(rel) == "." else str(rel).replace("\\", "/")
-        out.setdefault(pkg, p.parent)
+        pkg = repo.name if rel == Path(".") else str(rel).replace("\\", "/")
+        out.setdefault(pkg, d)
     return out
 
 
@@ -425,6 +440,19 @@ def selftest() -> int:
         out10 = (proc10.stdout or "") + (proc10.stderr or "")
         check("⑩ --repo . 退出码", proc10.returncode, 0)
         check("⑩ --repo . 无 Traceback", "Traceback" in out10, False)
+
+        # ⑪ 嵌套独立检出（.git）不计入本仓包面——go-ci 把 matrix-tools 判据
+        #    检出并排放在 workspace 的形态（agent#179 首跑：fixture/symdump
+        #    被当成未登记生产包判红）。先恢复干净清单再验。
+        (repo / "api-lifecycle.yaml").write_text(_FIXTURE_MANIFEST, encoding="utf-8")
+        nested = repo / "nested_checkout"
+        nested.mkdir()
+        (nested / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+        (nested / "sneaky").mkdir()
+        (nested / "sneaky" / "s.go").write_text("package sneaky\n", encoding="utf-8")
+        rep11 = _run(repo)
+        check("⑪ 嵌套检出不计入包面", rep11.reds, [])
+        shutil.rmtree(nested)
 
     if fails:
         print("❌ verify_api_lifecycle 自测失败：")
