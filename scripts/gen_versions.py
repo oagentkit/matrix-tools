@@ -228,12 +228,16 @@ def main() -> int:
             entry = {
                 "pkg": p,
                 "importPath": new_import_path(m.get("org") or org, repo, p) if org else None,
-                # 旧路径里的包路径，供工具做机器可读的旧→新替换，不必解析脚本源码
-                # ⚠️ 常态是旧单仓路径（agentkit/<pkg>）；但**不是每个包都来自旧单仓**
-                #    （toolname 自 oekit/pkg 归位而来 ⇒ 旧单仓路径从未存在过，
-                #    合成 agentkit/toolname 会把一个不存在的路径发布成可替换的旧路径）。
-                "fromLegacy": legacy_label(repo, p, org),
             }
+            # 旧路径里的包路径，供工具做机器可读的旧→新替换，不必解析脚本源码。
+            # ⚠️ 只在**真实存在过**时才写（legacy_label 单源判据）：
+            #    - toolname 自 oekit/pkg 归位 ⇒ 写真实旧路径（notFromLegacyRepo）；
+            #    - 后起包（kernel/runtime/trace/上抛七包…）旧单仓从未有过 ⇒
+            #      **缺席**——合成 agentkit/<pkg> 会把不存在的路径发布成可替换的
+            #      旧路径（issue matrix-tools#260，toolname 先例的同形面）。
+            legacy = legacy_label(repo, p, org)
+            if legacy:
+                entry["fromLegacy"] = legacy
             # 由嵌套模块提供的包：版本线在那个模块上，机器必须知道去哪儿取
             if p in nested_owner:
                 entry["module"] = nested_owner[p]
