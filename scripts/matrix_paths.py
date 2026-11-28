@@ -34,6 +34,8 @@ import argparse
 import json
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parent
+
 # 旧单仓 module 根，与 rewrite_imports.py 共用同一常量（这里定义，那边 import）
 OLD_ROOT = "git.enjoye.top/enjoydream/agentkit"
 DEFAULT_ORG = "oagentkit"
@@ -95,6 +97,42 @@ def legacy_import_path(pkg: str) -> str:
     return f"{OLD_ROOT}/{pkg}"
 
 
+LEGACY_LEAVES = HERE / "legacy_agentkit_leaves.json"
+
+
+def legacy_agentkit_leaves() -> set[str]:
+    """旧单仓真实包面的叶子集（快照见 legacy_agentkit_leaves.json 的 source 注记）。
+
+    判不了（文件缺失/结构异常）返回空集——调用方必须当「判不了」处理，
+    不得当成「0 个包」而把全部包判成无旧路径。
+    """
+    try:
+        data = json.loads(LEGACY_LEAVES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    out = {str(x) for x in data.get("leaves", [])}
+    return out
+
+
+def has_old_agentkit_path(pkg: str) -> bool:
+    """`OLD_ROOT/<pkg>` 是否真实存在过（旧单仓时代的包）。
+
+    判据 = 包路径末段 ∈ 旧单仓包面叶子集快照（facade v1.0.0 树 ∪ 冻结基线）。
+    门面目录是单仓包面的**扁平化**（knowledge/rag → 目录 rag、worker/pglease
+    → 目录 pglease），所以按末段比；kernel/runtime（agent-harness 源）、
+    trace/bridge/上抛七包等后起包两源皆无 ⇒ 合成 `agentkit/<pkg>` 会把一个
+    从未存在过的路径发布成可机械替换的旧路径（issue matrix-tools#260，
+    toolname 先例的同形面）。
+
+    判不了（快照缺失）→ 保守返回 True：维持既有合成形态，由 versions 漂移
+    门禁兜住确定性；宁可少改标签，不可在判不了时静默清空全部 fromLegacy。
+    """
+    leaves = legacy_agentkit_leaves()
+    if not leaves:
+        return True
+    return pkg.split("/")[-1] in leaves
+
+
 def short_legacy(pkg: str) -> str:
     """省略 module 根的旧包路径，文档里读起来更短：`agentkit/knowledge/rag`。"""
     return f"agentkit/{pkg}"
@@ -126,6 +164,9 @@ def legacy_label(repo: str, pkg: str, org: str) -> str:
     old = legacy_exclusions().get(new_import_path("{org}", repo, pkg))
     if old:
         return old[len("github.com/"):] if old.startswith("github.com/") else old
+    if not has_old_agentkit_path(pkg):
+        # 旧单仓从未有过这个包 ⇒ 不发布 fromLegacy（缺席 = 无旧路径可改写）
+        return ""
     return short_legacy(pkg)
 
 
@@ -149,6 +190,10 @@ def build_mapping(modules: list[dict], org: str) -> dict[str, str]:
             # 该包若不是旧单仓拆出来的 ⇒ 旧单仓路径从未存在过 ⇒ 不合成这条规则
             if new_import_path("{org}", repo, pkg) in excl:
                 continue
+            # 同判据的另一形态：后起包（kernel/runtime/trace…）叶子不在旧单仓
+            # 包面快照里 ⇒ `OLD_ROOT/<pkg>` 从未存在，合成即假路径（#260）
+            if not has_old_agentkit_path(pkg):
+                continue
             mapping[legacy_import_path(pkg)] = new_import_path(morg, repo, pkg)
     mapping.update(build_historical_mapping(org))
     return mapping
@@ -171,6 +216,9 @@ def misleading(modules: list[dict], org: str) -> list[tuple[str, str]]:
         morg = mod.get("org") or org
         for pkg in mod["packages"]:
             if leaf(pkg) != pkg or repo == leaf(pkg):
+                # 对照表的旧侧也必须真实存在（#260）：后起包没有旧单仓路径
+                if not has_old_agentkit_path(pkg):
+                    continue
                 out.append((short_legacy(pkg), new_import_path(morg, repo, pkg)))
     return out
 

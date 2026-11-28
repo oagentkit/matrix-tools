@@ -50,23 +50,19 @@
         {
           "pkg": "gotyped",
           "importPath": "github.com/oagentkit/textx/gotyped",
-          "fromLegacy": "agentkit/gotyped",
           "module": "github.com/oagentkit/textx/gotyped"
         },
         {
           "pkg": "budget",
-          "importPath": "github.com/oagentkit/textx/budget",
-          "fromLegacy": "agentkit/budget"
+          "importPath": "github.com/oagentkit/textx/budget"
         },
         {
           "pkg": "spill",
-          "importPath": "github.com/oagentkit/textx/spill",
-          "fromLegacy": "agentkit/spill"
+          "importPath": "github.com/oagentkit/textx/spill"
         },
         {
           "pkg": "offload",
-          "importPath": "github.com/oagentkit/textx/offload",
-          "fromLegacy": "agentkit/offload"
+          "importPath": "github.com/oagentkit/textx/offload"
         }
       ],
       "matrixDeps": [],
@@ -316,13 +312,11 @@
         },
         {
           "pkg": "notifyx",
-          "importPath": "github.com/oagentkit/runtime/notifyx",
-          "fromLegacy": "agentkit/notifyx"
+          "importPath": "github.com/oagentkit/runtime/notifyx"
         },
         {
           "pkg": "notifyx/hook",
-          "importPath": "github.com/oagentkit/runtime/hook",
-          "fromLegacy": "agentkit/notifyx/hook"
+          "importPath": "github.com/oagentkit/runtime/hook"
         }
       ],
       "matrixDeps": [],
@@ -616,8 +610,7 @@
         },
         {
           "pkg": "egressproxy",
-          "importPath": "github.com/oagentkit/guardx/egressproxy",
-          "fromLegacy": "agentkit/egressproxy"
+          "importPath": "github.com/oagentkit/guardx/egressproxy"
         },
         {
           "pkg": "permgate",
@@ -636,33 +629,27 @@
         },
         {
           "pkg": "toolfail",
-          "importPath": "github.com/oagentkit/guardx/toolfail",
-          "fromLegacy": "agentkit/toolfail"
+          "importPath": "github.com/oagentkit/guardx/toolfail"
         },
         {
           "pkg": "sandbox",
-          "importPath": "github.com/oagentkit/guardx/sandbox",
-          "fromLegacy": "agentkit/sandbox"
+          "importPath": "github.com/oagentkit/guardx/sandbox"
         },
         {
           "pkg": "wire",
-          "importPath": "github.com/oagentkit/guardx/wire",
-          "fromLegacy": "agentkit/wire"
+          "importPath": "github.com/oagentkit/guardx/wire"
         },
         {
           "pkg": "netguard",
-          "importPath": "github.com/oagentkit/guardx/netguard",
-          "fromLegacy": "agentkit/netguard"
+          "importPath": "github.com/oagentkit/guardx/netguard"
         },
         {
           "pkg": "rbac",
-          "importPath": "github.com/oagentkit/guardx/rbac",
-          "fromLegacy": "agentkit/rbac"
+          "importPath": "github.com/oagentkit/guardx/rbac"
         },
         {
           "pkg": "ticket",
-          "importPath": "github.com/oagentkit/guardx/ticket",
-          "fromLegacy": "agentkit/ticket"
+          "importPath": "github.com/oagentkit/guardx/ticket"
         }
       ],
       "matrixDeps": [],
@@ -990,18 +977,15 @@
         },
         {
           "pkg": "sqllease",
-          "importPath": "github.com/oagentkit/queue/sqllease",
-          "fromLegacy": "agentkit/sqllease"
+          "importPath": "github.com/oagentkit/queue/sqllease"
         },
         {
           "pkg": "sqlqueue",
-          "importPath": "github.com/oagentkit/queue/sqlqueue",
-          "fromLegacy": "agentkit/sqlqueue"
+          "importPath": "github.com/oagentkit/queue/sqlqueue"
         },
         {
           "pkg": "outbox",
-          "importPath": "github.com/oagentkit/queue/outbox",
-          "fromLegacy": "agentkit/outbox"
+          "importPath": "github.com/oagentkit/queue/outbox"
         }
       ],
       "matrixDeps": [],
@@ -1379,18 +1363,15 @@
         },
         {
           "pkg": "pending",
-          "importPath": "github.com/oagentkit/promptx/pending",
-          "fromLegacy": "agentkit/pending"
+          "importPath": "github.com/oagentkit/promptx/pending"
         },
         {
           "pkg": "sessionref",
-          "importPath": "github.com/oagentkit/promptx/sessionref",
-          "fromLegacy": "agentkit/sessionref"
+          "importPath": "github.com/oagentkit/promptx/sessionref"
         },
         {
           "pkg": "memorypipe",
-          "importPath": "github.com/oagentkit/promptx/memorypipe",
-          "fromLegacy": "agentkit/memorypipe"
+          "importPath": "github.com/oagentkit/promptx/memorypipe"
         }
       ],
       "matrixDeps": [
@@ -2606,8 +2587,7 @@
         },
         {
           "pkg": "iface",
-          "importPath": "github.com/oagentkit/mcpkit/iface",
-          "fromLegacy": "agentkit/iface"
+          "importPath": "github.com/oagentkit/mcpkit/iface"
         }
       ],
       "matrixDeps": [],
@@ -3024,23 +3004,19 @@
         },
         {
           "pkg": "wiki",
-          "importPath": "github.com/oagentkit/rag/wiki",
-          "fromLegacy": "agentkit/wiki"
+          "importPath": "github.com/oagentkit/rag/wiki"
         },
         {
           "pkg": "wiki/fsstore",
-          "importPath": "github.com/oagentkit/rag/fsstore",
-          "fromLegacy": "agentkit/wiki/fsstore"
+          "importPath": "github.com/oagentkit/rag/fsstore"
         },
         {
           "pkg": "milvus",
-          "importPath": "github.com/oagentkit/rag/milvus",
-          "fromLegacy": "agentkit/milvus"
+          "importPath": "github.com/oagentkit/rag/milvus"
         },
         {
           "pkg": "ontology",
-          "importPath": "github.com/oagentkit/rag/ontology",
-          "fromLegacy": "agentkit/ontology"
+          "importPath": "github.com/oagentkit/rag/ontology"
         }
       ],
       "matrixDeps": [
@@ -3579,8 +3555,7 @@
         },
         {
           "pkg": "llm/decision",
-          "importPath": "github.com/oagentkit/llm/decision",
-          "fromLegacy": "agentkit/llm/decision"
+          "importPath": "github.com/oagentkit/llm/decision"
         }
       ],
       "matrixDeps": [
@@ -4944,13 +4919,11 @@
         },
         {
           "pkg": "bgjob",
-          "importPath": "github.com/oagentkit/tools/bgjob",
-          "fromLegacy": "agentkit/bgjob"
+          "importPath": "github.com/oagentkit/tools/bgjob"
         },
         {
           "pkg": "cmdpolicy",
-          "importPath": "github.com/oagentkit/tools/cmdpolicy",
-          "fromLegacy": "agentkit/cmdpolicy"
+          "importPath": "github.com/oagentkit/tools/cmdpolicy"
         }
       ],
       "matrixDeps": [
@@ -5739,8 +5712,7 @@
         },
         {
           "pkg": "roundguard",
-          "importPath": "github.com/oagentkit/agent/roundguard",
-          "fromLegacy": "agentkit/roundguard"
+          "importPath": "github.com/oagentkit/agent/roundguard"
         }
       ],
       "matrixDeps": [
@@ -6495,58 +6467,47 @@
       "packages": [
         {
           "pkg": "archcheck",
-          "importPath": "github.com/yi-nology/goagent-kernel/archcheck",
-          "fromLegacy": "agentkit/archcheck"
+          "importPath": "github.com/yi-nology/goagent-kernel/archcheck"
         },
         {
           "pkg": "backend",
-          "importPath": "github.com/yi-nology/goagent-kernel/backend",
-          "fromLegacy": "agentkit/backend"
+          "importPath": "github.com/yi-nology/goagent-kernel/backend"
         },
         {
           "pkg": "checkpoint",
-          "importPath": "github.com/yi-nology/goagent-kernel/checkpoint",
-          "fromLegacy": "agentkit/checkpoint"
+          "importPath": "github.com/yi-nology/goagent-kernel/checkpoint"
         },
         {
           "pkg": "commitgate",
-          "importPath": "github.com/yi-nology/goagent-kernel/commitgate",
-          "fromLegacy": "agentkit/commitgate"
+          "importPath": "github.com/yi-nology/goagent-kernel/commitgate"
         },
         {
           "pkg": "contract",
-          "importPath": "github.com/yi-nology/goagent-kernel/contract",
-          "fromLegacy": "agentkit/contract"
+          "importPath": "github.com/yi-nology/goagent-kernel/contract"
         },
         {
           "pkg": "controlplane",
-          "importPath": "github.com/yi-nology/goagent-kernel/controlplane",
-          "fromLegacy": "agentkit/controlplane"
+          "importPath": "github.com/yi-nology/goagent-kernel/controlplane"
         },
         {
           "pkg": "coord",
-          "importPath": "github.com/yi-nology/goagent-kernel/coord",
-          "fromLegacy": "agentkit/coord"
+          "importPath": "github.com/yi-nology/goagent-kernel/coord"
         },
         {
           "pkg": "cost",
-          "importPath": "github.com/yi-nology/goagent-kernel/cost",
-          "fromLegacy": "agentkit/cost"
+          "importPath": "github.com/yi-nology/goagent-kernel/cost"
         },
         {
           "pkg": "deadline",
-          "importPath": "github.com/yi-nology/goagent-kernel/deadline",
-          "fromLegacy": "agentkit/deadline"
+          "importPath": "github.com/yi-nology/goagent-kernel/deadline"
         },
         {
           "pkg": "delegate",
-          "importPath": "github.com/yi-nology/goagent-kernel/delegate",
-          "fromLegacy": "agentkit/delegate"
+          "importPath": "github.com/yi-nology/goagent-kernel/delegate"
         },
         {
           "pkg": "delta",
-          "importPath": "github.com/yi-nology/goagent-kernel/delta",
-          "fromLegacy": "agentkit/delta"
+          "importPath": "github.com/yi-nology/goagent-kernel/delta"
         },
         {
           "pkg": "dispatch",
@@ -6555,8 +6516,7 @@
         },
         {
           "pkg": "drain",
-          "importPath": "github.com/yi-nology/goagent-kernel/drain",
-          "fromLegacy": "agentkit/drain"
+          "importPath": "github.com/yi-nology/goagent-kernel/drain"
         },
         {
           "pkg": "egress",
@@ -6565,148 +6525,119 @@
         },
         {
           "pkg": "eval",
-          "importPath": "github.com/yi-nology/goagent-kernel/eval",
-          "fromLegacy": "agentkit/eval"
+          "importPath": "github.com/yi-nology/goagent-kernel/eval"
         },
         {
           "pkg": "eventbus",
-          "importPath": "github.com/yi-nology/goagent-kernel/eventbus",
-          "fromLegacy": "agentkit/eventbus"
+          "importPath": "github.com/yi-nology/goagent-kernel/eventbus"
         },
         {
           "pkg": "finalize",
-          "importPath": "github.com/yi-nology/goagent-kernel/finalize",
-          "fromLegacy": "agentkit/finalize"
+          "importPath": "github.com/yi-nology/goagent-kernel/finalize"
         },
         {
           "pkg": "gatecheck",
-          "importPath": "github.com/yi-nology/goagent-kernel/gatecheck",
-          "fromLegacy": "agentkit/gatecheck"
+          "importPath": "github.com/yi-nology/goagent-kernel/gatecheck"
         },
         {
           "pkg": "guardset",
-          "importPath": "github.com/yi-nology/goagent-kernel/guardset",
-          "fromLegacy": "agentkit/guardset"
+          "importPath": "github.com/yi-nology/goagent-kernel/guardset"
         },
         {
           "pkg": "handoff",
-          "importPath": "github.com/yi-nology/goagent-kernel/handoff",
-          "fromLegacy": "agentkit/handoff"
+          "importPath": "github.com/yi-nology/goagent-kernel/handoff"
         },
         {
           "pkg": "hookengine",
-          "importPath": "github.com/yi-nology/goagent-kernel/hookengine",
-          "fromLegacy": "agentkit/hookengine"
+          "importPath": "github.com/yi-nology/goagent-kernel/hookengine"
         },
         {
           "pkg": "invocation",
-          "importPath": "github.com/yi-nology/goagent-kernel/invocation",
-          "fromLegacy": "agentkit/invocation"
+          "importPath": "github.com/yi-nology/goagent-kernel/invocation"
         },
         {
           "pkg": "invocation/invocationtest",
-          "importPath": "github.com/yi-nology/goagent-kernel/invocationtest",
-          "fromLegacy": "agentkit/invocation/invocationtest"
+          "importPath": "github.com/yi-nology/goagent-kernel/invocationtest"
         },
         {
           "pkg": "metrics",
-          "importPath": "github.com/yi-nology/goagent-kernel/metrics",
-          "fromLegacy": "agentkit/metrics"
+          "importPath": "github.com/yi-nology/goagent-kernel/metrics"
         },
         {
           "pkg": "ownership",
-          "importPath": "github.com/yi-nology/goagent-kernel/ownership",
-          "fromLegacy": "agentkit/ownership"
+          "importPath": "github.com/yi-nology/goagent-kernel/ownership"
         },
         {
           "pkg": "preset",
-          "importPath": "github.com/yi-nology/goagent-kernel/preset",
-          "fromLegacy": "agentkit/preset"
+          "importPath": "github.com/yi-nology/goagent-kernel/preset"
         },
         {
           "pkg": "protocol",
-          "importPath": "github.com/yi-nology/goagent-kernel/protocol",
-          "fromLegacy": "agentkit/protocol"
+          "importPath": "github.com/yi-nology/goagent-kernel/protocol"
         },
         {
           "pkg": "ptc",
-          "importPath": "github.com/yi-nology/goagent-kernel/ptc",
-          "fromLegacy": "agentkit/ptc"
+          "importPath": "github.com/yi-nology/goagent-kernel/ptc"
         },
         {
           "pkg": "raceprobe",
-          "importPath": "github.com/yi-nology/goagent-kernel/raceprobe",
-          "fromLegacy": "agentkit/raceprobe"
+          "importPath": "github.com/yi-nology/goagent-kernel/raceprobe"
         },
         {
           "pkg": "reconcile",
-          "importPath": "github.com/yi-nology/goagent-kernel/reconcile",
-          "fromLegacy": "agentkit/reconcile"
+          "importPath": "github.com/yi-nology/goagent-kernel/reconcile"
         },
         {
           "pkg": "retryplan",
-          "importPath": "github.com/yi-nology/goagent-kernel/retryplan",
-          "fromLegacy": "agentkit/retryplan"
+          "importPath": "github.com/yi-nology/goagent-kernel/retryplan"
         },
         {
           "pkg": "scheduling",
-          "importPath": "github.com/yi-nology/goagent-kernel/scheduling",
-          "fromLegacy": "agentkit/scheduling"
+          "importPath": "github.com/yi-nology/goagent-kernel/scheduling"
         },
         {
           "pkg": "sideeffect",
-          "importPath": "github.com/yi-nology/goagent-kernel/sideeffect",
-          "fromLegacy": "agentkit/sideeffect"
+          "importPath": "github.com/yi-nology/goagent-kernel/sideeffect"
         },
         {
           "pkg": "sidetest",
-          "importPath": "github.com/yi-nology/goagent-kernel/sidetest",
-          "fromLegacy": "agentkit/sidetest"
+          "importPath": "github.com/yi-nology/goagent-kernel/sidetest"
         },
         {
           "pkg": "skilldisclose",
-          "importPath": "github.com/yi-nology/goagent-kernel/skilldisclose",
-          "fromLegacy": "agentkit/skilldisclose"
+          "importPath": "github.com/yi-nology/goagent-kernel/skilldisclose"
         },
         {
           "pkg": "statemachine",
-          "importPath": "github.com/yi-nology/goagent-kernel/statemachine",
-          "fromLegacy": "agentkit/statemachine"
+          "importPath": "github.com/yi-nology/goagent-kernel/statemachine"
         },
         {
           "pkg": "steer",
-          "importPath": "github.com/yi-nology/goagent-kernel/steer",
-          "fromLegacy": "agentkit/steer"
+          "importPath": "github.com/yi-nology/goagent-kernel/steer"
         },
         {
           "pkg": "taskboard",
-          "importPath": "github.com/yi-nology/goagent-kernel/taskboard",
-          "fromLegacy": "agentkit/taskboard"
+          "importPath": "github.com/yi-nology/goagent-kernel/taskboard"
         },
         {
           "pkg": "taskboard/boardtest",
-          "importPath": "github.com/yi-nology/goagent-kernel/boardtest",
-          "fromLegacy": "agentkit/taskboard/boardtest"
+          "importPath": "github.com/yi-nology/goagent-kernel/boardtest"
         },
         {
           "pkg": "tenant",
-          "importPath": "github.com/yi-nology/goagent-kernel/tenant",
-          "fromLegacy": "agentkit/tenant"
+          "importPath": "github.com/yi-nology/goagent-kernel/tenant"
         },
         {
           "pkg": "tooldisclose",
-          "importPath": "github.com/yi-nology/goagent-kernel/tooldisclose",
-          "fromLegacy": "agentkit/tooldisclose"
+          "importPath": "github.com/yi-nology/goagent-kernel/tooldisclose"
         },
         {
           "pkg": "trajectory",
-          "importPath": "github.com/yi-nology/goagent-kernel/trajectory",
-          "fromLegacy": "agentkit/trajectory"
+          "importPath": "github.com/yi-nology/goagent-kernel/trajectory"
         },
         {
           "pkg": "watchdog",
-          "importPath": "github.com/yi-nology/goagent-kernel/watchdog",
-          "fromLegacy": "agentkit/watchdog"
+          "importPath": "github.com/yi-nology/goagent-kernel/watchdog"
         },
         {
           "pkg": "worker",
@@ -6715,13 +6646,11 @@
         },
         {
           "pkg": "worktree",
-          "importPath": "github.com/yi-nology/goagent-kernel/worktree",
-          "fromLegacy": "agentkit/worktree"
+          "importPath": "github.com/yi-nology/goagent-kernel/worktree"
         },
         {
           "pkg": "worker/faultmatrix",
-          "importPath": "github.com/yi-nology/goagent-kernel/faultmatrix",
-          "fromLegacy": "agentkit/worker/faultmatrix"
+          "importPath": "github.com/yi-nology/goagent-kernel/faultmatrix"
         }
       ],
       "matrixDeps": [
@@ -8118,78 +8047,63 @@
       "packages": [
         {
           "pkg": "chat",
-          "importPath": "github.com/yi-nology/goagent-runtime/chat",
-          "fromLegacy": "agentkit/chat"
+          "importPath": "github.com/yi-nology/goagent-runtime/chat"
         },
         {
           "pkg": "pipeline",
-          "importPath": "github.com/yi-nology/goagent-runtime/pipeline",
-          "fromLegacy": "agentkit/pipeline"
+          "importPath": "github.com/yi-nology/goagent-runtime/pipeline"
         },
         {
           "pkg": "agentloop",
-          "importPath": "github.com/yi-nology/goagent-runtime/agentloop",
-          "fromLegacy": "agentkit/agentloop"
+          "importPath": "github.com/yi-nology/goagent-runtime/agentloop"
         },
         {
           "pkg": "adjudicate",
-          "importPath": "github.com/yi-nology/goagent-runtime/adjudicate",
-          "fromLegacy": "agentkit/adjudicate"
+          "importPath": "github.com/yi-nology/goagent-runtime/adjudicate"
         },
         {
           "pkg": "storage",
-          "importPath": "github.com/yi-nology/goagent-runtime/storage",
-          "fromLegacy": "agentkit/storage"
+          "importPath": "github.com/yi-nology/goagent-runtime/storage"
         },
         {
           "pkg": "storage/sqlitestore",
-          "importPath": "github.com/yi-nology/goagent-runtime/sqlitestore",
-          "fromLegacy": "agentkit/storage/sqlitestore"
+          "importPath": "github.com/yi-nology/goagent-runtime/sqlitestore"
         },
         {
           "pkg": "sqliteadapter",
-          "importPath": "github.com/yi-nology/goagent-runtime/sqliteadapter",
-          "fromLegacy": "agentkit/sqliteadapter"
+          "importPath": "github.com/yi-nology/goagent-runtime/sqliteadapter"
         },
         {
           "pkg": "pgstore",
-          "importPath": "github.com/yi-nology/goagent-runtime/pgstore",
-          "fromLegacy": "agentkit/pgstore"
+          "importPath": "github.com/yi-nology/goagent-runtime/pgstore"
         },
         {
           "pkg": "runtime",
-          "importPath": "github.com/yi-nology/goagent-runtime/runtime",
-          "fromLegacy": "agentkit/runtime"
+          "importPath": "github.com/yi-nology/goagent-runtime/runtime"
         },
         {
           "pkg": "cluster",
-          "importPath": "github.com/yi-nology/goagent-runtime/cluster",
-          "fromLegacy": "agentkit/cluster"
+          "importPath": "github.com/yi-nology/goagent-runtime/cluster"
         },
         {
           "pkg": "observe",
-          "importPath": "github.com/yi-nology/goagent-runtime/observe",
-          "fromLegacy": "agentkit/observe"
+          "importPath": "github.com/yi-nology/goagent-runtime/observe"
         },
         {
           "pkg": "containerbackend",
-          "importPath": "github.com/yi-nology/goagent-runtime/containerbackend",
-          "fromLegacy": "agentkit/containerbackend"
+          "importPath": "github.com/yi-nology/goagent-runtime/containerbackend"
         },
         {
           "pkg": "bridge/llmchat",
-          "importPath": "github.com/yi-nology/goagent-runtime/llmchat",
-          "fromLegacy": "agentkit/bridge/llmchat"
+          "importPath": "github.com/yi-nology/goagent-runtime/llmchat"
         },
         {
           "pkg": "bridge/einotool",
-          "importPath": "github.com/yi-nology/goagent-runtime/einotool",
-          "fromLegacy": "agentkit/bridge/einotool"
+          "importPath": "github.com/yi-nology/goagent-runtime/einotool"
         },
         {
           "pkg": "trace",
-          "importPath": "github.com/yi-nology/goagent-runtime/trace",
-          "fromLegacy": "agentkit/trace"
+          "importPath": "github.com/yi-nology/goagent-runtime/trace"
         }
       ],
       "matrixDeps": [

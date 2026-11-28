@@ -93,12 +93,13 @@ def main() -> int:
             {"repo": "textx", "packages": ["textutil"]},
             {"repo": "queue", "packages": ["queue"]}]
     got_pairs = set(misleading(fake, "oagentkit"))
+    # queue 根包是拆分后新建的（旧单仓只有 worker，没有 queue 目录——
+    # facade v1.0.0 树与 MIGRATION.md 均无它）⇒ 旧侧不存在，同样不挑（#260）。
     want_pairs = {("agentkit/knowledge/rag", "github.com/oagentkit/rag"),
-                  ("agentkit/llm", "github.com/oagentkit/llm"),
-                  ("agentkit/queue", "github.com/oagentkit/queue")}
+                  ("agentkit/llm", "github.com/oagentkit/llm")}
     ok = got_pairs == want_pairs
     print(f"  {'✅' if ok else '❌'} misleading() 挑出 {len(got_pairs)} 条，"
-          f"期望 {len(want_pairs)} 条（textutil 应被排除）")
+          f"期望 {len(want_pairs)} 条（textutil 无中间层、queue 无旧路径，均应排除）")
     if not ok:
         print(f"      多出 {sorted(got_pairs - want_pairs)}")
         print(f"      缺少 {sorted(want_pairs - got_pairs)}")
@@ -145,6 +146,23 @@ def main() -> int:
     print(f"  {'✅' if ok else '❌'} legacy_label(textx/textutil) = 旧单仓路径")
     if not ok:
         fails.append("legacy_label:textx")
+
+    # 后起包（agent-harness 源 / 拆分后新建）：旧单仓从未有过 ⇒ fromLegacy 缺席
+    ok = legacy_label("goagent-kernel", "protocol", "yi-nology") == ""
+    print(f"  {'✅' if ok else '❌'} legacy_label(goagent-kernel/protocol) = 空（无旧路径）")
+    if not ok:
+        fails.append("legacy_label:kernel-protocol")
+
+    ok = legacy_label("goagent-runtime", "trace", "yi-nology") == ""
+    print(f"  {'✅' if ok else '❌'} legacy_label(goagent-runtime/trace) = 空（无旧路径）")
+    if not ok:
+        fails.append("legacy_label:runtime-trace")
+
+    mapping_k = build_mapping([{"repo": "goagent-kernel", "packages": ["protocol"]}], "oagentkit")
+    ok = not any(k.startswith("git.enjoye.top/enjoydream/agentkit/") for k in mapping_k)
+    print(f"  {'✅' if ok else '❌'} 后起包不合成假旧单仓改写规则")
+    if not ok:
+        fails.append("build_mapping:kernel-protocol")
 
     mapping = build_mapping([{"repo": "toolname", "packages": ["toolname"]}], "oagentkit")
     ok = ("git.enjoye.top/enjoydream/agentkit/toolname" not in mapping
