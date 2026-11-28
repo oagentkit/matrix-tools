@@ -189,9 +189,12 @@ cause），不是在思想层复制一个墙钟错误。**记此结论替代 ADR
 | Handoff | goagent-kernel | handoff/receipt_vocab_test.go | TestReceiptVocabularySharedWithDelegate |
 | Interrupt | goagent-kernel | deadline/route_test.go | TestRouteMultipleUserCancelSentinels |
 | Interrupt | agent | roundguard/classify_test.go | TestClassifyToolCallsContinues |
+| Interrupt | agent | agentrun/contract_interrupt_resume_test.go | TestContractUserCancelLandsCancelledNotShutdown |
+| Interrupt | agent | agentrun/contract_interrupt_resume_test.go | TestContractDispatchFailureReturnsToParentTerminal |
 | Resume | goagent-kernel | checkpoint/faultinjection_test.go | TestFaultResumeInterruptedThenResumes |
 | Resume | goagent-kernel | invocation/invocationtest/invocationtest_test.go | TestConformanceOnMemoryStore |
 | Resume | goagent-runtime | agentloop/loop_test.go | TestResumeAfterModelDeath |
+| Resume | agent | agentrun/contract_interrupt_resume_test.go | TestContractInterruptResumeSkipsCompletedSteps |
 | Timeout | llm | timeout_axis_test.go | TestModelTimeoutIsTransient_Issue222 |
 | Timeout | llm | timeout_axis_test.go | TestUserCancelNotModelTimeout_Issue222 |
 | Timeout | llm | timeout_axis_test.go | TestSameTextDifferentValue_Issue222 |
