@@ -298,7 +298,8 @@
       "oekitAnalog": "registry",
       "packages": [
         "mcp",
-        "iface"
+        "iface",
+        "conformance"
       ],
       "heavyDeps": [
         "github.com/mark3labs/mcp-go",
@@ -329,7 +330,8 @@
         "wiki",
         "wiki/fsstore",
         "milvus",
-        "ontology"
+        "ontology",
+        "embedtest"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",
@@ -370,7 +372,8 @@
         "llm/wrap",
         "llm/llmtest",
         "obsx",
-        "llm/decision"
+        "llm/decision",
+        "conformance"
       ],
       "heavyDeps": [
         "github.com/cloudwego/eino",

@@ -9,7 +9,7 @@
   "sourceMatrix": "git.enjoye.top/enjoydream/agentkit",
   "tierCount": 6,
   "moduleCount": 16,
-  "packageCount": 139,
+  "packageCount": 142,
   "modules": [
     {
       "repo": "textx",
@@ -2588,6 +2588,10 @@
         {
           "pkg": "iface",
           "importPath": "github.com/oagentkit/mcpkit/iface"
+        },
+        {
+          "pkg": "conformance",
+          "importPath": "github.com/oagentkit/mcpkit/conformance"
         }
       ],
       "matrixDeps": [],
@@ -3017,6 +3021,10 @@
         {
           "pkg": "ontology",
           "importPath": "github.com/oagentkit/rag/ontology"
+        },
+        {
+          "pkg": "embedtest",
+          "importPath": "github.com/oagentkit/rag/embedtest"
         }
       ],
       "matrixDeps": [
@@ -3556,6 +3564,10 @@
         {
           "pkg": "llm/decision",
           "importPath": "github.com/oagentkit/llm/decision"
+        },
+        {
+          "pkg": "conformance",
+          "importPath": "github.com/oagentkit/llm/conformance"
         }
       ],
       "matrixDeps": [

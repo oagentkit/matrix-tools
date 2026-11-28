@@ -5,7 +5,7 @@ description: >-
   触发场景：建 agent（ReAct/反思/路由/多专家）、模型调用（降级链/预算/阶段路由）、工具体系
   （MCP/调度/审计门/调用契约）、安全围栏（提示词注入/出口 SSRF/脱敏/许可沙箱）、RAG、DB 队列、
   prompt 组装、SKILL 技能装配、观测审计、文本处理，或不确定该用哪个模块/子包时。
-  含场景选型表、tier/heavyDeps 红线、139 子包速查。发版/tag/CHANGELOG 用 oagentkit-release；
+  含场景选型表、tier/heavyDeps 红线、142 子包速查。发版/tag/CHANGELOG 用 oagentkit-release；
   issue 扫描复用 oekit-sweep（--org oagentkit）。
 ---
 
