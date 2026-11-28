@@ -668,7 +668,8 @@
         "bridge/llmchat",
         "bridge/einotool",
         "trace",
-        "agentiface"
+        "agentiface",
+        "preset"
       ],
       "heavyDeps": [
         "github.com/jackc/pgx/v5",
