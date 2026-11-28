@@ -5678,7 +5678,7 @@
       "repo": "agent",
       "url": "https://github.com/oagentkit/agent",
       "tier": 3,
-      "latest": "v0.16.0",
+      "latest": "v0.17.0",
       "packages": [
         {
           "pkg": "iface",
@@ -6458,6 +6458,17 @@
               "dep": "golang.org/x/sys",
               "from": "v0.29.0",
               "to": "v0.48.0"
+            }
+          ]
+        },
+        {
+          "version": "v0.17.0",
+          "date": "2026-11-28",
+          "bumps": [
+            {
+              "dep": "github.com/oekit/pkg",
+              "from": "v0.61.4",
+              "to": "v0.61.5"
             }
           ]
         }
