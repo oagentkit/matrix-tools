@@ -96,11 +96,39 @@
 | 幂等性 | **对账优先**：结论未知（Uncertain）的调用先裁决再动作，不许盲目重做（`invocationtest` 三态：可重做 / 须对账 / 拒绝）；`TestFaultResumeInterrupted*` 系列钉住中断点前后两种恢复形态 |
 | 跨仓实现对照 | kernel `checkpoint`（Snapshot/Commit/ErrStaleSeq 单调闸 + 故障注入恢复测试）· kernel `invocationtest`（对账 conformance 套件，宿主存储跑过即验）· kernel `reconcile.RecoverInterrupted`（恢复入口）· agentloop `TestResumeAfterModelDeath`（模型死亡后续跑）|
 
-### 超时三轴（列引，交付在兄弟单）
+### 超时三轴对照（`oagentkit/guardx#222` 交付，判据单源 `guardx/toolfail` + `kernel/deadline`）
 
-模型超时 / 工具超时 / 会话墙钟三轴的**对照表与错误归类**由
-**`oagentkit/guardx#222`** 交付（判据单源 `guardx/toolfail` + `kernel/deadline`），
-本表不重复——Run/ToolCall/Interrupt 三词的超时语义以该单为准。
+| 轴 | 定义 | 触发者 | ctx 形态（身份怎么认） | 调用方处置 |
+|---|---|---|---|---|
+| **① 模型超时** | 单次模型尝试（含流式空闲）超预算 | llm resilient `timeoutProvider` 为每次尝试建 attempt ctx | `context.WithTimeout` → 裸 `DeadlineExceeded`（**有意无专属哨兵**：模型超时是瞬态，`llm.IsTransientStreamError` 判 `Canceled`=false / `DeadlineExceeded`=true；已登记文案白名单 `transientErrorReasons` 子串兜底） | **自动**：瞬态 → 恢复循环重开流（`MaxStreamRecoveryRetries`）；取消显式排除（不空转） |
+| **② 工具超时** | 单次工具执行超预算 | 宿主/toolgate 给工具的 ctx；gate 等待期另有口径 | 执行超时 = 工具错误链里的 `DeadlineExceeded`——进 toolfail **须带 `Failure{ClassTransient}` 载体**（裸 `DeadlineExceeded` → `ClassUnknown` = 不可分类即不可重试，保守）；**gate 等待期超时 = `Skipped`（从未执行）不是 `Err`**（toolgate#121/#124：记 Err 会触发必然再被取消的退避风暴） | 重试可（ClassTransient），**默认不可盲目重发**（`SafeToResubmit=false`——服务端可能已执行），guidance=「先确认上一次调用是否已经生效」（toolfail 契约测试钉） |
+| **③ 会话墙钟** | 整轮编排的总预算 | 宿主/装配层建会话 ctx | `context.WithTimeoutCause(..., contract.ErrSessionDeadline)`（**专属 cause**；`kernel/deadline.Route` 臂序硬约束：接管 > 用户取消 > 墙钟 > 停机——写反则会话超时被判成停机、永久滞留 running） | 落 `timed_out` 终态；整轮不重试（是否重启由宿主裁） |
+| （对照轴）**用户取消** | 用户主动中止 | 宿主取消 API | `context.WithCancelCause(contract.ErrUserCancelled)`（**全仓唯一身份**，#170/#333/#355 事故教训）；裸 cancel 与停机在 Cause 上不可分——要区分就必须给专属 cause | 落 `cancelled`；**不**当超时处理（显式意图优先于墙钟） |
+
+**身份判据总结**：三轴的区分**不靠文案靠值**——①②共享 `DeadlineExceeded` 这个
+底层值，靠**载体与触发点**分轴（attempt ctx vs 工具链 + toolfail 类别载体）；
+③与取消走 **ctx cause 专属值**。同一字面量不同值的事故形态（文本相同、
+`errors.Is` 互不认领）由两仓对偶契约测试回归钉住：
+`llm/timeout_axis_test.go`（轴① + 取消不串 + 文本复制件不认领）与
+`guardx/toolfail/timeout_axis_test.go`（轴②载体/重发安全 + 取消不进瞬时类 +
+伪造哨兵不认领）——依赖方向决定两仓不能互 import，契约以「同一判据面两处
+各钉一半」成立，两仓 CI 各自常绿（锚见 §十）。
+
+**墙钟轴扩展评估（结论：oagentkit 侧不新增墙钟哨兵）**：
+会话墙钟的唯一身份已单源在 kernel `contract.ErrSessionDeadline`（cause 形态，
+`deadline.Route` 臂序判据齐）。消费方向上——runtime（装配层）已依赖 kernel，
+直接透传 cause 即可，无需第二份哨兵；agent（思想层）**零依赖 kernel 是红线**
+（ADR-001），且思想层只拥有 attempt 级（轴①）超时，会话轴本就不归它管；
+llm 同理（只到模型轴）。若未来 oagentkit 侧出现「不经过 kernel 的会话级预算」
+需求，那说明宿主用错了层——正确解是把预算建到装配层 ctx 上（用 kernel 的
+cause），不是在思想层复制一个墙钟错误。**记此结论替代 ADR**（负向结论，
+无新面可裁）。
+
+**RetryHint 收编判据（给 `oagentkit/llm#234`，收编实现归该单）**：
+① 模型超时 → `ClassTransient`（可重试）；② 取消 → 不进瞬时类（`ClassUnknown`
+或显式不重试——违背意图的重试是事故）；③ 同字面量不同值回归随收编迁移
+（`errors.Is` 认领靠值不靠文本）；④ 不得改变 `IsTransientStreamError` 的
+取消排除语义。收编 PR 引用本节为判据（互链）。
 
 ### 与 runtime W1 对象模型的对照（互认列）
 
@@ -164,6 +192,12 @@
 | Resume | goagent-kernel | checkpoint/faultinjection_test.go | TestFaultResumeInterruptedThenResumes |
 | Resume | goagent-kernel | invocation/invocationtest/invocationtest_test.go | TestConformanceOnMemoryStore |
 | Resume | goagent-runtime | agentloop/loop_test.go | TestResumeAfterModelDeath |
+| Timeout | llm | timeout_axis_test.go | TestModelTimeoutIsTransient_Issue222 |
+| Timeout | llm | timeout_axis_test.go | TestUserCancelNotModelTimeout_Issue222 |
+| Timeout | llm | timeout_axis_test.go | TestSameTextDifferentValue_Issue222 |
+| Timeout | guardx | toolfail/timeout_axis_test.go | TestToolTimeoutIdentity_Issue222 |
+| Timeout | guardx | toolfail/timeout_axis_test.go | TestUserCancelNotTimeout_Issue222 |
+| Timeout | guardx | toolfail/timeout_axis_test.go | TestSameTextDifferentValue_Issue222 |
 
 ## 关联
 
